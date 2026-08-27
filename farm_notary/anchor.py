@@ -98,6 +98,8 @@ def notarize_run(
     config: Optional[Mapping[str, Any]] = None,
     git_sha: Optional[str] = None,
     runner: Optional[str] = None,
+    command: Optional[str] = None,
+    lockfile: Optional[Path] = None,
     official_record: Optional[Mapping[str, Any]] = None,
     backend: Optional[AnchorBackend] = None,
     pin: bool = False,
@@ -116,6 +118,8 @@ def notarize_run(
         config=config,
         git_sha=git_sha,
         runner=runner,
+        command=command,
+        lockfile=lockfile,
         official_record=official_record,
     )
     write_manifest(manifest, run_dir)

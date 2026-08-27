@@ -34,16 +34,24 @@ same machine with `farm-notary reproduce`:
 - **Bitwise identical (6/7 artifacts):** `trials.csv`, `summary.csv`,
   `allocation_means.csv`, and all three PNG figures — including matplotlib
   output, which is byte-stable within a pinned environment.
-- **Mismatch (1/7):** `REPORT.md` — not nondeterminism; the report embeds its
-  own output path, so a re-run into a fresh directory changes one line.
-  Fixable upstream by recording the command with a placeholder.
+- **Mismatch (1/7):** `REPORT.md` — not nondeterminism; the report embedded
+  its own output path, so a re-run into a fresh directory changed one line.
 - The reproduction receipt was anchored through all four public
   OpenTimestamps calendar pools.
 
-Valid claim as of that run: *"the consensus experiment's data artifacts and
-figures are bitwise reproducible from the committed seed in a pinned
-environment, verified by re-execution; the report is identical up to its
-embedded output path."*
+After fixing the report upstream to record the command with a `{run_dir}`
+placeholder, a second session reproduced **8/8 artifacts bitwise** (including
+`REPORT.md` and `run_config.json`) with no ignore globs, and the experiment
+gained a `verify-report` check that recomputes the derived artifacts
+(`summary.csv`, `allocation_means.csv`, `REPORT.md`) byte-identically from the
+raw `trials.csv` — that recomputation surfaced a real subtlety: pandas'
+default CSV float parser is off by one ulp, and only
+`float_precision="round_trip"` recovers the written values exactly.
+
+Valid claim as of those runs: *"the consensus experiment's artifacts are
+bitwise reproducible from the committed seed in a pinned environment,
+verified by re-execution, and its summary statistics recompute exactly from
+the raw trial data."*
 
 Not yet demonstrated: cross-machine reproduction (different hardware/BLAS)
 and continuous reproduction in CI. Until a clean-machine receipt exists, do
