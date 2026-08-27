@@ -24,32 +24,46 @@ The chain does not know if the science is right. It knows which bytes were publi
 
 See `farm_notary/schema.py`. Required: schema id, UTC time, git SHA, config object, artifact list, artifact SHA-256 map. Optional: `official_record` (winner allocations, summary metrics), `cid`, `chain` receipt.
 
-`content_hash` excludes `cid` and `chain` so you can stamp after upload without circular hashing.
+Artifact discovery is recursive; paths are stored POSIX-style relative to the run directory. Hidden files and `manifest.json` itself are skipped. `Manifest.validate()` enforces the schema id, artifact list / hash map agreement, and the privacy filter.
+
+`content_hash` excludes `cid` and `chain` so you can stamp after upload without circular hashing. It is SHA-256 of the canonical JSON body (sorted keys, no whitespace).
 
 ## Privacy
 
-Filenames containing `ballot`, `vote`, `voter`, `individual_choice`, or `private` are skipped. Do not put agent-level or citizen-level choices in `official_record`.
+Relative paths containing `ballot`, `vote`, `voter`, `individual_choice`, or `private` (any path component) are skipped by discovery, rejected by validation, and never uploaded. Do not put agent-level or citizen-level choices in `official_record`.
 
 ## AgentFarm hook
 
 After `ExperimentRunner` (or a dedicated consensus runner) flushes a run directory:
 
 ```python
-from farm_notary import build_manifest
-from farm_notary.manifest import write_manifest
-from farm_notary.anchor import anchor_run
+from farm_notary import notarize_run
 
-manifest = build_manifest(run_dir, git_sha=sha, runner="consensus_paradigms", config=config)
-write_manifest(manifest, run_dir)
-anchor_run(manifest)  # dry-run until a backend is configured
+manifest, receipt = notarize_run(
+    run_dir, git_sha=sha, runner="consensus_paradigms", config=config
+)  # dry-run until a backend is passed; pin=True to upload to IPFS
 ```
 
-## Backends (later)
+`notarize_run` builds and writes the manifest, optionally pins the directory (manifest included), anchors, and rewrites `manifest.json` with the CID and chain receipt.
 
-1. Dry-run (now)
-2. IPFS pin + print CID
-3. EAS attestation on Base/Sepolia
-4. `SimulationRegistry` if a dedicated contract is wanted
+## IPFS
+
+`farm_notary.ipfs.IpfsClient` posts a multipart upload to a Kubo daemon's `/api/v0/add` with `wrap-with-directory=true&cid-version=1&pin=true` and takes the wrapping directory's CID as the run's content address. Standard library only; the endpoint comes from `FARM_NOTARY_IPFS_API` (default `http://127.0.0.1:5001`).
+
+The pinned tree includes `manifest.json`. Because `content_hash` excludes `cid`/`chain`, the copy inside the pinned tree hashes to the same value that gets anchored, even though the local copy is later stamped.
+
+## Chain
+
+Two paths, deliberately asymmetric:
+
+- **Read / verify** (`farm_notary.registry.get_record`): raw JSON-RPC `eth_call` to `records(bytes32)` using urllib and a vendored pure-Python keccak-256 (`farm_notary/keccak.py`) for the selector. Anyone can verify with zero dependencies.
+- **Write** (`farm_notary.registry.RegistryBackend`): signs and submits `register(bytes32,string)`; needs web3 via `farm-notary[chain]`. Key comes from `FARM_NOTARY_PRIVATE_KEY`.
+
+## Backends
+
+1. Dry-run (default; returns the payload that would be submitted)
+2. `registry` — `SimulationRegistry.register(manifestHash, cid)` (implemented)
+3. EAS attestation on Base/Sepolia (later)
 
 ## Consensus experiment note
 
