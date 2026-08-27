@@ -165,6 +165,28 @@ def upgrade_proof(proof: bytes, timeout: float = 10.0) -> Tuple[bytes, ProofStat
     return upgraded_proof, proof_status(upgraded_proof), errors
 
 
+def stamp_digest(
+    digest: bytes, calendars=None, timeout: float = 10.0
+) -> Tuple[bytes, List[str]]:
+    """Submit a 32-byte digest to calendars; return (proof bytes, accepted urls)."""
+    _require_ots()
+    from opentimestamps.calendar import RemoteCalendar
+    from opentimestamps.core.timestamp import Timestamp
+
+    timestamp = Timestamp(digest)
+    accepted: List[str] = []
+    errors: List[str] = []
+    for url in calendar_urls(calendars):
+        try:
+            timestamp.merge(RemoteCalendar(url).submit(digest, timeout=timeout))
+            accepted.append(url)
+        except Exception as exc:
+            errors.append(f"{url}: {exc}")
+    if not accepted:
+        raise OtsError("no calendar accepted the digest: " + "; ".join(errors))
+    return serialize_proof(timestamp), accepted
+
+
 class OpenTimestampsBackend:
     """Anchor backend using public OpenTimestamps calendar servers."""
 
@@ -174,29 +196,17 @@ class OpenTimestampsBackend:
         self.timeout = timeout
 
     def submit(self, manifest, *, cid: Optional[str] = None):
-        from opentimestamps.calendar import RemoteCalendar
-        from opentimestamps.core.timestamp import Timestamp
-
         from farm_notary.anchor import AnchorReceipt
 
         manifest_hash = manifest.content_hash()
-        digest = bytes.fromhex(manifest_hash)
-        timestamp = Timestamp(digest)
-        accepted: List[str] = []
-        errors: List[str] = []
-        for url in self.calendars:
-            try:
-                timestamp.merge(RemoteCalendar(url).submit(digest, timeout=self.timeout))
-                accepted.append(url)
-            except Exception as exc:
-                errors.append(f"{url}: {exc}")
-        if not accepted:
-            raise OtsError("no calendar accepted the digest: " + "; ".join(errors))
+        proof, accepted = stamp_digest(
+            bytes.fromhex(manifest_hash), self.calendars, timeout=self.timeout
+        )
         return AnchorReceipt(
             backend="opentimestamps",
             manifest_hash=manifest_hash,
             cid=cid,
             dry_run=False,
             detail={"calendars": accepted, "proof": PROOF_NAME, "status": "pending"},
-            proof=serialize_proof(timestamp),
+            proof=proof,
         )

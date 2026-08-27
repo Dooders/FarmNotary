@@ -94,6 +94,28 @@ Because `manifest.ots` commits to the content hash rather than the raw file
 bytes, stamping `manifest.json` with `cid`/`anchor` after anchoring never
 invalidates the proof.
 
+## Provenance and reproduction
+
+The manifest records everything a stranger needs to re-derive the run:
+`command` (with a `{run_dir}` placeholder), `config`, `git_sha` plus a
+`git_dirty` flag (a dirty tree means the sha does not identify the code that
+ran, so it is recorded, not hidden), and `environment` (python, platform, a
+hash of the installed package set, optional lockfile hash).
+
+`farm-notary reproduce` turns reproducibility from a claim into a procedure:
+re-run the recorded command into a fresh directory, rehash, byte-compare
+against the manifest. Known-nondeterministic artifacts (videos, databases)
+are excluded per-run with `--ignore` globs and recorded as excluded — the
+claim is scoped, never blanket. A successful reproduction writes
+`reproduction.json` (rerunner environment, per-file results, the original
+manifest hash) whose own hash can be anchored via OpenTimestamps
+(`reproduction.ots`), making "independently reproduced" a timestamped,
+third-party-checkable statement.
+
+Notary metadata (`manifest.json`, `reproduction.json`, `*.ots`) is never
+treated as an artifact: discovery skips it, so stamping and receipts don't
+perturb the anchored content hash.
+
 ## Backends
 
 1. Dry-run (default; returns the payload that would be submitted)

@@ -78,6 +78,27 @@ manifest, receipt = notarize_run(run_dir, git_sha=sha, runner="consensus_paradig
 
 Dry-run by default; pass `backend=OpenTimestampsBackend()` (from `farm_notary.ots`) and `pin=True` to publish for real. Do not submodule unless the API is still thrashing.
 
+## Reproducing a run
+
+If the manifest records the command that produced it (`--command`, with
+`{run_dir}` marking the output directory), anyone can re-execute and
+byte-compare:
+
+```bash
+farm-notary manifest --run-dir path/to/run \
+  --command "python run_experiment.py --seed 0 --out {run_dir}" \
+  --lockfile requirements.lock
+farm-notary reproduce --run-dir path/to/run --ignore '*.mp4' --anchor
+```
+
+`reproduce` re-runs the command into a fresh directory, compares every listed
+artifact's bytes against the manifest, and writes a `reproduction.json`
+receipt (rerunner's environment, per-file results). `--anchor` timestamps the
+receipt itself via OpenTimestamps, so "independently reproduced" comes with a
+proof. `verify` checks the receipt against the manifest and its proof.
+
+See [docs/CLAIMS.md](docs/CLAIMS.md) for exactly which claim each check earns.
+
 ## Verifying someone else's claim
 
 1. Fetch the CID (`ipfs get <cid>`), or obtain the run directory some other way.

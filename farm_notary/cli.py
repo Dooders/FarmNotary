@@ -10,11 +10,10 @@ from farm_notary.anchor import anchor_run, get_backend, write_proof
 from farm_notary.manifest import (
     MANIFEST_NAME,
     build_manifest,
-    detect_git_sha,
     load_manifest,
     write_manifest,
 )
-from farm_notary.verify import verify_anchor, verify_run_dir
+from farm_notary.verify import verify_anchor, verify_receipt, verify_run_dir
 
 
 def _load_json_arg(path: Optional[str]) -> Optional[dict]:
@@ -38,6 +37,15 @@ def _build_parser() -> argparse.ArgumentParser:
     p_man.add_argument("--git-sha", help="Code identity; auto-detected from cwd if omitted")
     p_man.add_argument("--runner", help="Name of the runner that produced the artifacts")
     p_man.add_argument("--config", help="Path to a JSON file with the run configuration")
+    p_man.add_argument(
+        "--command",
+        help='Exact command that produced the run, with "{run_dir}" marking the '
+        "output directory (enables `farm-notary reproduce`)",
+    )
+    p_man.add_argument(
+        "--lockfile",
+        help="Dependency lockfile to hash into the environment record",
+    )
     p_man.add_argument(
         "--official-record",
         help="Path to a JSON file with aggregate results (never per-agent choices)",
@@ -68,6 +76,28 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_upg.add_argument("--run-dir", required=True)
 
+    p_rep = sub.add_parser(
+        "reproduce",
+        help="Re-run the manifest's recorded command and byte-compare the artifacts",
+    )
+    p_rep.add_argument("--run-dir", required=True)
+    p_rep.add_argument(
+        "--ignore",
+        action="append",
+        default=[],
+        help="Glob for artifacts excluded from the comparison (e.g. '*.mp4'); repeatable",
+    )
+    p_rep.add_argument(
+        "--fresh-dir",
+        help="Directory for the re-run (default: a new temporary directory)",
+    )
+    p_rep.add_argument(
+        "--anchor",
+        action="store_true",
+        help="Anchor the reproduction receipt via OpenTimestamps",
+    )
+    p_rep.add_argument("--calendar", action="append", help="Calendar URL; repeatable")
+
     return parser
 
 
@@ -76,14 +106,20 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
     if not run_dir.is_dir():
         print(f"error: {run_dir} is not a directory", file=sys.stderr)
         return 2
-    git_sha = args.git_sha or detect_git_sha()
     manifest = build_manifest(
         run_dir,
-        git_sha=git_sha,
+        git_sha=args.git_sha,
         runner=args.runner,
+        command=args.command,
+        lockfile=Path(args.lockfile) if args.lockfile else None,
         config=_load_json_arg(args.config),
         official_record=_load_json_arg(args.official_record),
     )
+    if manifest.git_dirty:
+        print(
+            "warning: git tree is dirty; the recorded sha does not identify the code that ran",
+            file=sys.stderr,
+        )
     path = write_manifest(manifest, run_dir)
     print(path)
     print("artifacts", len(manifest.artifacts))
@@ -133,6 +169,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
 
     problems = verify_run_dir(manifest, run_dir)
     problems += verify_anchor(manifest, run_dir)
+    problems += verify_receipt(manifest, run_dir)
 
     if problems:
         for problem in problems:
@@ -146,7 +183,60 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         proof_path = run_dir / manifest.anchor.get("detail", {}).get("proof", PROOF_NAME)
         for line in proof_status(proof_path.read_bytes()).summary():
             print(line)
+    from farm_notary.manifest import RECEIPT_NAME
+
+    receipt_path = run_dir / RECEIPT_NAME
+    if receipt_path.is_file():
+        from farm_notary.reproduce import load_receipt
+
+        receipt = load_receipt(run_dir)
+        print(
+            f"reproduction receipt: {len(receipt.get('matched', []))} artifact(s) "
+            f"bitwise-reproduced on {receipt.get('created_utc')}"
+        )
     return 0
+
+
+def _cmd_reproduce(args: argparse.Namespace) -> int:
+    from farm_notary.reproduce import (
+        ReproduceError,
+        build_receipt,
+        receipt_hash,
+        reproduce_run,
+        write_receipt,
+    )
+
+    run_dir = Path(args.run_dir)
+    manifest = load_manifest(run_dir)
+    try:
+        result = reproduce_run(
+            manifest,
+            fresh_dir=Path(args.fresh_dir) if args.fresh_dir else None,
+            ignore=args.ignore,
+        )
+    except ReproduceError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    for line in result.summary():
+        print(line)
+
+    receipt = build_receipt(manifest, result)
+    receipt_path = write_receipt(receipt, run_dir)
+    print(f"receipt written to {receipt_path}")
+    print("receipt_hash", receipt_hash(receipt))
+
+    if args.anchor:
+        from farm_notary.ots import stamp_digest
+        from farm_notary.reproduce import RECEIPT_PROOF_NAME
+
+        proof, accepted = stamp_digest(
+            bytes.fromhex(receipt_hash(receipt)), calendars=args.calendar
+        )
+        proof_path = run_dir / RECEIPT_PROOF_NAME
+        proof_path.write_bytes(proof)
+        print(f"receipt anchored via {len(accepted)} calendar(s); proof at {proof_path}")
+
+    return 0 if result.ok else 1
 
 
 def _cmd_upgrade(args: argparse.Namespace) -> int:
@@ -173,6 +263,7 @@ def main(argv: Optional[list] = None) -> int:
         "anchor": _cmd_anchor,
         "verify": _cmd_verify,
         "upgrade": _cmd_upgrade,
+        "reproduce": _cmd_reproduce,
     }
     return handlers[args.cmd](args)
 

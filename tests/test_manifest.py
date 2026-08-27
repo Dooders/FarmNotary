@@ -89,6 +89,58 @@ def test_validate_rejects_private_artifacts():
         manifest.validate()
 
 
+def test_environment_captured_by_default(tmp_path: Path):
+    make_run_dir(tmp_path)
+    manifest = build_manifest(tmp_path, git_sha="abc")
+    assert manifest.environment["python"]
+    assert len(manifest.environment["packages_hash"]) == 64
+    assert manifest.environment["package_count"] > 0
+
+
+def test_lockfile_hash_recorded(tmp_path: Path):
+    make_run_dir(tmp_path)
+    lock = tmp_path / "requirements.lock"
+    lock.write_text("numpy==2.0.0\n", encoding="utf-8")
+    manifest = build_manifest(tmp_path, git_sha="abc", lockfile=lock)
+    assert manifest.environment["lockfile"] == "requirements.lock"
+    assert len(manifest.environment["lockfile_sha256"]) == 64
+
+
+def test_command_and_environment_are_anchored(tmp_path: Path):
+    make_run_dir(tmp_path)
+    manifest = build_manifest(tmp_path, git_sha="abc", command="run {run_dir}")
+    before = manifest.content_hash()
+    manifest.command = "something-else {run_dir}"
+    assert manifest.content_hash() != before
+
+
+def test_git_status_detection(tmp_path: Path):
+    import subprocess
+
+    from farm_notary.manifest import detect_git_status
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git = ["git", "-c", "user.email=t@t", "-c", "user.name=t"]
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    (repo / "f.txt").write_text("x", encoding="utf-8")
+    subprocess.run(["git", "add", "f.txt"], cwd=repo, check=True)
+    subprocess.run(git + ["commit", "-qm", "init"], cwd=repo, check=True)
+
+    sha, dirty = detect_git_status(cwd=repo)
+    assert sha and len(sha) == 40
+    assert dirty is False
+
+    (repo / "f.txt").write_text("changed", encoding="utf-8")
+    sha2, dirty2 = detect_git_status(cwd=repo)
+    assert sha2 == sha
+    assert dirty2 is True
+
+    outside = tmp_path / "not-a-repo"
+    outside.mkdir()
+    assert detect_git_status(cwd=outside) == (None, None)
+
+
 def test_validate_rejects_unknown_schema(tmp_path: Path):
     make_run_dir(tmp_path)
     manifest = build_manifest(tmp_path)

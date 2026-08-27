@@ -30,6 +30,41 @@ def verify_run_dir(manifest: Manifest, run_dir: Path) -> List[str]:
     return problems
 
 
+def verify_receipt(manifest: Manifest, run_dir: Path) -> List[str]:
+    """Check the reproduction receipt (if present) against the manifest.
+
+    Validates that the receipt refers to this manifest's content hash and,
+    when a reproduction.ots proof exists, that the proof commits to the
+    receipt's own hash.
+    """
+    from farm_notary.manifest import RECEIPT_NAME
+    from farm_notary.reproduce import RECEIPT_PROOF_NAME, load_receipt, receipt_hash
+
+    problems: List[str] = []
+    run_dir = Path(run_dir)
+    receipt_path = run_dir / RECEIPT_NAME
+    if not receipt_path.is_file():
+        return problems
+    receipt = load_receipt(run_dir)
+    manifest_hash = manifest.content_hash()
+    if receipt.get("original_manifest_hash") != manifest_hash:
+        problems.append(
+            f"reproduction receipt refers to {receipt.get('original_manifest_hash')}, "
+            f"manifest content hash is {manifest_hash}"
+        )
+    if not receipt.get("ok"):
+        problems.append("reproduction receipt records a failed reproduction")
+    proof_path = run_dir / RECEIPT_PROOF_NAME
+    if proof_path.is_file():
+        from farm_notary.ots import verify_proof
+
+        problems += [
+            f"receipt proof: {p}"
+            for p in verify_proof(proof_path.read_bytes(), receipt_hash(receipt))
+        ]
+    return problems
+
+
 def verify_anchor(manifest: Manifest, run_dir: Path) -> List[str]:
     """Check the manifest's anchor receipt against the recomputed hash.
 
