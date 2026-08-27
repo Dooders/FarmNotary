@@ -55,12 +55,12 @@ def test_manifest_round_trip(tmp_path: Path):
     assert load_manifest(tmp_path / "manifest.json") == manifest
 
 
-def test_content_hash_excludes_cid_and_chain(tmp_path: Path):
+def test_content_hash_excludes_cid_and_anchor(tmp_path: Path):
     make_run_dir(tmp_path)
     manifest = build_manifest(tmp_path)
     before = manifest.content_hash()
     manifest.cid = "bafyexample"
-    manifest.chain = {"backend": "dry-run"}
+    manifest.anchor = {"backend": "dry-run"}
     assert manifest.content_hash() == before
 
 

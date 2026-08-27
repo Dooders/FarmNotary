@@ -5,26 +5,49 @@ import pytest
 
 
 class StubServer:
-    """Minimal HTTP stub: records POST requests, returns a canned response."""
+    """Minimal HTTP stub: records requests, returns canned responses.
+
+    response_body is used for POST requests; get_responses maps a URL path to
+    the body returned for GET requests (404 for unknown paths).
+    """
 
     def __init__(self):
         self.requests = []
         self.response_body = b"{}"
         self.response_status = 200
+        self.get_responses = {}
         outer = self
 
         class Handler(BaseHTTPRequestHandler):
+            def _record(self, body=b""):
+                outer.requests.append(
+                    {
+                        "method": self.command,
+                        "path": self.path,
+                        "headers": dict(self.headers),
+                        "body": body,
+                    }
+                )
+
+            def _respond(self, status, body):
+                self.send_response(status)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
             def do_POST(self):
                 length = int(self.headers.get("Content-Length", 0))
-                body = self.rfile.read(length)
-                outer.requests.append(
-                    {"path": self.path, "headers": dict(self.headers), "body": body}
-                )
-                self.send_response(outer.response_status)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(outer.response_body)))
-                self.end_headers()
-                self.wfile.write(outer.response_body)
+                self._record(self.rfile.read(length))
+                self._respond(outer.response_status, outer.response_body)
+
+            def do_GET(self):
+                self._record()
+                body = outer.get_responses.get(self.path)
+                if body is None:
+                    self._respond(404, b"not found")
+                else:
+                    self._respond(200, body)
 
             def log_message(self, *args):
                 pass

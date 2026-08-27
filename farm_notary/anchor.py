@@ -1,13 +1,15 @@
-"""Chain adapters.
+"""Anchor adapters.
 
-Default is dry-run: return the payload that *would* be submitted.
-The registry backend (farm_notary.registry.RegistryBackend) submits real
-transactions and plugs in here without changing AgentFarm callers.
+The anchoring layer is outsourced to existing public infrastructure; FarmNotary
+only decides *what* gets anchored (the manifest content hash). Default is
+dry-run: return the payload that *would* be submitted. The real backend is
+OpenTimestamps (farm_notary.ots), which anchors into Bitcoin via free public
+calendar servers.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Optional, Protocol, Tuple
 
@@ -24,16 +26,19 @@ class AnchorReceipt:
     backend: str
     manifest_hash: str
     cid: Optional[str]
-    tx_hash: Optional[str]
     dry_run: bool = True
+    detail: dict = field(default_factory=dict)
+    # Serialized proof to persist next to the manifest (e.g. manifest.ots).
+    # Not part of to_dict: proofs are files, not manifest metadata.
+    proof: Optional[bytes] = None
 
     def to_dict(self) -> dict:
         return {
             "backend": self.backend,
             "manifest_hash": self.manifest_hash,
             "cid": self.cid,
-            "tx_hash": self.tx_hash,
             "dry_run": self.dry_run,
+            "detail": self.detail,
         }
 
 
@@ -48,24 +53,29 @@ class DryRunBackend:
             backend="dry-run",
             manifest_hash=manifest.content_hash(),
             cid=cid,
-            tx_hash=None,
             dry_run=True,
         )
 
 
-def get_backend(
-    name: str,
-    *,
-    rpc_url: Optional[str] = None,
-    contract: Optional[str] = None,
-) -> AnchorBackend:
+def get_backend(name: str, *, calendars=None) -> AnchorBackend:
     if name == "dry-run":
         return DryRunBackend()
-    if name == "registry":
-        from farm_notary.registry import registry_backend_from_env
+    if name in ("ots", "opentimestamps"):
+        from farm_notary.ots import OpenTimestampsBackend
 
-        return registry_backend_from_env(rpc_url=rpc_url, contract=contract)
-    raise ValueError(f"unknown anchor backend {name!r} (expected dry-run or registry)")
+        return OpenTimestampsBackend(calendars=calendars)
+    raise ValueError(f"unknown anchor backend {name!r} (expected dry-run or ots)")
+
+
+def write_proof(receipt: AnchorReceipt, run_dir: Path) -> Optional[Path]:
+    """Persist the receipt's proof file (if any) next to the manifest."""
+    if receipt.proof is None:
+        return None
+    from farm_notary.ots import PROOF_NAME
+
+    dest = Path(run_dir) / PROOF_NAME
+    dest.write_bytes(receipt.proof)
+    return dest
 
 
 def anchor_run(
@@ -78,12 +88,7 @@ def anchor_run(
     backend = backend or DryRunBackend()
     receipt = backend.submit(manifest, cid=cid)
     manifest.cid = cid
-    manifest.chain = {
-        "backend": receipt.backend,
-        "manifest_hash": receipt.manifest_hash,
-        "tx_hash": receipt.tx_hash,
-        "dry_run": receipt.dry_run,
-    }
+    manifest.anchor = receipt.to_dict()
     return receipt
 
 
@@ -102,7 +107,8 @@ def notarize_run(
 
     Builds and writes manifest.json for run_dir, optionally uploads the run
     directory to IPFS, anchors via the given backend (dry-run by default),
-    and rewrites manifest.json with the cid and chain receipt.
+    persists any proof file, and rewrites manifest.json with the cid and
+    anchor receipt.
     """
     run_dir = Path(run_dir)
     manifest = build_manifest(
@@ -122,5 +128,6 @@ def notarize_run(
         cid = client.add_run_dir(run_dir, list(manifest.artifacts) + [MANIFEST_NAME])
 
     receipt = anchor_run(manifest, cid=cid, backend=backend)
+    write_proof(receipt, run_dir)
     write_manifest(manifest, run_dir)
     return manifest, receipt

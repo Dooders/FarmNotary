@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Optional
 
-from farm_notary.anchor import anchor_run, get_backend
+from farm_notary.anchor import anchor_run, get_backend, write_proof
 from farm_notary.manifest import (
     MANIFEST_NAME,
     build_manifest,
@@ -15,7 +14,7 @@ from farm_notary.manifest import (
     load_manifest,
     write_manifest,
 )
-from farm_notary.verify import verify_chain, verify_run_dir
+from farm_notary.verify import verify_anchor, verify_run_dir
 
 
 def _load_json_arg(path: Optional[str]) -> Optional[dict]:
@@ -30,7 +29,7 @@ def _load_json_arg(path: Optional[str]) -> Optional[dict]:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="farm-notary",
-        description="Notarize AgentFarm runs: manifest, optional IPFS pin, on-chain anchor.",
+        description="Notarize AgentFarm runs: manifest, optional IPFS pin, public anchor.",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -48,21 +47,26 @@ def _build_parser() -> argparse.ArgumentParser:
     p_anc.add_argument("--run-dir", required=True)
     p_anc.add_argument(
         "--backend",
-        choices=("dry-run", "registry"),
+        choices=("dry-run", "ots"),
         default="dry-run",
-        help="dry-run prints the payload; registry submits a transaction (needs farm-notary[chain])",
+        help="dry-run prints the payload; ots anchors via OpenTimestamps calendars (needs farm-notary[ots])",
     )
     p_anc.add_argument("--pin", action="store_true", help="Upload the run directory to IPFS first")
     p_anc.add_argument("--ipfs-api", help="Kubo API URL (default: FARM_NOTARY_IPFS_API or http://127.0.0.1:5001)")
-    p_anc.add_argument("--rpc-url", help="Ethereum JSON-RPC URL (default: FARM_NOTARY_RPC_URL)")
-    p_anc.add_argument("--contract", help="SimulationRegistry address (default: FARM_NOTARY_CONTRACT)")
+    p_anc.add_argument(
+        "--calendar",
+        action="append",
+        help="OpenTimestamps calendar URL; repeatable (default: FARM_NOTARY_CALENDARS or the public pools)",
+    )
 
-    p_ver = sub.add_parser("verify", help="Rehash artifacts; optionally match the chain record")
+    p_ver = sub.add_parser("verify", help="Rehash artifacts and check the anchor proof")
     p_ver.add_argument("--run-dir", help="Run directory containing manifest.json")
     p_ver.add_argument("--manifest", help=f"Path to a {MANIFEST_NAME} (artifacts checked next to it)")
-    p_ver.add_argument("--chain", action="store_true", help="Also check the on-chain record")
-    p_ver.add_argument("--rpc-url", help="Ethereum JSON-RPC URL (default: FARM_NOTARY_RPC_URL)")
-    p_ver.add_argument("--contract", help="SimulationRegistry address (default: FARM_NOTARY_CONTRACT)")
+
+    p_upg = sub.add_parser(
+        "upgrade", help="Complete a pending OpenTimestamps proof with Bitcoin attestations"
+    )
+    p_upg.add_argument("--run-dir", required=True)
 
     return parser
 
@@ -105,10 +109,13 @@ def _cmd_anchor(args: argparse.Namespace) -> int:
         client = IpfsClient(api_url=args.ipfs_api)
         cid = client.add_run_dir(run_dir, list(manifest.artifacts) + [MANIFEST_NAME])
 
-    backend = get_backend(args.backend, rpc_url=args.rpc_url, contract=args.contract)
+    backend = get_backend(args.backend, calendars=args.calendar)
     receipt = anchor_run(manifest, cid=cid, backend=backend)
+    proof_path = write_proof(receipt, run_dir)
     write_manifest(manifest, run_dir)
     print(json.dumps(receipt.to_dict(), indent=2))
+    if proof_path:
+        print(f"proof written to {proof_path}")
     return 0
 
 
@@ -125,23 +132,38 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     manifest = load_manifest(manifest_path)
 
     problems = verify_run_dir(manifest, run_dir)
-    if args.chain:
-        rpc_url = args.rpc_url or os.environ.get("FARM_NOTARY_RPC_URL")
-        contract = args.contract or os.environ.get("FARM_NOTARY_CONTRACT")
-        if not rpc_url or not contract:
-            print(
-                "error: --chain needs --rpc-url and --contract (or FARM_NOTARY_RPC_URL / FARM_NOTARY_CONTRACT)",
-                file=sys.stderr,
-            )
-            return 2
-        problems += verify_chain(manifest, rpc_url=rpc_url, contract=contract)
+    problems += verify_anchor(manifest, run_dir)
 
     if problems:
         for problem in problems:
             print("FAIL", problem)
         return 1
+
     print("OK", manifest.content_hash())
+    if manifest.anchor and manifest.anchor.get("backend") == "opentimestamps":
+        from farm_notary.ots import PROOF_NAME, proof_status
+
+        proof_path = run_dir / manifest.anchor.get("detail", {}).get("proof", PROOF_NAME)
+        for line in proof_status(proof_path.read_bytes()).summary():
+            print(line)
     return 0
+
+
+def _cmd_upgrade(args: argparse.Namespace) -> int:
+    from farm_notary.ots import PROOF_NAME, upgrade_proof
+
+    run_dir = Path(args.run_dir)
+    proof_path = run_dir / PROOF_NAME
+    if not proof_path.is_file():
+        print(f"error: {proof_path} not found; anchor with --backend ots first", file=sys.stderr)
+        return 2
+    upgraded, status, errors = upgrade_proof(proof_path.read_bytes())
+    proof_path.write_bytes(upgraded)
+    for line in status.summary():
+        print(line)
+    for error in errors:
+        print("note:", error, file=sys.stderr)
+    return 0 if status.confirmed else 1
 
 
 def main(argv: Optional[list] = None) -> int:
@@ -150,6 +172,7 @@ def main(argv: Optional[list] = None) -> int:
         "manifest": _cmd_manifest,
         "anchor": _cmd_anchor,
         "verify": _cmd_verify,
+        "upgrade": _cmd_upgrade,
     }
     return handlers[args.cmd](args)
 

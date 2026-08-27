@@ -1,16 +1,22 @@
-import json
 from pathlib import Path
 
+from farm_notary.anchor import anchor_run
 from farm_notary.manifest import build_manifest
-from farm_notary.verify import verify_chain, verify_run_dir
-from tests.test_registry import SENDER, abi_encode_record
-
-CONTRACT = "0x" + "cc" * 20
+from farm_notary.ots import PROOF_NAME, serialize_proof
+from farm_notary.verify import verify_anchor, verify_run_dir
+from tests.test_ots import pending_timestamp
 
 
 def make_manifest(tmp_path: Path):
     (tmp_path / "summary.csv").write_text("paradigm,total\nparty,0.2\n", encoding="utf-8")
     return build_manifest(tmp_path, git_sha="abc")
+
+
+def write_proof_for(manifest, run_dir: Path, digest_hex=None) -> Path:
+    digest = bytes.fromhex(digest_hex or manifest.content_hash())
+    path = run_dir / PROOF_NAME
+    path.write_bytes(serialize_proof(pending_timestamp(digest, "https://example.com")))
+    return path
 
 
 def test_verify_ok(tmp_path: Path):
@@ -37,38 +43,49 @@ def test_verify_flags_invalid_manifest(tmp_path: Path):
     assert any("invalid manifest" in p for p in problems)
 
 
-def test_verify_chain_match(stub_server, tmp_path: Path):
+def test_verify_anchor_skips_unanchored_manifest(tmp_path: Path):
     manifest = make_manifest(tmp_path)
-    manifest.cid = "bafytest"
-    stub_server.response_body = json.dumps(
-        {"jsonrpc": "2.0", "id": 1, "result": abi_encode_record(SENDER, "bafytest", 42)}
-    ).encode()
-    assert verify_chain(manifest, rpc_url=stub_server.url, contract=CONTRACT) == []
+    assert manifest.anchor is None
+    assert verify_anchor(manifest, tmp_path) == []
 
 
-def test_verify_chain_unregistered(stub_server, tmp_path: Path):
+def test_verify_anchor_dry_run_ok(tmp_path: Path):
     manifest = make_manifest(tmp_path)
-    stub_server.response_body = json.dumps(
-        {"jsonrpc": "2.0", "id": 1, "result": "0x" + "00" * 96}
-    ).encode()
-    problems = verify_chain(manifest, rpc_url=stub_server.url, contract=CONTRACT)
-    assert problems == [
-        f"manifest hash {manifest.content_hash()} not registered at {CONTRACT}"
-    ]
+    anchor_run(manifest)
+    assert verify_anchor(manifest, tmp_path) == []
 
 
-def test_verify_chain_cid_mismatch(stub_server, tmp_path: Path):
+def test_verify_anchor_detects_manifest_body_edit(tmp_path: Path):
     manifest = make_manifest(tmp_path)
-    manifest.cid = "bafyexpected"
-    stub_server.response_body = json.dumps(
-        {"jsonrpc": "2.0", "id": 1, "result": abi_encode_record(SENDER, "bafyother", 42)}
-    ).encode()
-    problems = verify_chain(manifest, rpc_url=stub_server.url, contract=CONTRACT)
-    assert problems == ["cid mismatch: chain has 'bafyother', expected 'bafyexpected'"]
-
-
-def test_verify_chain_unreachable_rpc(tmp_path: Path):
-    manifest = make_manifest(tmp_path)
-    problems = verify_chain(manifest, rpc_url="http://127.0.0.1:1", contract=CONTRACT)
+    anchor_run(manifest)
+    manifest.runner = "edited-after-anchoring"
+    problems = verify_anchor(manifest, tmp_path)
     assert len(problems) == 1
-    assert problems[0].startswith("chain lookup failed")
+    assert "anchored hash" in problems[0]
+
+
+def test_verify_anchor_ots_proof_ok(tmp_path: Path):
+    manifest = make_manifest(tmp_path)
+    anchor_run(manifest)
+    manifest.anchor["backend"] = "opentimestamps"
+    manifest.anchor["detail"] = {"proof": PROOF_NAME}
+    write_proof_for(manifest, tmp_path)
+    assert verify_anchor(manifest, tmp_path) == []
+
+
+def test_verify_anchor_ots_missing_proof(tmp_path: Path):
+    manifest = make_manifest(tmp_path)
+    anchor_run(manifest)
+    manifest.anchor["backend"] = "opentimestamps"
+    problems = verify_anchor(manifest, tmp_path)
+    assert problems == [f"missing anchor proof: {PROOF_NAME}"]
+
+
+def test_verify_anchor_ots_proof_digest_mismatch(tmp_path: Path):
+    manifest = make_manifest(tmp_path)
+    anchor_run(manifest)
+    manifest.anchor["backend"] = "opentimestamps"
+    write_proof_for(manifest, tmp_path, digest_hex="ff" * 32)
+    problems = verify_anchor(manifest, tmp_path)
+    assert len(problems) == 1
+    assert "proof commits to" in problems[0]

@@ -76,7 +76,7 @@ class Manifest:
     artifact_hashes: dict = field(default_factory=dict)
     official_record: dict = field(default_factory=dict)
     cid: Optional[str] = None
-    chain: Optional[dict] = None
+    anchor: Optional[dict] = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -87,14 +87,14 @@ class Manifest:
         return cls(**{k: v for k, v in data.items() if k in known})
 
     def content_hash(self) -> str:
-        """Hash of the manifest body, excluding cid and chain receipt.
+        """Hash of the manifest body, excluding cid and anchor receipt.
 
         Excluding those fields lets the manifest be stamped with upload and
         anchor results after the fact without changing what was anchored.
         """
         body = self.to_dict()
         body.pop("cid", None)
-        body.pop("chain", None)
+        body.pop("anchor", None)
         return hash_json(body)
 
     def validate(self) -> None:

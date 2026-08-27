@@ -13,8 +13,8 @@ authors = [{ name = "Dooders" }]
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest"]
-chain = ["web3>=6"]
+dev = ["pytest", "opentimestamps>=0.4.5"]
+ots = ["opentimestamps>=0.4.5"]
 
 [project.scripts]
 farm-notary = "farm_notary.cli:main"
