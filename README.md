@@ -2,9 +2,9 @@
 
 Notary for [AgentFarm](https://github.com/Dooders/AgentFarm) runs.
 
-Simulation stays off-chain. FarmNotary writes a manifest (config, code identity, artifact hashes), optionally pins the result directory to IPFS, and anchors `manifest_hash + CID` on a public ledger.
+Simulation stays off-chain. FarmNotary writes a manifest (config, code identity, artifact hashes), optionally pins the result directory to IPFS, and anchors the manifest hash publicly via [OpenTimestamps](https://opentimestamps.org/) — free calendar servers that batch digests into Bitcoin.
 
-Immutability is not correctness. Re-run from the committed seed to check the science. The chain only makes "this is the file we published" hard to walk back.
+Immutability is not correctness. Re-run from the committed seed to check the science. The anchor only makes "this is the file we published" hard to walk back.
 
 ## Scope
 
@@ -12,11 +12,12 @@ Immutability is not correctness. Re-run from the committed seed to check the sci
 
 - Canonical `manifest.json` schema (recursive artifact discovery, SHA-256 map)
 - Optional IPFS upload via the Kubo HTTP API (stdlib only, no extra needed)
-- On-chain register against `contracts/SimulationRegistry.sol` (`register(bytes32,string)`)
-- Verify: rehash artifacts locally, then match the manifest hash and CID on chain
+- Anchoring via OpenTimestamps: no contract, no keys, no gas
+- Verify: rehash artifacts locally, check the proof commits to the manifest hash
 
 **Out**
 
+- Running our own anchoring infrastructure (contracts, chains, servers) — that layer is outsourced
 - Running simulations inside the EVM
 - Publishing individual voter or agent ballots
 - Social scores as a product
@@ -38,7 +39,7 @@ pip install -e .
 
 Extras:
 
-- `farm-notary[chain]` — adds web3, needed only to *submit* transactions. Reads and verification use plain JSON-RPC over the standard library.
+- `farm-notary[ots]` — adds the `opentimestamps` library, needed to anchor and to check proofs. Manifest building and local verification are stdlib-only.
 - IPFS upload needs no extra, just a reachable Kubo daemon.
 
 ## Quick start
@@ -54,18 +55,16 @@ farm-notary verify --run-dir path/to/run
 farm-notary anchor --run-dir path/to/run
 ```
 
-With IPFS and a deployed registry:
+Anchoring for real, with IPFS pinning:
 
 ```bash
-export FARM_NOTARY_RPC_URL=https://sepolia.base.org
-export FARM_NOTARY_CONTRACT=0xYourRegistry
-export FARM_NOTARY_PRIVATE_KEY=0x...
-
-farm-notary anchor --run-dir path/to/run --pin --backend registry
-farm-notary verify --run-dir path/to/run --chain
+farm-notary anchor --run-dir path/to/run --pin --backend ots
+# ... hours later, once a calendar has batched the digest into Bitcoin:
+farm-notary upgrade --run-dir path/to/run
+farm-notary verify --run-dir path/to/run
 ```
 
-`--pin` uploads the run directory (manifest included) to the Kubo API at `FARM_NOTARY_IPFS_API` (default `http://127.0.0.1:5001`) and stores the root CID in the manifest. `verify --chain` recomputes the manifest hash, calls `records(bytes32)` on the registry, and cross-checks the stored CID.
+`--backend ots` submits the manifest content hash to public OpenTimestamps calendars (override with `--calendar` or `FARM_NOTARY_CALENDARS`) and writes the proof to `manifest.ots`. `--pin` uploads the run directory (manifest included) to the Kubo API at `FARM_NOTARY_IPFS_API` (default `http://127.0.0.1:5001`) and stores the root CID in the manifest. `upgrade` completes the pending proof with a Bitcoin attestation; `verify` then reports the block height.
 
 ## AgentFarm inheritance
 
@@ -77,13 +76,15 @@ from farm_notary import notarize_run
 manifest, receipt = notarize_run(run_dir, git_sha=sha, runner="consensus_paradigms", config=config)
 ```
 
-Dry-run by default; pass `backend=` (see `farm_notary.registry.RegistryBackend`) and `pin=True` to publish for real. Do not submodule unless the API is still thrashing.
+Dry-run by default; pass `backend=OpenTimestampsBackend()` (from `farm_notary.ots`) and `pin=True` to publish for real. Do not submodule unless the API is still thrashing.
 
 ## Verifying someone else's claim
 
 1. Fetch the CID (`ipfs get <cid>`), or obtain the run directory some other way.
-2. `farm-notary verify --run-dir <dir> --chain --rpc-url <url> --contract <addr>`
-3. Exit code 0 means: these exact bytes hash to a manifest that is registered on chain, and the CID on chain matches. It does not mean the science is right — re-run from the committed seed for that.
+2. `farm-notary verify --run-dir <dir>`
+3. Exit code 0 means: these exact bytes hash to a manifest whose content hash the OpenTimestamps proof commits to, and the proof is attested (or pending) in Bitcoin. It does not mean the science is right — re-run from the committed seed for that.
+
+The proof in `manifest.ots` is a standard OpenTimestamps file: it commits to the manifest *content hash* (SHA-256 of the canonical manifest body, excluding the `cid` and `anchor` stamp fields), so it stays valid after the manifest is stamped with upload results. Full trust-minimized verification against your own Bitcoin node is possible with the standard `ots` tooling.
 
 ## Development
 
@@ -95,4 +96,4 @@ python3 -m venv .venv
 
 ## Status
 
-MVP. Manifest, hashing, IPFS pinning, registry anchoring (dry-run and web3-backed), and chain verification are implemented and tested. Not yet done: EAS attestation backend, deployment tooling for `SimulationRegistry.sol`.
+MVP. Manifest, hashing, IPFS pinning, OpenTimestamps anchoring (dry-run default), proof upgrade, and verification are implemented and tested. The anchoring layer is deliberately outsourced — earlier revisions carried a custom `SimulationRegistry` contract, which was removed in favor of existing public infrastructure. Possible later addition: an EAS attestation backend for EVM-native consumers.

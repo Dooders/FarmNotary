@@ -12,21 +12,40 @@ AgentFarm runner
 FarmNotary
     -> hashes artifacts, writes manifest.json
     -> optional: pin directory, get CID
-    -> optional: submit (manifest_hash, CID) to EAS or SimulationRegistry
+    -> optional: anchor manifest hash via OpenTimestamps (manifest.ots)
 Verifier
-    -> fetch CID, rehash, compare to chain
+    -> fetch CID, rehash, check the proof commits to the manifest hash
     -> separately: re-execute from seed to test claims
 ```
 
-The chain does not know if the science is right. It knows which bytes were published.
+The anchor does not know if the science is right. It knows which bytes were published, and when.
+
+## Outsourced anchoring
+
+FarmNotary deliberately runs **no anchoring infrastructure of its own** — no
+contract, no chain integration, no keys, no gas. Earlier revisions carried a
+custom `SimulationRegistry` Solidity contract plus an Ethereum client; that
+whole layer was removed. Anchoring a hash publicly is a solved problem with
+free, battle-tested infrastructure, and competing with it adds operational
+burden (deployments, key management, fees) without adding trust.
+
+The anchor backend is [OpenTimestamps](https://opentimestamps.org/): public
+calendar servers aggregate submitted digests into Merkle trees and commit the
+roots into Bitcoin transactions. Submitting is free and keyless; the resulting
+proof is an ordinary `.ots` file that anyone can verify against Bitcoin
+headers, with or without FarmNotary.
+
+FarmNotary's job reduces to what is actually domain-specific: deciding *what*
+gets anchored (the canonical manifest content hash) and *what never leaves the
+machine* (private artifacts).
 
 ## Manifest v1
 
-See `farm_notary/schema.py`. Required: schema id, UTC time, git SHA, config object, artifact list, artifact SHA-256 map. Optional: `official_record` (winner allocations, summary metrics), `cid`, `chain` receipt.
+See `farm_notary/schema.py`. Required: schema id, UTC time, git SHA, config object, artifact list, artifact SHA-256 map. Optional: `official_record` (winner allocations, summary metrics), `cid`, `anchor` receipt.
 
 Artifact discovery is recursive; paths are stored POSIX-style relative to the run directory. Hidden files and `manifest.json` itself are skipped. `Manifest.validate()` enforces the schema id, artifact list / hash map agreement, and the privacy filter.
 
-`content_hash` excludes `cid` and `chain` so you can stamp after upload without circular hashing. It is SHA-256 of the canonical JSON body (sorted keys, no whitespace).
+`content_hash` excludes `cid` and `anchor` so you can stamp after upload without circular hashing. It is SHA-256 of the canonical JSON body (sorted keys, no whitespace).
 
 ## Privacy
 
@@ -44,26 +63,42 @@ manifest, receipt = notarize_run(
 )  # dry-run until a backend is passed; pin=True to upload to IPFS
 ```
 
-`notarize_run` builds and writes the manifest, optionally pins the directory (manifest included), anchors, and rewrites `manifest.json` with the CID and chain receipt.
+`notarize_run` builds and writes the manifest, optionally pins the directory (manifest included), anchors, persists any proof file, and rewrites `manifest.json` with the CID and anchor receipt.
 
 ## IPFS
 
 `farm_notary.ipfs.IpfsClient` posts a multipart upload to a Kubo daemon's `/api/v0/add` with `wrap-with-directory=true&cid-version=1&pin=true` and takes the wrapping directory's CID as the run's content address. Standard library only; the endpoint comes from `FARM_NOTARY_IPFS_API` (default `http://127.0.0.1:5001`).
 
-The pinned tree includes `manifest.json`. Because `content_hash` excludes `cid`/`chain`, the copy inside the pinned tree hashes to the same value that gets anchored, even though the local copy is later stamped.
+The pinned tree includes `manifest.json`. Because `content_hash` excludes `cid`/`anchor`, the copy inside the pinned tree hashes to the same value that gets anchored, even though the local copy is later stamped.
 
-## Chain
+## Anchoring flow
 
-Two paths, deliberately asymmetric:
+`farm_notary.ots` (requires `farm-notary[ots]` for the `opentimestamps` library):
 
-- **Read / verify** (`farm_notary.registry.get_record`): raw JSON-RPC `eth_call` to `records(bytes32)` using urllib and a vendored pure-Python keccak-256 (`farm_notary/keccak.py`) for the selector. Anyone can verify with zero dependencies.
-- **Write** (`farm_notary.registry.RegistryBackend`): signs and submits `register(bytes32,string)`; needs web3 via `farm-notary[chain]`. Key comes from `FARM_NOTARY_PRIVATE_KEY`.
+1. **Stamp** (`anchor --backend ots`): submit the manifest content hash to the
+   configured calendars (`FARM_NOTARY_CALENDARS` or the public pools), merge
+   their responses, and write the proof to `manifest.ots`. The proof commits
+   to the *content hash digest directly* — no privacy nonce, because the
+   manifest hash is meant to be public.
+2. **Upgrade** (`upgrade`): calendars batch digests into Bitcoin on their own
+   schedule (typically hours). The upgrade command asks each pending calendar
+   for the completed path to a Bitcoin block header attestation and rewrites
+   the proof. Exit code 1 means still pending; run it again later.
+3. **Verify** (`verify`): rehash artifacts, recompute the content hash, check
+   the proof commits to it, and report attestation status (pending calendars
+   or Bitcoin block heights). Checking the Bitcoin merkle path against a local
+   node is left to the standard `ots verify` tooling — FarmNotary validates
+   commitment integrity, not block headers.
+
+Because `manifest.ots` commits to the content hash rather than the raw file
+bytes, stamping `manifest.json` with `cid`/`anchor` after anchoring never
+invalidates the proof.
 
 ## Backends
 
 1. Dry-run (default; returns the payload that would be submitted)
-2. `registry` — `SimulationRegistry.register(manifestHash, cid)` (implemented)
-3. EAS attestation on Base/Sepolia (later)
+2. `ots` — OpenTimestamps calendars into Bitcoin (implemented)
+3. EAS attestation for EVM-native consumers (possible later; also outsourced infrastructure)
 
 ## Consensus experiment note
 
