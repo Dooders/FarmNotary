@@ -121,7 +121,7 @@ manifest, receipt = notarize_run(
 )
 ```
 
-Dry-run by default; pass `backend=OpenTimestampsBackend()` (from `farm_notary.ots`) and `pin=True` to publish for real. Do not submodule unless the API is still thrashing.
+The example above uses `OpenTimestampsBackend()` (from `farm_notary.ots`); add `pin=True` to also upload the run directory to IPFS. Do not submodule unless the API is still thrashing.
 
 ## Reproducing a run
 
