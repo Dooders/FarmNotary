@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator, List, Mapping, Optional, Sequence, Tuple
 
-from farm_notary.schema import MANIFEST_VERSION, PRIVATE_NAME_FRAGMENTS, REQUIRED_KEYS
+from farm_notary.schema import MANIFEST_VERSION, PRIVATE_NAME_FRAGMENTS, REQUIRED_KEYS, TOOL_VERSION
 
 MANIFEST_NAME = "manifest.json"
 RECEIPT_NAME = "reproduction.json"
@@ -150,6 +150,7 @@ def capture_environment(lockfile: Optional[Path] = None) -> dict:
 @dataclass
 class Manifest:
     schema: str = MANIFEST_VERSION
+    farm_notary_version: str = TOOL_VERSION
     created_utc: str = ""
     git_sha: Optional[str] = None
     git_dirty: Optional[bool] = None

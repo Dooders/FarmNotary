@@ -3,6 +3,8 @@
 Keep this small. Chain storage is the hash of the manifest, not the artifacts.
 """
 
+TOOL_VERSION = "0.1.0"
+
 MANIFEST_VERSION = "farmnotary.manifest.v1"
 
 REQUIRED_KEYS = (

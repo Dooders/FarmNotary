@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from farm_notary import __version__
 from farm_notary.manifest import (
     Manifest,
     build_manifest,
@@ -11,6 +12,7 @@ from farm_notary.manifest import (
     load_manifest,
     write_manifest,
 )
+from farm_notary.schema import MANIFEST_VERSION
 from farm_notary.verify import verify_run_dir
 
 PUBLISH_ALL = ["*", "**/*"]
@@ -236,3 +238,51 @@ def test_is_private_path():
     assert is_private_path("summary.csv") is False
     assert is_private_path("metrics/round_1.json") is False
     assert is_private_path("BALLOT_SUMMARY.CSV") is True  # case-insensitive
+
+
+def test_farm_notary_version_in_manifest(tmp_path: Path):
+    """build_manifest records the tool version in every manifest."""
+    make_run_dir(tmp_path)
+    manifest = build_manifest(tmp_path, publish_patterns=["*.csv"], git_sha="abc")
+    assert manifest.farm_notary_version == __version__
+
+
+def test_farm_notary_version_survives_round_trip(tmp_path: Path):
+    make_run_dir(tmp_path)
+    manifest = build_manifest(tmp_path, publish_patterns=["*.csv"], git_sha="abc")
+    write_manifest(manifest, tmp_path)
+    loaded = load_manifest(tmp_path)
+    assert loaded.farm_notary_version == __version__
+
+
+def test_farm_notary_version_in_serialised_dict(tmp_path: Path):
+    make_run_dir(tmp_path)
+    manifest = build_manifest(tmp_path, publish_patterns=["*.csv"], git_sha="abc")
+    d = manifest.to_dict()
+    assert "farm_notary_version" in d
+    assert d["farm_notary_version"] == __version__
+
+
+def test_schema_version_skew_warning(tmp_path: Path):
+    """verify_run_dir warns when the manifest schema is newer than the running tool's."""
+    make_run_dir(tmp_path)
+    manifest = build_manifest(tmp_path, publish_patterns=["*.csv"], git_sha="abc")
+    # Simulate a manifest produced by a hypothetical future tool with a newer schema.
+    manifest.schema = "farmnotary.manifest.v9999"
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        verify_run_dir(manifest, tmp_path)
+    assert any(
+        "newer" in str(w.message).lower() and MANIFEST_VERSION in str(w.message)
+        for w in caught
+    )
+
+
+def test_no_schema_skew_warning_for_current_schema(tmp_path: Path):
+    """verify_run_dir does not warn when the manifest schema matches the tool's schema."""
+    make_run_dir(tmp_path)
+    manifest = build_manifest(tmp_path, publish_patterns=["*.csv"], git_sha="abc")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        verify_run_dir(manifest, tmp_path)
+    assert not any("newer" in str(w.message).lower() for w in caught)
