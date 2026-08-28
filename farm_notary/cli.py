@@ -240,28 +240,59 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         return 1
 
     print("OK", manifest.content_hash())
+    _precommit_ots_confirmed = False
     if manifest.precommit_hash is not None:
         from farm_notary.precommit import PRECOMMIT_NAME, PRECOMMIT_PROOF_NAME, load_precommit
         from farm_notary.ots import PROOF_NAME, proof_status
 
         pc_path = run_dir / PRECOMMIT_NAME
-        if pc_path.is_file():
+        pc_proof_path = run_dir / PRECOMMIT_PROOF_NAME
+        # Only report the "pre-specified design" claim when an OTS proof for
+        # the precommit exists; otherwise present created_utc as untrusted
+        # self-declared metadata only.
+        if pc_proof_path.is_file() and pc_path.is_file():
             try:
                 pc = load_precommit(pc_path)
-                print(f"pre-specified design: precommit created {pc.get('created_utc')} (T1)")
+                pc_status = proof_status(pc_proof_path.read_bytes())
+                _precommit_ots_confirmed = pc_status.confirmed
+                print(
+                    f"pre-specified design: precommit anchored via OTS"
+                    f" (self-declared created_utc: {pc.get('created_utc')})"
+                )
+                for line in pc_status.summary():
+                    print(f"  precommit proof: {line}")
             except (ValueError, OSError):
                 pass
-        pc_proof_path = run_dir / PRECOMMIT_PROOF_NAME
-        if pc_proof_path.is_file():
-            for line in proof_status(pc_proof_path.read_bytes()).summary():
-                print(f"  precommit proof: {line}")
+        elif pc_path.is_file():
+            try:
+                pc = load_precommit(pc_path)
+                print(
+                    f"  precommit present (no OTS proof); self-declared"
+                    f" created_utc: {pc.get('created_utc')} (untrusted)"
+                )
+            except (ValueError, OSError):
+                pass
+    _anchor_ots_confirmed = False
     if manifest.anchor and manifest.anchor.get("backend") == "opentimestamps":
         from farm_notary.ots import PROOF_NAME, proof_status
 
         proof_path = run_dir / manifest.anchor.get("detail", {}).get("proof", PROOF_NAME)
-        for line in proof_status(proof_path.read_bytes()).summary():
-            print(line)
-    if manifest.precommit_hash is not None and manifest.anchor is not None:
+        if proof_path.is_file():
+            anc_status = proof_status(proof_path.read_bytes())
+            _anchor_ots_confirmed = anc_status.confirmed
+            for line in anc_status.summary():
+                print(line)
+    # Emit the two-phase claim only when both proofs are real (not dry-run)
+    # and at least submitted to a calendar (confirmed or pending).
+    _precommit_proof_present = (
+        manifest.precommit_hash is not None
+        and (run_dir / "precommit.ots").is_file()
+    )
+    _anchor_proof_present = (
+        manifest.anchor is not None
+        and manifest.anchor.get("backend") != "dry-run"
+    )
+    if _precommit_proof_present and _anchor_proof_present:
         print("claim: specified before T1, produced before T2")
     from farm_notary.manifest import RECEIPT_NAME
 
@@ -287,10 +318,11 @@ def _cmd_precommit(args: argparse.Namespace) -> int:
     )
 
     out = Path(args.out)
-    if out.is_dir():
-        dest = out / PRECOMMIT_NAME
-    else:
-        dest = out
+    # Always treat --out as a directory: create it if it does not exist yet so
+    # that `--out ./run_dir` works before the run directory is created, rather
+    # than writing a bare file named "run_dir".
+    out.mkdir(parents=True, exist_ok=True)
+    dest = out / PRECOMMIT_NAME
 
     pc = build_precommit(
         config=_load_json_arg(args.config),

@@ -142,9 +142,17 @@ def verify_precommit(manifest: Manifest, run_dir: Path) -> List[str]:
         )
 
     for field_name in BOUND_FIELDS:
+        import json as _json
+
         pc_val = pc.get(field_name)
         manifest_val = getattr(manifest, field_name, None)
-        if pc_val != manifest_val:
+        # Use canonical JSON comparison to avoid Python equality quirks such as
+        # ``True == 1`` or ``1 == 1.0`` that would let a semantically-changed
+        # value pass as matching.
+        def _canonical(v: object) -> str:
+            return _json.dumps(v, sort_keys=True, separators=(",", ":"))
+
+        if _canonical(pc_val) != _canonical(manifest_val):
             problems.append(
                 f"precommit/{field_name} mismatch: precommit={pc_val!r}, "
                 f"manifest={manifest_val!r}"

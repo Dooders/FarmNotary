@@ -137,7 +137,12 @@ class Manifest:
     anchor: Optional[dict] = None
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        # Omit truly optional fields that are None so that loading an older
+        # manifest (which does not contain e.g. ``precommit_hash``) does not
+        # inject a ``null`` value and alter the recomputed content hash.
+        _OMIT_IF_NONE = {"precommit_hash", "cid", "anchor"}
+        return {k: v for k, v in d.items() if not (k in _OMIT_IF_NONE and v is None)}
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "Manifest":
@@ -213,11 +218,28 @@ def build_manifest(
         official_record=dict(official_record or {}),
     )
     if precommit_path is not None:
-        from farm_notary.precommit import load_precommit
-        from farm_notary.precommit import precommit_hash as _pc_hash
+        import shutil
 
-        pc = load_precommit(Path(precommit_path))
+        from farm_notary.precommit import (
+            PRECOMMIT_NAME,
+            PRECOMMIT_PROOF_NAME,
+            load_precommit,
+            precommit_hash as _pc_hash,
+        )
+
+        precommit_path = Path(precommit_path)
+        pc = load_precommit(precommit_path)
         manifest.precommit_hash = _pc_hash(pc)
+
+        # Ensure precommit.json is in the run directory — verify_precommit
+        # always loads it from there.  Copy it (and its proof, if present)
+        # when the caller supplied a path outside the run directory.
+        target_pc = run_dir / PRECOMMIT_NAME
+        if precommit_path.resolve() != target_pc.resolve():
+            shutil.copy2(precommit_path, target_pc)
+            src_proof = precommit_path.parent / PRECOMMIT_PROOF_NAME
+            if src_proof.is_file():
+                shutil.copy2(src_proof, run_dir / PRECOMMIT_PROOF_NAME)
     manifest.validate()
     return manifest
 

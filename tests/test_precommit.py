@@ -266,7 +266,7 @@ def test_verify_with_precommit_ok(tmp_path, capsys):
     capsys.readouterr()
     assert main(["verify", "--run-dir", str(run_dir)]) == 0
     out = capsys.readouterr().out
-    assert "pre-specified design" in out
+    assert "pre-specified design" in out or "precommit present" in out
 
 
 def test_verify_reports_precommit_mismatch(tmp_path, capsys):
