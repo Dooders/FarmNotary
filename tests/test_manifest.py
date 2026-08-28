@@ -6,6 +6,7 @@ import pytest
 from farm_notary.manifest import (
     Manifest,
     build_manifest,
+    is_private_path,
     load_manifest,
     write_manifest,
 )
@@ -149,3 +150,13 @@ def test_validate_rejects_unknown_schema(tmp_path: Path):
     (tmp_path / "manifest.json").write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(ValueError, match="schema"):
         load_manifest(tmp_path)
+
+
+def test_is_private_path():
+    assert is_private_path("votes_ballot.csv") is True
+    assert is_private_path("private/choices.csv") is True
+    assert is_private_path("voter_registry.json") is True
+    assert is_private_path("individual_choice.csv") is True
+    assert is_private_path("summary.csv") is False
+    assert is_private_path("metrics/round_1.json") is False
+    assert is_private_path("BALLOT_SUMMARY.CSV") is True  # case-insensitive
