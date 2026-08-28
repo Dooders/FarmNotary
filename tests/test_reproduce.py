@@ -42,6 +42,32 @@ def make_notarized_run(tmp_path: Path, *, media_arg: str = "static"):
     return run_dir, manifest, script
 
 
+def test_reproduce_respects_cwd(tmp_path: Path):
+    """Recorded commands are often relative to the experiment repo, not the run dir."""
+    repo = tmp_path / "experiment"
+    repo.mkdir()
+    (repo / "generate.py").write_text(DETERMINISTIC_SCRIPT, encoding="utf-8")
+    run_dir = tmp_path / "run"
+    command = f"{sys.executable} generate.py {{run_dir}}"
+    import subprocess
+
+    subprocess.run(
+        command.replace("{run_dir}", str(run_dir)),
+        shell=True,
+        check=True,
+        cwd=repo,
+    )
+    manifest = build_manifest(
+        run_dir, publish_patterns=["*.csv", "*.mp4"], git_sha="abc", command=command
+    )
+    write_manifest(manifest, run_dir)
+    result = reproduce_run(
+        manifest, fresh_dir=tmp_path / "fresh", original_dir=run_dir, cwd=repo
+    )
+    assert result.ok
+    assert result.matched == ["media.mp4", "summary.csv"]
+
+
 def test_reproduce_bitwise_match(tmp_path: Path):
     run_dir, manifest, _ = make_notarized_run(tmp_path)
     result = reproduce_run(manifest, fresh_dir=tmp_path / "fresh")

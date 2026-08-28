@@ -90,12 +90,14 @@ def reproduce_run(
     ignore: Sequence[str] = (),
     timeout: Optional[float] = None,
     original_dir: Optional[Path] = None,
+    cwd: Optional[Path] = None,
 ) -> ReproductionResult:
     """Re-run the manifest's command into fresh_dir and compare artifact bytes.
 
     The recorded command must contain "{run_dir}", which is substituted with
     the fresh output directory. Comparison covers exactly the artifacts the
-    manifest lists, minus any matching an ignore glob.
+    manifest lists, minus any matching an ignore glob. ``cwd`` is the
+    working directory for that command (the experiment repo, not the run dir).
     """
     if not manifest.command:
         raise ReproduceError(
@@ -112,7 +114,12 @@ def reproduce_run(
     fresh_dir.mkdir(parents=True, exist_ok=True)
     command = manifest.command.replace(RUN_DIR_PLACEHOLDER, str(fresh_dir))
 
-    proc = subprocess.run(command, shell=True, timeout=timeout)
+    proc = subprocess.run(
+        command,
+        shell=True,
+        timeout=timeout,
+        cwd=str(cwd) if cwd is not None else None,
+    )
     result = ReproductionResult(
         command=command, returncode=proc.returncode, ignore=list(ignore)
     )

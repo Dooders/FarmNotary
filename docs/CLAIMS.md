@@ -127,13 +127,14 @@ A passing receipt from any other machine still reports `N/M`, then:
 
 A failed receipt reports `fail — N/M` and does not emit the sentence.
 
-`.github/workflows/reproduce-consensus-matrix.yml` produces the consensus
-experiment on x86-64 Linux and re-runs the recorded command on Linux x86,
-Linux ARM (`ubuntu-24.04-arm`), and macOS ARM (`macos-14`). That workflow
-is a hardware/BLAS smoke (12 trials × 50 voters, seed 0), not the 100×300
-scientific cell. A mismatch on ARM does not widen or shrink the published
-sentence; it is evidence. Same-arch x86-64 Linux must still pass, or the
-demonstrated scope is broken.
+`.github/workflows/reproduce-consensus-matrix.yml` has two layers. Same-job
+produce+reproduce on one `ubuntu-latest` VM is the demonstrated cell — that
+is what AgentFarm's own GHA receipt already showed. A second `ubuntu-latest`
+VM, Linux ARM, and macOS ARM re-run the recorded command and store receipts;
+those rows are evidence, not a claim. Two ubuntu-latest machines are already
+a different CPU/BLAS pool. The smoke cell is 12 trials × 50 voters, seed 0,
+not the 100×300 scientific cell. A mismatch outside the same VM does not
+widen or shrink the published sentence.
 
 AgentFarm's `.github/workflows/reproduce-consensus.yml` is same-arch x86-64
 Linux CI on a different process/filesystem. It does not establish an

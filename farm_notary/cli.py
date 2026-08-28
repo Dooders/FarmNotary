@@ -190,6 +190,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Directory for the re-run (default: a new temporary directory)",
     )
     p_rep.add_argument(
+        "--cwd",
+        help="Working directory for the recorded command (the experiment repo)",
+    )
+    p_rep.add_argument(
         "--anchor",
         action="store_true",
         help="Anchor the reproduction receipt via OpenTimestamps",
@@ -446,6 +450,7 @@ def _cmd_reproduce(args: argparse.Namespace) -> int:
             fresh_dir=Path(args.fresh_dir) if args.fresh_dir else None,
             ignore=args.ignore,
             original_dir=run_dir,
+            cwd=Path(args.cwd) if args.cwd else None,
         )
     except ReproduceError as exc:
         print(f"error: {exc}", file=sys.stderr)
