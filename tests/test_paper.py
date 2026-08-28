@@ -1,0 +1,86 @@
+from farm_notary.campaign import build_campaign
+from farm_notary.cli import main
+from farm_notary.manifest import build_manifest, write_manifest
+from farm_notary.paper import bitcoin_attestation_label, build_paper_pack, write_paper_pack
+
+
+def _run(tmp_path, seed=0):
+    run = tmp_path / f"seed-{seed}"
+    run.mkdir()
+    (run / "summary.csv").write_text("ok\n", encoding="utf-8")
+    (run / "trials.csv").write_text("t\n", encoding="utf-8")
+    config = {
+        "seed": seed,
+        "notary": {
+            "publish": ["*.csv"],
+            "derived_from": [
+                {
+                    "outputs": ["summary.csv"],
+                    "sources": ["trials.csv"],
+                    "command": "true",
+                    "mode": "verify",
+                }
+            ],
+        },
+    }
+    manifest = build_manifest(run, config=config, git_sha="abc", runner="consensus")
+    manifest.cid = "bafytesthash"
+    manifest.precommit_hash = "aa" * 32
+    write_manifest(manifest, run)
+    return run, manifest
+
+
+def test_paper_pack_contains_required_fields(tmp_path):
+    run, manifest = _run(tmp_path)
+    text = build_paper_pack(manifest, run, experiment="consensus")
+    assert "bafytesthash" in text
+    assert manifest.content_hash() in text
+    assert "Bitcoin attestation" in text
+    assert "`*.csv`" in text
+    assert "Unmatched files" in text
+    assert manifest.precommit_hash in text
+    assert "1-ulp" in text
+    assert "summary.csv" in text
+    assert "trials.csv" in text
+
+
+def test_bitcoin_attestation_none_and_pending():
+    class Rec:
+        anchor = None
+
+    assert bitcoin_attestation_label(Rec()) == "none"
+
+    class Pending:
+        anchor = {"backend": "opentimestamps", "detail": {"status": "pending", "calendars": ["https://x"]}}
+
+    assert bitcoin_attestation_label(Pending()) == "pending"
+
+    class Dry:
+        anchor = {"backend": "dry-run"}
+
+    assert bitcoin_attestation_label(Dry()) == "none"
+
+
+def test_cli_paper_pack(tmp_path, capsys):
+    run, _ = _run(tmp_path)
+    assert main(["paper-pack", "--run-dir", str(run), "--name", "consensus"]) == 0
+    out = capsys.readouterr().out
+    assert "appendix.md" in out
+    assert (run / "appendix.md").is_file()
+    body = (run / "appendix.md").read_text(encoding="utf-8")
+    assert "CID" in body
+    assert "Content hash" in body
+    assert "Publish allowlist" in body
+
+
+def test_paper_pack_for_campaign_lists_children(tmp_path):
+    runs = []
+    for seed in range(3):
+        run, _ = _run(tmp_path, seed=seed)
+        runs.append(run)
+    campaign = build_campaign(runs, name="consensus-sweep", campaign_dir=tmp_path)
+    text = build_paper_pack(campaign, tmp_path)
+    assert "Child runs" in text
+    assert "seeds 0…2" in text or "0" in text
+    dest = write_paper_pack(text, tmp_path)
+    assert dest.name == "appendix.md"

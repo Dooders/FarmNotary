@@ -45,7 +45,74 @@ See `farm_notary/schema.py`. Required: schema id, UTC time, git SHA, config obje
 
 Artifact discovery is recursive; paths are stored POSIX-style relative to the run directory. Hidden files and `manifest.json` itself are skipped. `Manifest.validate()` enforces the schema id, artifact list / hash map agreement, and the privacy filter.
 
-`content_hash` excludes `cid` and `anchor` so you can stamp after upload without circular hashing. It is SHA-256 of the canonical JSON body (sorted keys, no whitespace).
+`content_hash` excludes `cid`, `anchor`, and optional `identity` so you can stamp after upload without circular hashing. It is SHA-256 of the canonical JSON body (sorted keys, no whitespace).
+
+Optional fields (omitted when empty so older manifests keep a stable hash):
+
+- `derived_from` — experiment-profile rules that recompute named artifacts from sources
+- `identity` — minisign or SSH signature of the content hash (no protocol token; EAS stays experimental)
+
+## Campaign / sweep manifests
+
+A parent record (`campaign.json`, schema `farmnotary.campaign.v1`) lists child run CIDs, seeds, and a seed-excluded config hash. A reviewer of a paper figure (100 trials, seed 0…N) verifies the parent instead of one folder.
+
+```
+farm-notary campaign --name consensus-sweep \
+  --run-dir runs/seed-0 --run-dir runs/seed-1 \
+  --out sweep/
+farm-notary verify --campaign sweep/
+```
+
+Each child entry records `seed`, `content_hash`, `config_hash` (config minus `seed` / `rng_seed` / `random_seed`), optional `cid`, and a claim level. The parent `config_hash` is set only when every child shares it.
+
+## Derivation claims
+
+Byte-identity of a PNG is a renderer claim. Reviewers usually care that summary statistics recompute from raw trials. The experiment profile declares that:
+
+```json
+{
+  "notary": {
+    "publish": ["*.csv", "*.png", "REPORT.md"],
+    "derived_from": [
+      {
+        "outputs": ["summary.csv", "allocation_means.csv", "REPORT.md"],
+        "sources": ["trials.csv"],
+        "command": "python run_experiment.py verify-report --results {run_dir}",
+        "mode": "verify"
+      }
+    ]
+  }
+}
+```
+
+`mode: recompute` (default) copies sources to a temp directory, runs `command`, and byte-compares outputs. `mode: verify` runs a check that exits 0 when derived artifacts match (the AgentFarm `verify-report` pattern). `farm-notary verify` fails if a rule fails, and on success may print `claim: statistics recompute exactly from recorded sources` even when a figure is renderer-dependent.
+
+## Environment fingerprint
+
+`environment` is first-class, not just a lockfile hash:
+
+- `os`, `arch`, `python`, `python_implementation`
+- `packages_hash` / `package_count` (unchanged)
+- optional `lockfile` + `lockfile_sha256`
+- optional `numpy` (`version`, `blas`, `blas_version`, `blas_config`) when numpy is installed
+
+This is how “bitwise on x86-64 Linux, pinned env” stays honest when someone reproduces on Apple Silicon and gets a 1-ulp diff. The paper-pack sentence names the machine class.
+
+## Optional identity
+
+`farm-notary sign --scheme ssh|minisign --key PATH` signs the content hash and records `{scheme, public_key, signature, principal}` on the manifest. Reviewers who know the lab’s key get “this lab published this”; everyone else still has OTS. No protocol token. EAS remains experimental and is not used here.
+
+## Paper pack
+
+`farm-notary paper-pack` writes `appendix.md`: CID, content hash, Bitcoin attestation (or pending), publish allowlist, unmatched count, precommit hash, claim level, environment, and a scoped reproducibility sentence. Campaigns also list child seeds and CIDs.
+
+## Public index
+
+`farm-notary index --registry PATH` maintains a static directory (Markdown + JSON sidecar) of published manifests: experiment name, seed, CID, claim level, date. It is a directory, not a chain, and it never writes scores or rankings. See `docs/registry.md`.
+
+## Reusable GitHub Action
+
+`dooders/FarmNotary` (public name `dooders/farm-notary-action`): precommit on workflow start, notarize + optional pin-remote on success, upload `manifest.json` + `manifest.ots`, fail the job if verify fails. See `docs/ACTION.md`.
 
 ## Privacy
 
@@ -99,8 +166,9 @@ invalidates the proof.
 The manifest records everything a stranger needs to re-derive the run:
 `command` (with a `{run_dir}` placeholder), `config`, `git_sha` plus a
 `git_dirty` flag (a dirty tree means the sha does not identify the code that
-ran, so it is recorded, not hidden), and `environment` (python, platform, a
-hash of the installed package set, optional lockfile hash).
+ran, so it is recorded, not hidden), and `environment` (os, arch, python,
+optional numpy/BLAS build, a hash of the installed package set, optional
+lockfile hash).
 
 `farm-notary reproduce` turns reproducibility from a claim into a procedure:
 re-run the recorded command into a fresh directory, rehash, byte-compare
@@ -112,9 +180,9 @@ manifest hash) whose own hash can be anchored via OpenTimestamps
 (`reproduction.ots`), making "independently reproduced" a timestamped,
 third-party-checkable statement.
 
-Notary metadata (`manifest.json`, `reproduction.json`, `*.ots`) is never
-treated as an artifact: discovery skips it, so stamping and receipts don't
-perturb the anchored content hash.
+Notary metadata (`manifest.json`, `reproduction.json`, `campaign.json`,
+`appendix.md`, `*.ots`) is never treated as an artifact: discovery skips it,
+so stamping and receipts don't perturb the anchored content hash.
 
 ## Backends
 

@@ -13,6 +13,20 @@ from farm_notary.manifest import Manifest, hash_file
 from farm_notary.schema import MANIFEST_VERSION
 
 
+def verify_derived_artifacts(manifest: Manifest, run_dir: Path) -> List[str]:
+    """Run ``derived_from`` rules if the manifest (or profile) declares them."""
+    from farm_notary.derive import verify_derived
+
+    return verify_derived(manifest, run_dir)
+
+
+def verify_identity_record(record, _run_dir: Path) -> List[str]:
+    """Check an optional minisign / SSH signature of the content hash."""
+    from farm_notary.identity import verify_identity
+
+    return verify_identity(getattr(record, "identity", None), record.content_hash())
+
+
 def _schema_version_number(schema: str) -> int:
     """Extract the integer version from 'farmnotary.manifest.vN'. Returns 0 for unrecognised strings."""
     prefix = "farmnotary.manifest.v"
