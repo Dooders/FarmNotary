@@ -74,7 +74,7 @@ def test_partial_environment_fills_only_the_missing_field():
                 "platform": "macOS-14.6-arm64-arm-64bit",
             }
         )
-        == "x86-64 Linux"
+        == "x86-64 macOS"
     )
 
 
