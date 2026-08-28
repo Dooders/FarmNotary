@@ -79,8 +79,8 @@ farm-notary manifest --run-dir path/to/run --config config.json
 # 2. Verify: rehash and compare
 farm-notary verify --run-dir path/to/run
 
-# 3. Anchor (dry-run by default: prints the payload that would be submitted)
-farm-notary anchor --run-dir path/to/run
+# 3. Anchor to OpenTimestamps calendars and write proof to manifest.ots
+farm-notary anchor --run-dir path/to/run --backend ots
 ```
 
 Anchoring for real, with IPFS pinning:
@@ -118,42 +118,15 @@ farm-notary anchor --run-dir path/to/run --pin --pin-remote pinata --backend ots
 
 To skip the gateway check (e.g. in CI where the CID will propagate later), pass `--no-check-gateway`.
 
-## Anchoring with EAS
+## Anchoring with EAS (experimental)
 
-The `eas` backend attests `(manifest_hash, cid)` on [EAS](https://attest.org), which is a predeploy on Base and Base Sepolia (contract `0x4200...0021` on both).
+> **Experimental.** The `eas` backend requires a funded private key, costs
+> gas on Base, and ties verification to an attester address that verifiers
+> must know in advance.  `--backend ots` is the recommended default: no key,
+> no gas, Bitcoin-backed, no prior relationship with the verifier required.
 
-Schema (non-revocable, no resolver):
-
-```text
-bytes32 manifestHash,string cid
-```
-
-Its UID is derived deterministically and is the same on every chain:
-
-```text
-0xc3d61e7073e9dcc59f65fe1a8a4bfd0b3e2c5fd2e32ad1c1d6c473fb1274ac08
-```
-
-Configuration is via environment variables:
-
-| Variable | Meaning | Default |
-| --- | --- | --- |
-| `FARM_NOTARY_CHAIN` | `base` or `base-sepolia` | `base-sepolia` |
-| `FARM_NOTARY_PRIVATE_KEY` | Attester key (funded with a little ETH for gas) | required |
-| `FARM_NOTARY_RPC_URL` | JSON-RPC endpoint | public RPC for the chain |
-| `FARM_NOTARY_EAS_SCHEMA_UID` | Schema UID to attest against | the UID above |
-| `FARM_NOTARY_EAS_ADDRESS` | EAS contract | OP-stack predeploy |
-
-One-time per chain, register the schema, then anchor runs:
-
-```bash
-python -m farm_notary.cli register-schema
-python -m farm_notary.cli anchor --run-dir path/to/run --backend eas --cid <cid>
-```
-
-A successful anchor writes the receipt (tx hash, attestation UID, chain id) back into `manifest.json` and prints an [EASScan](https://base-sepolia.easscan.org) link.
-
-The attester address is the trust anchor: attestations only mean something to verifiers who know which address is yours. Publish your attester address (and the schema UID) wherever you publish results, and keep attesting from that address. Verifiers then check: look up the attestation on EASScan, confirm the attester, fetch the CID, rehash with `farm-notary verify`, and compare to the attested `manifestHash`.
+See [docs/EAS.md](docs/EAS.md) for full EAS configuration, schema details,
+and a tradeoff table comparing OTS and EAS.
 
 ## AgentFarm inheritance
 
@@ -161,11 +134,18 @@ AgentFarm should depend on a version pin (`farm-notary>=0.1,<0.2`) via an extra 
 
 ```python
 from farm_notary import notarize_run
+from farm_notary.ots import OpenTimestampsBackend
 
-manifest, receipt = notarize_run(run_dir, git_sha=sha, runner="consensus_paradigms", config=config)
+manifest, receipt = notarize_run(
+    run_dir,
+    git_sha=sha,
+    runner="consensus_paradigms",
+    config=config,
+    backend=OpenTimestampsBackend(),
+)
 ```
 
-Dry-run by default; pass `backend=OpenTimestampsBackend()` (from `farm_notary.ots`) and `pin=True` to publish for real. Do not submodule unless the API is still thrashing.
+The example above uses `OpenTimestampsBackend()` (from `farm_notary.ots`); add `pin=True` to also upload the run directory to IPFS. Do not submodule unless the API is still thrashing.
 
 ## Reproducing a run
 

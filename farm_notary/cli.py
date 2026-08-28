@@ -101,7 +101,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--backend",
         choices=("dry-run", "ots", "eas"),
         default="dry-run",
-        help="dry-run prints the payload; ots anchors via OpenTimestamps; eas anchors on Base (needs farm-notary[chain])",
+        help="dry-run prints the payload; ots anchors via OpenTimestamps (recommended); eas anchors on Base (experimental — requires a funded key and costs gas; needs farm-notary[chain])",
     )
     p_anc.add_argument("--pin", action="store_true", help="Upload the run directory to IPFS first")
     p_anc.add_argument("--ipfs-api", help="Kubo API URL (default: FARM_NOTARY_IPFS_API or http://127.0.0.1:5001)")

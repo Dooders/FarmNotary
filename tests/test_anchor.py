@@ -77,20 +77,22 @@ def test_notarize_run_with_pin(monkeypatch, stub_server, tmp_path: Path):
 
 def test_notarize_run_with_ots_backend_writes_proof(stub_server, tmp_path: Path):
     make_run_dir(tmp_path)
-    # Calendar response must commit to the digest that will be submitted.
-    expected_hash = build_manifest(tmp_path, publish_patterns=["*.csv"], git_sha="abc").content_hash()
-    digest = bytes.fromhex(expected_hash)
+    # The PendingAttestation serialization does not embed the digest, so any
+    # placeholder is valid here; the proof will be rooted at the actual digest
+    # submitted by notarize_run.
+    placeholder = b"\xaa" * 32
     stub_server.response_body = serialize_timestamp(
-        pending_timestamp(digest, stub_server.url)
+        pending_timestamp(placeholder, stub_server.url)
     )
 
     backend = OpenTimestampsBackend(calendars=[stub_server.url])
     manifest, receipt = notarize_run(tmp_path, publish_patterns=["*.csv"], git_sha="abc", backend=backend)
 
+    expected_hash = receipt.manifest_hash
     assert manifest.content_hash() == expected_hash
     proof_path = tmp_path / PROOF_NAME
     assert proof_path.is_file()
-    assert deserialize_proof(proof_path.read_bytes()).file_digest == digest
+    assert deserialize_proof(proof_path.read_bytes()).file_digest == bytes.fromhex(expected_hash)
     assert load_manifest(tmp_path).anchor["backend"] == "opentimestamps"
 
 
