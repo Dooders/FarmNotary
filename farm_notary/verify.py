@@ -95,3 +95,77 @@ def verify_anchor(manifest: Manifest, run_dir: Path) -> List[str]:
         else:
             problems += verify_proof(proof_path.read_bytes(), manifest_hash)
     return problems
+
+
+def verify_precommit(manifest: Manifest, run_dir: Path) -> List[str]:
+    """Verify the precommit binding (if present).
+
+    Checks that:
+    - ``precommit.json`` exists next to the manifest.
+    - Its content hash matches ``manifest.precommit_hash``.
+    - The config, command, and git_sha recorded in the precommit match the
+      manifest byte-for-byte (the fields that were meant to be pre-specified).
+    - When ``precommit.ots`` is present, the proof commits to the precommit
+      content hash.
+
+    Returns an empty list when no precommit is referenced by the manifest.
+    """
+    from farm_notary.precommit import (
+        BOUND_FIELDS,
+        PRECOMMIT_NAME,
+        PRECOMMIT_PROOF_NAME,
+        load_precommit,
+        precommit_hash,
+    )
+
+    problems: List[str] = []
+    if manifest.precommit_hash is None:
+        return problems
+
+    run_dir = Path(run_dir)
+    pc_path = run_dir / PRECOMMIT_NAME
+    if not pc_path.is_file():
+        problems.append(f"precommit_hash present in manifest but {PRECOMMIT_NAME} not found")
+        return problems
+
+    try:
+        pc = load_precommit(pc_path)
+    except (ValueError, OSError) as exc:
+        problems.append(f"could not load precommit: {exc}")
+        return problems
+
+    computed = precommit_hash(pc)
+    if computed != manifest.precommit_hash:
+        problems.append(
+            f"precommit hash mismatch: manifest records {manifest.precommit_hash}, "
+            f"computed {computed}"
+        )
+
+    for field_name in BOUND_FIELDS:
+        import json as _json
+
+        pc_val = pc.get(field_name)
+        manifest_val = getattr(manifest, field_name, None)
+        # Use canonical JSON comparison to avoid Python equality quirks such as
+        # ``True == 1`` or ``1 == 1.0`` that would let a semantically-changed
+        # value pass as matching.
+        def _canonical(v: object) -> str:
+            return _json.dumps(v, sort_keys=True, separators=(",", ":"))
+
+        if _canonical(pc_val) != _canonical(manifest_val):
+            problems.append(
+                f"precommit/{field_name} mismatch: precommit={pc_val!r}, "
+                f"manifest={manifest_val!r}"
+            )
+
+    proof_path = run_dir / PRECOMMIT_PROOF_NAME
+    if proof_path.is_file():
+        from farm_notary.ots import verify_proof
+
+        problems += [
+            f"precommit proof: {p}"
+            for p in verify_proof(proof_path.read_bytes(), computed)
+        ]
+
+    return problems
+

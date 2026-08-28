@@ -114,6 +114,7 @@ def notarize_run(
     command: Optional[str] = None,
     lockfile: Optional[Path] = None,
     official_record: Optional[Mapping[str, Any]] = None,
+    precommit_path: Optional[Path] = None,
     backend: Optional[AnchorBackend] = None,
     pin: bool = False,
     ipfs_api: Optional[str] = None,
@@ -124,6 +125,11 @@ def notarize_run(
     directory to IPFS, anchors via the given backend (dry-run by default),
     persists any proof file, and rewrites manifest.json with the cid and
     anchor receipt.
+
+    When *precommit_path* points to a ``precommit.json`` produced by
+    ``farm-notary precommit``, its content hash is recorded in the manifest's
+    ``precommit_hash`` field, binding the post-run proof to the pre-run
+    specification.
     """
     run_dir = Path(run_dir)
     manifest = build_manifest(
@@ -135,6 +141,7 @@ def notarize_run(
         command=command,
         lockfile=lockfile,
         official_record=official_record,
+        precommit_path=precommit_path,
     )
     write_manifest(manifest, run_dir)
 
