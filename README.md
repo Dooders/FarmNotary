@@ -33,20 +33,31 @@ If the experiment is a consensus / selection paradigm:
 
 ### Allowlist-first privacy model
 
-**Nothing is hashed, listed, or uploaded by default.**  A file is included in
-the manifest only when its path matches a declared *publish pattern*:
+**Nothing is hashed, listed, or uploaded by default.** Prefer a named
+experiment-type profile so labs do not invent globs (and forget `REPORT.md`
+or include a path they should not):
 
 ```bash
-farm-notary manifest --run-dir path/to/run \
-  --publish 'summary.csv' --publish 'allocation_means.csv' --publish '*.png'
+farm-notary manifest --run-dir path/to/run --profile consensus
 ```
 
-Or in the run config (so the policy is versioned with the experiment):
+Profiles (`consensus`, `rl-sweep`, `evolution-run`) are checked-in lists of
+official artifacts. The denylist still applies. The resolved allowlist is
+recorded on the manifest as `publish_patterns` (and `publish_profile`) so the
+policy is part of the claim.
+
+Or declare extra globs — appended to the profile, or used alone:
+
+```bash
+farm-notary manifest --run-dir path/to/run --profile consensus \
+  --publish 'notes.md'
+```
 
 ```json
 {
   "notary": {
-    "publish": ["summary.csv", "allocation_means.csv", "*.png", "REPORT.md"]
+    "profile": "consensus",
+    "publish": ["extra_table.csv"]
   }
 }
 ```

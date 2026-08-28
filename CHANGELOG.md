@@ -9,6 +9,18 @@ FarmNotary uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased] — breaking changes
 
+### Added
+
+#### Experiment-type publish profiles
+
+Named profiles `consensus`, `rl-sweep`, and `evolution-run` are checked-in
+allowlists of official artifacts (`farm_notary/profiles.py`). Prefer
+`--profile consensus` (or `notary.profile` in the run config) over inventing
+globs. The denylist still applies. Extra `--publish` / `notary.publish`
+patterns append. The resolved allowlist is recorded as `publish_patterns`
+(already in the schema); `publish_profile` is recorded when a profile was
+used, so the policy is part of the claim.
+
 ### Changed
 
 #### `verify` prints a CLAIMS.md claim card
@@ -74,9 +86,10 @@ The substring denylist (`ballot`, `vote`, `voter`, `individual_choice`,
 `private`) is retained as a belt-and-braces second pass over whatever the
 allowlist admits.
 
-**Migration:** every existing `farm-notary manifest` invocation must add at
-least one `--publish <glob>` flag, or the `notary.publish` key to the run
-config, or `build_manifest()` will raise `ValueError`.
+**Migration:** every existing `farm-notary manifest` invocation must add
+`--profile <name>`, at least one `--publish <glob>` flag, or the
+`notary.profile` / `notary.publish` key to the run config, or
+`build_manifest()` will raise `ValueError`. Prefer a named profile.
 
 #### New manifest fields
 

@@ -50,14 +50,24 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Dependency lockfile to hash into the environment record",
     )
     p_man.add_argument(
+        "--profile",
+        choices=("consensus", "rl-sweep", "evolution-run"),
+        help=(
+            "Named publish profile of official artifacts. Prefer this over "
+            "inventing globs. The denylist still applies. Combine with "
+            "--publish to add extra files."
+        ),
+    )
+    p_man.add_argument(
         "--publish",
         action="append",
         dest="publish",
         metavar="GLOB",
         help=(
             "Glob pattern for files to include in the manifest; repeatable. "
-            "Nothing is hashed or uploaded unless declared here or via "
-            "'notary.publish' in the run config."
+            "Nothing is hashed or uploaded unless declared here, via "
+            "--profile, or via 'notary.profile' / 'notary.publish' in the "
+            "run config."
         ),
     )
     p_man.add_argument(
@@ -201,6 +211,7 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
             manifest = build_manifest(
                 run_dir,
                 publish_patterns=args.publish or [],
+                publish_profile=args.profile,
                 git_sha=args.git_sha,
                 git_dirty=detected_dirty,
                 runner=args.runner,
@@ -222,6 +233,8 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
         )
     path = write_manifest(manifest, run_dir)
     print(path)
+    if manifest.publish_profile:
+        print("profile", manifest.publish_profile)
     print("artifacts", len(manifest.artifacts))
     print("unmatched", manifest.unmatched_count)
     print("content_hash", manifest.content_hash())

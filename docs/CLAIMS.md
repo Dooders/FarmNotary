@@ -40,6 +40,15 @@ implementation.
 > address that verifiers must know in advance.  See [EAS.md](EAS.md) for
 > details and a tradeoff table.
 
+## Official artifacts and publish profiles
+
+The allowlist is the privacy model; a named profile is how a lab should fill
+it. `consensus`, `rl-sweep`, and `evolution-run` are checked-in lists of
+official artifacts — so forgetting `REPORT.md` or admitting a private path is
+not a per-lab invention. The denylist still applies. The resolved
+`publish_patterns` (and `publish_profile` when one was used) are recorded on
+the manifest: the policy is part of the claim.
+
 ## Scoping the reproducibility claim
 
 `reproduce` compares every artifact the manifest lists. Artifacts that are

@@ -116,6 +116,7 @@ def notarize_run(
     run_dir: Path,
     *,
     publish_patterns: Optional[Sequence[str]] = None,
+    publish_profile: Optional[str] = None,
     config: Optional[Mapping[str, Any]] = None,
     git_sha: Optional[str] = None,
     runner: Optional[str] = None,
@@ -148,6 +149,7 @@ def notarize_run(
     manifest = build_manifest(
         run_dir,
         publish_patterns=publish_patterns,
+        publish_profile=publish_profile,
         config=config,
         git_sha=git_sha,
         git_dirty=git_dirty,

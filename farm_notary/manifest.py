@@ -189,6 +189,10 @@ class Manifest:
     # Allowlist patterns used to admit artifacts and the number of run-dir
     # files that matched nothing (visible omissions, not silent ones).
     publish_patterns: List[str] = field(default_factory=list)
+    # Named experiment-type profile that supplied the official-artifact
+    # allowlist (consensus, rl-sweep, evolution-run). Optional so older
+    # manifests that only recorded publish_patterns still load.
+    publish_profile: Optional[str] = None
     unmatched_count: int = 0
     official_record: dict = field(default_factory=dict)
     precommit_hash: Optional[str] = None
@@ -205,6 +209,7 @@ class Manifest:
         _OMIT_IF_NONE = {
             "farm_notary_version",
             "precommit_hash",
+            "publish_profile",
             "cid",
             "cid_reachable",
             "cid_reachable_checked_utc",
@@ -255,6 +260,7 @@ def build_manifest(
     run_dir: Path,
     *,
     publish_patterns: Optional[Sequence[str]] = None,
+    publish_profile: Optional[str] = None,
     config: Optional[Mapping[str, Any]] = None,
     git_sha: Optional[str] = None,
     git_dirty: Optional[bool] = None,
@@ -270,33 +276,36 @@ def build_manifest(
     *publish_patterns* is an explicit allowlist of glob patterns that gate
     which files are hashed, listed, and eligible for upload.  Nothing is
     included unless it matches at least one pattern.  Patterns may come from
-    three places, merged in order (last write wins within a source; earlier
-    sources take precedence):
+    three places, merged in order (later entries append; duplicates drop):
 
-    1. The ``notary.publish`` key of the run config (``config`` argument).
-    2. The *publish_patterns* argument (e.g. from ``--publish`` CLI flags).
+    1. A named experiment-type profile (``publish_profile``, else
+       ``notary.profile`` in the run config): ``consensus``, ``rl-sweep``,
+       or ``evolution-run``.
+    2. The ``notary.publish`` key of the run config.
+    3. The *publish_patterns* argument (e.g. from ``--publish`` CLI flags).
 
-    If neither source supplies patterns, *build_manifest* raises
+    If no source supplies patterns, *build_manifest* raises
     :class:`ValueError` so the caller is forced to make an explicit decision
-    about what to publish.
+    about what to publish.  Prefer a profile so labs do not invent globs.
+    The resolved allowlist is recorded on the manifest as
+    ``publish_patterns`` (and ``publish_profile`` when a profile was used)
+    so the policy is part of the claim.
     """
+    from farm_notary.profiles import resolve_publish_policy
+
     run_dir = Path(run_dir)
 
-    # Collect publish patterns from config first, then CLI overrides.
-    effective_patterns: List[str] = []
-    if config:
-        notary_section = config.get("notary", {})
-        if isinstance(notary_section, dict):
-            cfg_publish = notary_section.get("publish", [])
-            if isinstance(cfg_publish, list):
-                effective_patterns.extend(cfg_publish)
-    if publish_patterns:
-        effective_patterns.extend(publish_patterns)
+    resolved_profile, effective_patterns = resolve_publish_policy(
+        profile=publish_profile,
+        publish_patterns=publish_patterns,
+        config=config,
+    )
 
     if not effective_patterns:
         raise ValueError(
-            "No publish patterns declared.  Pass --publish <glob> on the CLI or add "
-            '\'notary": {"publish": ["<glob>", ...]}\' to the run config.  '
+            "No publish patterns declared.  Pass --profile <name> "
+            "(consensus, rl-sweep, evolution-run), or --publish <glob>, "
+            "or add 'notary.profile' / 'notary.publish' to the run config.  "
             "Nothing is hashed or uploaded unless explicitly declared."
         )
 
@@ -324,7 +333,7 @@ def build_manifest(
     if unmatched > 0:
         warnings.warn(
             f"{unmatched} file(s) in {run_dir} matched no publish pattern and were excluded "
-            f"from the manifest.  Use --publish or 'notary.publish' in the config to include them.",
+            f"from the manifest.  Use --profile, --publish, or 'notary.publish' to include them.",
             stacklevel=2,
         )
 
@@ -344,6 +353,7 @@ def build_manifest(
         artifacts=artifacts,
         artifact_hashes=hashes,
         publish_patterns=list(effective_patterns),
+        publish_profile=resolved_profile,
         unmatched_count=unmatched,
         official_record=dict(official_record or {}),
     )

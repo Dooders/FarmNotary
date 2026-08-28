@@ -49,7 +49,18 @@ Artifact discovery is recursive; paths are stored POSIX-style relative to the ru
 
 ## Privacy
 
-Relative paths containing `ballot`, `vote`, `voter`, `individual_choice`, or `private` (any path component) are skipped by discovery, rejected by validation, and never uploaded. Do not put agent-level or citizen-level choices in `official_record`.
+Allowlist-first: nothing is hashed unless it matches a declared publish
+pattern. Named experiment-type profiles (`consensus`, `rl-sweep`,
+`evolution-run` in `farm_notary/profiles.py`) are the checked-in official
+artifact lists; `--publish` and `notary.publish` append extras. The resolved
+allowlist is recorded as `publish_patterns` (and `publish_profile` when a
+profile was used) so the policy is part of the claim.
+
+Relative paths containing `ballot`, `vote`, `voter`, `individual_choice`, or
+`private` (any path component) are skipped by discovery, rejected by
+validation, and never uploaded — including after a profile or `--publish`
+glob would otherwise admit them. Do not put agent-level or citizen-level
+choices in `official_record`.
 
 ## AgentFarm hook
 
@@ -59,7 +70,8 @@ After `ExperimentRunner` (or a dedicated consensus runner) flushes a run directo
 from farm_notary import notarize_run
 
 manifest, receipt = notarize_run(
-    run_dir, git_sha=sha, runner="consensus_paradigms", config=config
+    run_dir, git_sha=sha, runner="consensus_paradigms", config=config,
+    publish_profile="consensus",
 )  # dry-run until a backend is passed; pin=True to upload to IPFS
 ```
 

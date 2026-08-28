@@ -51,7 +51,26 @@ def test_manifest_command_no_publish_returns_error(tmp_path: Path, capsys):
     """manifest fails with exit code 2 when no publish patterns are given."""
     run_dir = make_run_dir(tmp_path)
     assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc"]) == 2
-    assert "publish patterns" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "publish patterns" in err
+    assert "--profile" in err
+
+
+def test_manifest_command_profile_consensus(tmp_path: Path, capsys):
+    run_dir = make_run_dir(tmp_path)
+    (run_dir / "REPORT.md").write_text("# report\n", encoding="utf-8")
+    (run_dir / "notes.txt").write_text("scratch\n", encoding="utf-8")
+    assert main(
+        ["manifest", "--run-dir", str(run_dir), "--git-sha", "abc", "--profile", "consensus"]
+    ) == 0
+    out = capsys.readouterr().out
+    assert "profile consensus" in out
+    manifest = load_manifest(run_dir)
+    assert manifest.publish_profile == "consensus"
+    assert "REPORT.md" in manifest.artifacts
+    assert "summary.csv" in manifest.artifacts
+    assert "notes.txt" not in manifest.artifacts
+    assert "REPORT.md" in manifest.publish_patterns
 
 
 def test_manifest_command_rejects_missing_dir(tmp_path: Path):
