@@ -102,6 +102,13 @@ def anchor_run(
     identify the code, so anchoring it is not a code-identity claim.
     Pass ``allow_dirty=True`` to record an explicit exception.
     """
+    if manifest.git_dirty is None:
+        from farm_notary.manifest import detect_git_status
+
+        _, detected_dirty = detect_git_status()
+        if detected_dirty is True:
+            manifest.git_dirty = True
+
     require_clean_identity(manifest.git_dirty, allow_dirty=allow_dirty)
     backend = backend or DryRunBackend()
     cid = cid or manifest.cid
