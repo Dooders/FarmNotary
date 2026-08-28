@@ -79,8 +79,8 @@ farm-notary manifest --run-dir path/to/run --config config.json
 # 2. Verify: rehash and compare
 farm-notary verify --run-dir path/to/run
 
-# 3. Anchor (dry-run by default: prints the payload that would be submitted)
-farm-notary anchor --run-dir path/to/run
+# 3. Anchor to OpenTimestamps calendars and write proof to manifest.ots
+farm-notary anchor --run-dir path/to/run --backend ots
 ```
 
 Anchoring for real, with IPFS pinning:
