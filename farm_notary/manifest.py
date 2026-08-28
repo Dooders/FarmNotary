@@ -15,7 +15,7 @@ MANIFEST_NAME = "manifest.json"
 RECEIPT_NAME = "reproduction.json"
 
 # Notary metadata written next to the artifacts, never treated as artifacts.
-NOTARY_FILE_NAMES = frozenset({MANIFEST_NAME, RECEIPT_NAME})
+NOTARY_FILE_NAMES = frozenset({MANIFEST_NAME, RECEIPT_NAME, "precommit.json"})
 NOTARY_FILE_SUFFIXES = (".ots",)
 
 
@@ -132,11 +132,17 @@ class Manifest:
     artifacts: list = field(default_factory=list)
     artifact_hashes: dict = field(default_factory=dict)
     official_record: dict = field(default_factory=dict)
+    precommit_hash: Optional[str] = None
     cid: Optional[str] = None
     anchor: Optional[dict] = None
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        # Omit truly optional fields that are None so that loading an older
+        # manifest (which does not contain e.g. ``precommit_hash``) does not
+        # inject a ``null`` value and alter the recomputed content hash.
+        _OMIT_IF_NONE = {"precommit_hash", "cid", "anchor"}
+        return {k: v for k, v in d.items() if not (k in _OMIT_IF_NONE and v is None)}
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "Manifest":
@@ -186,6 +192,7 @@ def build_manifest(
     environment: Optional[Mapping[str, Any]] = None,
     lockfile: Optional[Path] = None,
     official_record: Optional[Mapping[str, Any]] = None,
+    precommit_path: Optional[Path] = None,
 ) -> Manifest:
     run_dir = Path(run_dir)
     artifacts: list = []
@@ -210,6 +217,29 @@ def build_manifest(
         artifact_hashes=hashes,
         official_record=dict(official_record or {}),
     )
+    if precommit_path is not None:
+        import shutil
+
+        from farm_notary.precommit import (
+            PRECOMMIT_NAME,
+            PRECOMMIT_PROOF_NAME,
+            load_precommit,
+            precommit_hash as _pc_hash,
+        )
+
+        precommit_path = Path(precommit_path)
+        pc = load_precommit(precommit_path)
+        manifest.precommit_hash = _pc_hash(pc)
+
+        # Ensure precommit.json is in the run directory — verify_precommit
+        # always loads it from there.  Copy it (and its proof, if present)
+        # when the caller supplied a path outside the run directory.
+        target_pc = run_dir / PRECOMMIT_NAME
+        if precommit_path.resolve() != target_pc.resolve():
+            shutil.copy2(precommit_path, target_pc)
+            src_proof = precommit_path.parent / PRECOMMIT_PROOF_NAME
+            if src_proof.is_file():
+                shutil.copy2(src_proof, run_dir / PRECOMMIT_PROOF_NAME)
     manifest.validate()
     return manifest
 

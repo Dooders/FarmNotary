@@ -8,7 +8,8 @@ whose backing command you have not run.
 | Tamper-evident record | Artifact rehash against the manifest | `farm-notary verify` |
 | Existed by time T | OpenTimestamps proof, Bitcoin attestation | `farm-notary upgrade`, then `ots verify` for full independence |
 | Verifiable provenance | Manifest records command, config, seed, git SHA + dirty flag, environment (packages/lockfile hash); a stranger can re-derive everything | `farm-notary manifest --command ... --lockfile ...` |
-| Bitwise reproducible (scoped) | Re-run of the recorded command produces byte-identical artifacts | `farm-notary reproduce` |
+| Pre-specified design | Precommit proof (config, command, git SHA anchored before the run); manifest's `precommit_hash` binds the two phases | `farm-notary precommit --config ... --command ... --backend ots`, then `farm-notary manifest --precommit precommit.json`; `farm-notary verify` reports both timestamps |
+| Bitwise reproducible (scoped) | A reproduction receipt produced by re-running the recorded command and comparing every listed artifact; what was excluded is noted in the receipt | `farm-notary reproduce`; with `--ignore` globs for legitimately nondeterministic artifacts |
 | Independently reproduced | A reproduction receipt produced on another machine, optionally timestamped | `farm-notary reproduce --anchor` |
 
 Never claimable by tooling: **correctness of the science**. Immutability is
