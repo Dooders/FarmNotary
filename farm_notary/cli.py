@@ -136,7 +136,11 @@ def _cmd_anchor(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    manifest = load_manifest(manifest_path)
+    try:
+        manifest = load_manifest(manifest_path)
+    except (ValueError, OSError) as exc:
+        print(f"error: could not load manifest: {exc}", file=sys.stderr)
+        return 2
 
     cid = None
     if args.pin:
@@ -165,7 +169,11 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     else:
         print("error: pass --run-dir or --manifest", file=sys.stderr)
         return 2
-    manifest = load_manifest(manifest_path)
+    try:
+        manifest = load_manifest(manifest_path)
+    except (ValueError, OSError) as exc:
+        print(f"error: could not load manifest: {exc}", file=sys.stderr)
+        return 2
 
     problems = verify_run_dir(manifest, run_dir)
     problems += verify_anchor(manifest, run_dir)
@@ -207,7 +215,11 @@ def _cmd_reproduce(args: argparse.Namespace) -> int:
     )
 
     run_dir = Path(args.run_dir)
-    manifest = load_manifest(run_dir)
+    try:
+        manifest = load_manifest(run_dir)
+    except (ValueError, OSError) as exc:
+        print(f"error: could not load manifest: {exc}", file=sys.stderr)
+        return 2
     try:
         result = reproduce_run(
             manifest,

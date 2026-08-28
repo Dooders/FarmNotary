@@ -87,7 +87,8 @@ def anchor_run(
     """Submit the manifest hash (and optional CID) and stamp the manifest."""
     backend = backend or DryRunBackend()
     receipt = backend.submit(manifest, cid=cid)
-    manifest.cid = cid
+    if cid is not None:
+        manifest.cid = cid
     manifest.anchor = receipt.to_dict()
     return receipt
 

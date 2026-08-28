@@ -45,7 +45,11 @@ def verify_receipt(manifest: Manifest, run_dir: Path) -> List[str]:
     receipt_path = run_dir / RECEIPT_NAME
     if not receipt_path.is_file():
         return problems
-    receipt = load_receipt(run_dir)
+    try:
+        receipt = load_receipt(run_dir)
+    except (ValueError, OSError) as exc:
+        problems.append(f"could not load reproduction receipt: {exc}")
+        return problems
     manifest_hash = manifest.content_hash()
     if receipt.get("original_manifest_hash") != manifest_hash:
         problems.append(
