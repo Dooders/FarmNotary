@@ -184,8 +184,8 @@ def test_submit_builds_attestation_and_receipt(tmp_path: Path):
     assert receipt.attestation_uid == uid
     assert receipt.chain_id == 84532
     assert manifest.cid == "bafytest"
-    assert manifest.chain["attestation_uid"] == uid
-    assert manifest.chain["dry_run"] is False
+    assert manifest.anchor["attestation_uid"] == uid
+    assert manifest.anchor["dry_run"] is False
 
     name, args, params = w3.contracts[0].calls[0]
     assert name == "attest"
