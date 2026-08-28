@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 import platform
 import subprocess
+import warnings
 from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterator, Mapping, Optional, Tuple
+from typing import Any, Iterator, List, Mapping, Optional, Sequence, Tuple
 
 from farm_notary.schema import MANIFEST_VERSION, PRIVATE_NAME_FRAGMENTS, REQUIRED_KEYS
 
@@ -38,12 +40,36 @@ def is_private_path(rel_path: str) -> bool:
     return any(frag in lowered for frag in PRIVATE_NAME_FRAGMENTS)
 
 
-def iter_artifact_paths(run_dir: Path) -> Iterator[Path]:
-    """All hashable files under run_dir, recursively.
+def _matches_any_pattern(rel_posix: str, patterns: Sequence[str]) -> bool:
+    """True if rel_posix matches at least one glob pattern.
 
-    Skips notary metadata (manifest.json, reproduction.json, *.ots proofs),
-    hidden files/directories, and anything whose relative path matches a
-    private-name fragment (ballots, votes, ...).
+    Pattern semantics mirror :func:`fnmatch.fnmatch`: ``*`` matches any
+    sequence of characters **within** a path component; use ``**`` only if
+    you need to cross directory boundaries (handled via a double-check on
+    the filename alone for simple ``*.ext`` patterns so that
+    ``--publish '*.png'`` matches ``subdir/chart.png``).
+    """
+    filename = Path(rel_posix).name
+    for pat in patterns:
+        if fnmatch.fnmatch(rel_posix, pat):
+            return True
+        # Allow simple extension/name globs (e.g. "*.png") to match files
+        # in subdirectories without requiring "**/*.png".
+        if fnmatch.fnmatch(filename, pat):
+            return True
+    return False
+
+
+def iter_artifact_paths(
+    run_dir: Path,
+    publish_patterns: Sequence[str],
+) -> Iterator[Path]:
+    """Yield hashable files under *run_dir* that match the allowlist.
+
+    Only files whose relative POSIX path (or filename) matches at least one
+    *publish_patterns* glob are yielded.  The denylist (PRIVATE_NAME_FRAGMENTS)
+    is applied as a second, belt-and-braces pass over whatever the allowlist
+    admits.  Hidden files/directories and notary metadata are always skipped.
     """
     run_dir = Path(run_dir)
     for path in sorted(run_dir.rglob("*")):
@@ -55,6 +81,10 @@ def iter_artifact_paths(run_dir: Path) -> Iterator[Path]:
         if path.name in NOTARY_FILE_NAMES or path.name.endswith(NOTARY_FILE_SUFFIXES):
             continue
         rel_posix = rel.as_posix()
+        # --- allowlist (primary gate) ---
+        if not _matches_any_pattern(rel_posix, publish_patterns):
+            continue
+        # --- denylist (belt-and-braces) ---
         if is_private_path(rel_posix):
             continue
         yield path
@@ -131,6 +161,10 @@ class Manifest:
     config: dict = field(default_factory=dict)
     artifacts: list = field(default_factory=list)
     artifact_hashes: dict = field(default_factory=dict)
+    # Allowlist patterns used to admit artifacts and the number of run-dir
+    # files that matched nothing (visible omissions, not silent ones).
+    publish_patterns: List[str] = field(default_factory=list)
+    unmatched_count: int = 0
     official_record: dict = field(default_factory=dict)
     precommit_hash: Optional[str] = None
     cid: Optional[str] = None
@@ -184,6 +218,7 @@ class Manifest:
 def build_manifest(
     run_dir: Path,
     *,
+    publish_patterns: Optional[Sequence[str]] = None,
     config: Optional[Mapping[str, Any]] = None,
     git_sha: Optional[str] = None,
     git_dirty: Optional[bool] = None,
@@ -194,13 +229,69 @@ def build_manifest(
     official_record: Optional[Mapping[str, Any]] = None,
     precommit_path: Optional[Path] = None,
 ) -> Manifest:
+    """Build a :class:`Manifest` for *run_dir*.
+
+    *publish_patterns* is an explicit allowlist of glob patterns that gate
+    which files are hashed, listed, and eligible for upload.  Nothing is
+    included unless it matches at least one pattern.  Patterns may come from
+    three places, merged in order (last write wins within a source; earlier
+    sources take precedence):
+
+    1. The ``notary.publish`` key of the run config (``config`` argument).
+    2. The *publish_patterns* argument (e.g. from ``--publish`` CLI flags).
+
+    If neither source supplies patterns, *build_manifest* raises
+    :class:`ValueError` so the caller is forced to make an explicit decision
+    about what to publish.
+    """
     run_dir = Path(run_dir)
+
+    # Collect publish patterns from config first, then CLI overrides.
+    effective_patterns: List[str] = []
+    if config:
+        notary_section = config.get("notary", {})
+        if isinstance(notary_section, dict):
+            cfg_publish = notary_section.get("publish", [])
+            if isinstance(cfg_publish, list):
+                effective_patterns.extend(cfg_publish)
+    if publish_patterns:
+        effective_patterns.extend(publish_patterns)
+
+    if not effective_patterns:
+        raise ValueError(
+            "No publish patterns declared.  Pass --publish <glob> on the CLI or add "
+            '\'notary": {"publish": ["<glob>", ...]}\' to the run config.  '
+            "Nothing is hashed or uploaded unless explicitly declared."
+        )
+
+    # Collect all candidate files to compute the unmatched count.
+    all_candidates: List[Path] = []
+    for path in sorted(run_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(run_dir)
+        if any(part.startswith(".") for part in rel.parts):
+            continue
+        if path.name in NOTARY_FILE_NAMES or path.name.endswith(NOTARY_FILE_SUFFIXES):
+            continue
+        all_candidates.append(path)
+
     artifacts: list = []
     hashes: dict = {}
-    for path in iter_artifact_paths(run_dir):
+    for path in iter_artifact_paths(run_dir, effective_patterns):
         rel = path.relative_to(run_dir).as_posix()
         artifacts.append(rel)
         hashes[rel] = hash_file(path)
+
+    unmatched = len(all_candidates) - len(artifacts)
+
+    if unmatched > 0:
+        warnings.warn(
+            f"{unmatched} file(s) in {run_dir} matched no publish pattern and were excluded "
+            f"from the manifest.  Use --publish or 'notary.publish' in the config to include them.",
+            stacklevel=2,
+        )
+
     if git_sha is None:
         git_sha, detected_dirty = detect_git_status()
         if git_dirty is None:
@@ -215,6 +306,8 @@ def build_manifest(
         config=dict(config or {}),
         artifacts=artifacts,
         artifact_hashes=hashes,
+        publish_patterns=list(effective_patterns),
+        unmatched_count=unmatched,
         official_record=dict(official_record or {}),
     )
     if precommit_path is not None:
@@ -259,3 +352,4 @@ def load_manifest(path: Path) -> Manifest:
     manifest = Manifest.from_dict(data)
     manifest.validate()
     return manifest
+

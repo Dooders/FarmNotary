@@ -114,7 +114,7 @@ def reproduce_run(
             result.mismatched.append(name)
 
     listed = set(manifest.artifact_hashes)
-    for path in iter_artifact_paths(fresh_dir):
+    for path in iter_artifact_paths(fresh_dir, manifest.publish_patterns):
         rel = path.relative_to(fresh_dir).as_posix()
         if rel not in listed:
             result.extra.append(rel)

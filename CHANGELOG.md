@@ -7,7 +7,68 @@ FarmNotary uses [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.1.0] — 2026-08-28
+## [Unreleased] — breaking changes
+
+### Breaking
+
+#### Privacy filter replaced with an explicit allowlist (`security`, `breaking-change`)
+
+Previously, `farm-notary manifest` admitted every file in the run directory
+whose path did not contain a private-name substring (`ballot`, `vote`, etc.).
+A file named `agent_selections.csv` or `choices_raw.parquet` would be hashed
+and pinned silently.
+
+**The default is now to include nothing.**  A file is hashed, listed in the
+manifest, or uploaded to IPFS only when it matches at least one declared
+*publish pattern*:
+
+```bash
+# CLI
+farm-notary manifest --run-dir path/to/run --config config.json \
+  --publish 'summary.csv' --publish 'allocation_means.csv' --publish '*.png'
+```
+
+```json
+// Run config (versioned with the experiment)
+{
+  "notary": {
+    "publish": ["summary.csv", "allocation_means.csv", "*.png", "REPORT.md"]
+  }
+}
+```
+
+Patterns follow `fnmatch` semantics.  A plain `*.ext` pattern matches files in
+any subdirectory (not just the run-dir root).
+
+The substring denylist (`ballot`, `vote`, `voter`, `individual_choice`,
+`private`) is retained as a belt-and-braces second pass over whatever the
+allowlist admits.
+
+**Migration:** every existing `farm-notary manifest` invocation must add at
+least one `--publish <glob>` flag, or the `notary.publish` key to the run
+config, or `build_manifest()` will raise `ValueError`.
+
+#### New manifest fields
+
+- `publish_patterns` — the allowlist globs that were active.
+- `unmatched_count` — number of run-dir files that matched no pattern (visible
+  omission, not a silent one).
+
+Both fields are required by `Manifest.validate()` from this release onward.
+
+#### New CLI output
+
+`farm-notary manifest` now also prints `unmatched <N>` so operators can see
+how many files were left out without revealing their names.
+
+#### `notarize_run()` API
+
+`notarize_run()` now accepts a `publish_patterns` keyword argument, forwarded
+to `build_manifest()`.
+
+---
+
+
 
 First release.
 

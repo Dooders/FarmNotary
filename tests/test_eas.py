@@ -162,7 +162,7 @@ def test_config_rejects_unknown_chain(monkeypatch):
 
 
 def test_submit_requires_private_key(tmp_path: Path):
-    manifest = build_manifest(tmp_path, git_sha="abc")
+    manifest = build_manifest(tmp_path, git_sha="abc", publish_patterns=["*.csv"])
     backend = EASBackend(EASConfig(private_key=None), w3=StubW3())
     with pytest.raises(ValueError):
         backend.submit(manifest)
@@ -170,7 +170,7 @@ def test_submit_requires_private_key(tmp_path: Path):
 
 def test_submit_builds_attestation_and_receipt(tmp_path: Path):
     (tmp_path / "summary.csv").write_text("a,b\n1,2\n", encoding="utf-8")
-    manifest = build_manifest(tmp_path, git_sha="abc", config={"trials": 2})
+    manifest = build_manifest(tmp_path, git_sha="abc", config={"trials": 2}, publish_patterns=["*.csv"])
     uid = "0x" + "22" * 32
     w3 = StubW3(logs=[attested_log(uid)])
     backend = EASBackend(EASConfig(private_key=TEST_KEY), w3=w3)

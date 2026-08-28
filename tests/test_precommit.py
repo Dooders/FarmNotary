@@ -95,7 +95,7 @@ def _make_manifest_with_precommit(tmp_path):
     pc_path = run_dir / PRECOMMIT_NAME
     write_precommit(pc, pc_path)
     manifest = build_manifest(
-        run_dir, git_sha="abc", command="python run.py {run_dir}",
+        run_dir, publish_patterns=["*.csv"], git_sha="abc", command="python run.py {run_dir}",
         config={"trials": 3}, precommit_path=pc_path,
     )
     return manifest, run_dir, pc
@@ -103,7 +103,7 @@ def _make_manifest_with_precommit(tmp_path):
 
 def test_verify_precommit_no_precommit_hash(tmp_path):
     run_dir = _make_run_dir(tmp_path)
-    manifest = build_manifest(run_dir, git_sha="abc")
+    manifest = build_manifest(run_dir, publish_patterns=["*.csv"], git_sha="abc")
     assert verify_precommit(manifest, run_dir) == []
 
 
@@ -134,7 +134,7 @@ def test_verify_precommit_field_mismatch(tmp_path):
     pc_path = run_dir / PRECOMMIT_NAME
     write_precommit(pc, pc_path)
     manifest = build_manifest(
-        run_dir, git_sha="abc", command="python DIFFERENT.py {run_dir}",
+        run_dir, publish_patterns=["*.csv"], git_sha="abc", command="python DIFFERENT.py {run_dir}",
         config={"trials": 3}, precommit_path=pc_path,
     )
     manifest.command = "python DIFFERENT.py {run_dir}"
@@ -227,6 +227,7 @@ def test_manifest_with_precommit_records_hash(tmp_path, capsys):
                 "--git-sha", "aaa",
                 "--command", "python run.py {run_dir}",
                 "--config", str(config),
+                "--publish", "*.csv",
                 "--precommit", str(run_dir / PRECOMMIT_NAME),
             ]
         )
@@ -260,6 +261,7 @@ def test_verify_with_precommit_ok(tmp_path, capsys):
             "--git-sha", "aaa",
             "--command", "python run.py {run_dir}",
             "--config", str(config),
+            "--publish", "*.csv",
             "--precommit", str(run_dir / PRECOMMIT_NAME),
         ]
     )
@@ -291,6 +293,7 @@ def test_verify_reports_precommit_mismatch(tmp_path, capsys):
             "--git-sha", "aaa",
             "--command", "python run.py {run_dir}",
             "--config", str(config),
+            "--publish", "*.csv",
             "--precommit", str(run_dir / PRECOMMIT_NAME),
         ]
     )
@@ -315,6 +318,7 @@ def test_notarize_run_with_precommit(tmp_path):
 
     manifest, receipt = notarize_run(
         run_dir,
+        publish_patterns=["*.csv"],
         config={"x": 1},
         command="cmd {run_dir}",
         git_sha="abc",

@@ -31,7 +31,32 @@ If the experiment is a consensus / selection paradigm:
 - Voter (or agent) choice stays private
 - What gets notarized is the *official* record: config, code hash, aggregate metrics, winner allocations
 
-Files whose paths contain `ballot`, `vote`, `voter`, `individual_choice`, or `private` are never hashed, listed, or uploaded.
+### Allowlist-first privacy model
+
+**Nothing is hashed, listed, or uploaded by default.**  A file is included in
+the manifest only when its path matches a declared *publish pattern*:
+
+```bash
+farm-notary manifest --run-dir path/to/run \
+  --publish 'summary.csv' --publish 'allocation_means.csv' --publish '*.png'
+```
+
+Or in the run config (so the policy is versioned with the experiment):
+
+```json
+{
+  "notary": {
+    "publish": ["summary.csv", "allocation_means.csv", "*.png", "REPORT.md"]
+  }
+}
+```
+
+Files not covered by any pattern are **excluded** and counted in the manifest
+(`unmatched_count`).  The CLI warns loudly about the count (never the names).
+
+As a belt-and-braces second pass, files whose paths contain `ballot`, `vote`,
+`voter`, `individual_choice`, or `private` are always excluded even if a
+publish pattern would otherwise admit them.
 
 ## Install
 

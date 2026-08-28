@@ -9,7 +9,7 @@ from tests.test_ots import pending_timestamp
 
 def make_manifest(tmp_path: Path):
     (tmp_path / "summary.csv").write_text("paradigm,total\nparty,0.2\n", encoding="utf-8")
-    return build_manifest(tmp_path, git_sha="abc")
+    return build_manifest(tmp_path, publish_patterns=["*.csv"], git_sha="abc")
 
 
 def write_proof_for(manifest, run_dir: Path, digest_hex=None) -> Path:
