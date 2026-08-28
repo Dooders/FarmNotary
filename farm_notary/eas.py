@@ -206,7 +206,12 @@ class EASBackend:
         )
         signed = account.sign_transaction(tx)
         tx_hash = w3.eth.send_raw_transaction(_raw_transaction(signed))
-        return w3.eth.wait_for_transaction_receipt(tx_hash)
+        receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+        if receipt.get("status") == 0:
+            raise RuntimeError(
+                f"transaction {receipt['transactionHash'].hex()} was reverted (status=0)"
+            )
+        return receipt
 
     def submit(self, manifest: Manifest, *, cid: str | None = None) -> AnchorReceipt:
         config = self.config
@@ -230,14 +235,20 @@ class EASBackend:
 
         tx_hash = receipt["transactionHash"]
         tx_hex = tx_hash if isinstance(tx_hash, str) else "0x" + bytes(tx_hash).hex()
+        attestation_uid = parse_attestation_uid(receipt["logs"], config.eas_address)
+        if attestation_uid is None:
+            raise RuntimeError(
+                f"transaction {tx_hex} succeeded but no Attested event was found; "
+                "check that FARM_NOTARY_EAS_ADDRESS points to a valid EAS contract"
+            )
         return AnchorReceipt(
             backend="eas",
             manifest_hash=manifest_hash,
             cid=cid,
             tx_hash=tx_hex,
-            attestation_uid=parse_attestation_uid(receipt["logs"], config.eas_address),
-            chain_id=config.profile.chain_id,
             dry_run=False,
+            attestation_uid=attestation_uid,
+            chain_id=config.profile.chain_id,
         )
 
 

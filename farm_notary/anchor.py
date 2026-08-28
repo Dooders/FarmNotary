@@ -19,9 +19,9 @@ class AnchorReceipt:
     manifest_hash: str
     cid: str | None
     tx_hash: str | None
+    dry_run: bool = True
     attestation_uid: str | None = None
     chain_id: int | None = None
-    dry_run: bool = True
 
 
 class AnchorBackend(Protocol):
