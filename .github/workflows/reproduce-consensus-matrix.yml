@@ -19,9 +19,6 @@ permissions:
   contents: read
 
 env:
-  AGENTFARM_REPO: Dooders/AgentFarm
-  # Reviewed pin — do not substitute a job output here (CodeQL cache-poisoning).
-  AGENTFARM_SHA: c98a476eaf1f9d3100383787fa34ec352e896dff
   PYTHON_VERSION: "3.12"
   CELL: "--trials 12 --voters 50 --candidates 8 --population two_cluster --seed 0 --no-persist-ballots"
   PORTABLE_COMMAND: "python run_experiment.py --trials 12 --voters 50 --candidates 8 --population two_cluster --seed 0 --no-persist-ballots --out {run_dir}"
@@ -42,8 +39,9 @@ jobs:
       - name: Checkout AgentFarm
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.AGENTFARM_REPO }}
-          ref: ${{ env.AGENTFARM_SHA }}
+          repository: Dooders/AgentFarm
+          # Literal pin — CodeQL treats env/output refs as untrusted.
+          ref: c98a476eaf1f9d3100383787fa34ec352e896dff
           path: agentfarm
           persist-credentials: false
 
@@ -77,7 +75,7 @@ jobs:
           manifest = build_manifest(
               run,
               publish_profile="consensus",
-              git_sha=os.environ["AGENTFARM_SHA"],
+              git_sha="c98a476eaf1f9d3100383787fa34ec352e896dff",
               git_dirty=False,
               runner="farm-notary-consensus-matrix",
               command=os.environ["PORTABLE_COMMAND"],
@@ -130,8 +128,8 @@ jobs:
       - name: Checkout AgentFarm
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.AGENTFARM_REPO }}
-          ref: ${{ env.AGENTFARM_SHA }}
+          repository: Dooders/AgentFarm
+          ref: c98a476eaf1f9d3100383787fa34ec352e896dff
           path: agentfarm
           persist-credentials: false
 
