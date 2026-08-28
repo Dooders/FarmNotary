@@ -250,19 +250,7 @@ def test_anchor_pin_remote_delegates_to_kubo(tmp_path: Path, monkeypatch, capsys
     ipfs = StubServer()
     gateway = StubServer()
     try:
-        add_body = (json.dumps({"Name": "", "Hash": "bafyremote"}) + "\n").encode()
-        remote_body = json.dumps({"Cid": "bafyremote", "Name": "", "Status": "queued"}).encode()
-        # First POST → add, second POST → pin/remote/add
-        responses = [add_body, remote_body]
-
-        original_response = ipfs.response_body
-
-        def _rotating_response():
-            return responses.pop(0) if responses else original_response
-
-        # Patch the stub to serve responses in sequence by setting before each request
-        # Instead, use a simple counter via a list
-        ipfs.response_body = add_body  # first response for /api/v0/add
+        ipfs.response_body = (json.dumps({"Name": "", "Hash": "bafyremote"}) + "\n").encode()
         gateway.get_responses["/ipfs/bafyremote"] = b"data"
 
         monkeypatch.setenv("FARM_NOTARY_IPFS_API", ipfs.url)
@@ -272,7 +260,6 @@ def test_anchor_pin_remote_delegates_to_kubo(tmp_path: Path, monkeypatch, capsys
         # Monkeypatch pin_remote to return success and capture call
         from farm_notary.ipfs import IpfsClient
         pin_remote_calls = []
-        original_pin_remote = IpfsClient.pin_remote
 
         def fake_pin_remote(self, cid, service, name=None):
             pin_remote_calls.append((cid, service, name))
