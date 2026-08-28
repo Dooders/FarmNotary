@@ -95,9 +95,9 @@ receipts now record the `--ignore` globs so the scoped claim can list them.
 `git_dirty` is still recorded, but recording a flag is not a code-identity
 claim. `farm-notary precommit`, `farm-notary anchor`, `build_precommit()`,
 `anchor_run()`, and `notarize_run()` now fail if the tree is dirty unless
-`--allow-dirty` / `allow_dirty=True` is passed. The CLI records the working
-tree's dirty flag even when `--git-sha` is supplied, so passing a SHA cannot
-bypass the check.
+`--allow-dirty` / `allow_dirty=True` is passed. Supplying a SHA without
+`git_dirty` still inspects the working tree — an omitted flag is not a
+pass. `require_clean_identity(None)` detects rather than skipping.
 
 #### Privacy filter replaced with an explicit allowlist (`security`, `breaking-change`)
 

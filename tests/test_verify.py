@@ -11,7 +11,9 @@ from tests.test_ots import bitcoin_timestamp, pending_timestamp
 
 def make_manifest(tmp_path: Path):
     (tmp_path / "summary.csv").write_text("paradigm,total\nparty,0.2\n", encoding="utf-8")
-    return build_manifest(tmp_path, publish_patterns=["*.csv"], git_sha="abc")
+    return build_manifest(
+        tmp_path, publish_patterns=["*.csv"], git_sha="abc", git_dirty=False
+    )
 
 
 def write_proof_for(manifest, run_dir: Path, digest_hex=None) -> Path:
@@ -173,7 +175,12 @@ def test_claim_card_existed_by_fail_on_digest_mismatch(tmp_path: Path):
 
 def test_claim_card_precommit_bound_or_fail(tmp_path: Path):
     (tmp_path / "summary.csv").write_text("paradigm,total\nparty,0.2\n", encoding="utf-8")
-    pc = build_precommit(config={"trials": 1}, command="python run.py {run_dir}", git_sha="abc")
+    pc = build_precommit(
+        config={"trials": 1},
+        command="python run.py {run_dir}",
+        git_sha="abc",
+        git_dirty=False,
+    )
     write_precommit(pc, tmp_path / PRECOMMIT_NAME)
     manifest = build_manifest(
         tmp_path,
@@ -268,6 +275,20 @@ def test_claim_card_arm_receipt_refuses_cross_hardware_claim(tmp_path: Path):
         f"1/1 on ARM64 macOS; {CROSS_HARDWARE_NOT_A_CLAIM}"
     )
     assert ALLOWED_SENTENCE not in card.bitwise_reproducible
+
+
+def test_claim_card_bitwise_zero_compared_is_missing(tmp_path: Path):
+    """A receipt that compared nothing has not earned a bitwise claim."""
+    from farm_notary.reproduce import ReproductionResult
+
+    manifest = make_manifest(tmp_path)
+    write_manifest(manifest, tmp_path)
+    result = ReproductionResult(command="python run.py", returncode=0)
+    receipt = build_receipt(manifest, result)
+    write_receipt(receipt, tmp_path)
+    card = evaluate_claims(manifest, tmp_path)
+    assert card.ok
+    assert card.bitwise_reproducible == "missing"
 
 
 def test_claim_card_bitwise_fail_shows_score(tmp_path: Path):

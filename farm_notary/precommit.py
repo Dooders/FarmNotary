@@ -30,10 +30,10 @@ from pathlib import Path
 from typing import Any, Mapping, Optional
 
 from farm_notary.manifest import (
-    detect_git_status,
     hash_file,
     hash_json,
     require_clean_identity,
+    resolve_git_identity,
 )
 
 PRECOMMIT_NAME = "precommit.json"
@@ -67,18 +67,15 @@ def build_precommit(
         Code identity.  Auto-detected from the current working directory when
         omitted.
     git_dirty:
-        Whether the working tree is dirty.  Auto-detected alongside *git_sha*
-        when omitted.
+        Whether the working tree is dirty.  Auto-detected when omitted, even
+        if *git_sha* was supplied — a SHA is not a substitute for the check.
     lockfile:
         Dependency lockfile whose SHA-256 is recorded for environment pinning.
     allow_dirty:
         If false (the default), raise ``DirtyTreeError`` when the working tree
         is dirty so a precommit cannot claim a code identity it does not have.
     """
-    if git_sha is None:
-        git_sha, detected_dirty = detect_git_status()
-        if git_dirty is None:
-            git_dirty = detected_dirty
+    git_sha, git_dirty = resolve_git_identity(git_sha, git_dirty)
 
     pc: dict = {
         "schema": PRECOMMIT_VERSION,

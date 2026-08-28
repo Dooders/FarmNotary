@@ -120,7 +120,8 @@ farm-notary verify --run-dir path/to/run
 
 `precommit` and `anchor` refuse a dirty git tree by default: the recorded SHA
 does not identify the code, so it is not a code-identity claim. `git_dirty` is
-still recorded on the manifest. Pass `--allow-dirty` (or `allow_dirty=True`)
+still recorded on the manifest. Supplying `--git-sha` without a dirty flag
+still inspects the working tree. Pass `--allow-dirty` (or `allow_dirty=True`)
 to make an explicit exception.
 
 ## IPFS persistence

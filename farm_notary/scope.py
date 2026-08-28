@@ -59,15 +59,15 @@ def _parse_platform_string(plat: str) -> tuple[str, str]:
 def environment_machine(environment: Optional[Mapping] = None) -> str:
     """Hardware class from a manifest/receipt ``environment`` dict."""
     env = dict(environment or {})
-    system = str(env.get("system") or "")
-    machine = str(env.get("machine") or "")
+    system = env.get("system") or ""
+    machine = env.get("machine") or ""
     if not system or not machine:
-        plat_system, plat_machine = _parse_platform_string(str(env.get("platform") or ""))
-        if not system:
-            system = plat_system
-        if not machine:
-            machine = plat_machine
-    return machine_label(system, machine)
+        parsed_system, parsed_machine = _parse_platform_string(
+            str(env.get("platform") or "")
+        )
+        system = system or parsed_system
+        machine = machine or parsed_machine
+    return machine_label(str(system), str(machine))
 
 
 def scoped_clause(environment: Optional[Mapping] = None, *, ok: bool = True) -> str:

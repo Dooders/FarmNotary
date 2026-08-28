@@ -7,7 +7,13 @@ import pytest
 
 from farm_notary.anchor import anchor_run, notarize_run
 from farm_notary.cli import main
-from farm_notary.manifest import DirtyTreeError, build_manifest, load_manifest, write_manifest
+from farm_notary.manifest import (
+    DirtyTreeError,
+    build_manifest,
+    load_manifest,
+    require_clean_identity,
+    write_manifest,
+)
 from farm_notary.precommit import PRECOMMIT_NAME, build_precommit
 
 
@@ -32,6 +38,31 @@ def test_build_precommit_refuses_dirty_tree(tmp_path: Path):
         build_precommit(git_sha=sha, git_dirty=True)
     pc = build_precommit(git_sha=sha, git_dirty=True, allow_dirty=True)
     assert pc["git_dirty"] is True
+
+
+def test_supplied_sha_still_detects_dirty_cwd(tmp_path: Path, monkeypatch):
+    """Passing git_sha without git_dirty must not skip the dirty check."""
+    repo = tmp_path / "repo"
+    sha = init_repo(repo, dirty=True)
+    monkeypatch.chdir(repo)
+    with pytest.raises(DirtyTreeError, match="does not identify the code"):
+        build_precommit(git_sha=sha)
+    run_dir = repo / "run"
+    run_dir.mkdir()
+    (run_dir / "summary.csv").write_text("paradigm,total\nparty,0.2\n", encoding="utf-8")
+    manifest = build_manifest(run_dir, publish_patterns=["*.csv"], git_sha=sha)
+    assert manifest.git_dirty is True
+    with pytest.raises(DirtyTreeError, match="does not identify the code"):
+        anchor_run(manifest)
+
+
+def test_require_clean_identity_detects_when_unset(tmp_path: Path, monkeypatch):
+    repo = tmp_path / "repo"
+    init_repo(repo, dirty=True)
+    monkeypatch.chdir(repo)
+    with pytest.raises(DirtyTreeError, match="does not identify the code"):
+        require_clean_identity(None)
+    require_clean_identity(None, allow_dirty=True)
 
 
 def test_anchor_run_refuses_dirty_manifest(tmp_path: Path):

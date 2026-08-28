@@ -22,7 +22,9 @@ def make_run_dir(tmp_path: Path) -> Path:
 
 def test_dry_run_receipt_and_stamp(tmp_path: Path):
     make_run_dir(tmp_path)
-    manifest = build_manifest(tmp_path, publish_patterns=["*.csv"], git_sha="abc")
+    manifest = build_manifest(
+        tmp_path, publish_patterns=["*.csv"], git_sha="abc", git_dirty=False
+    )
     expected_hash = manifest.content_hash()
 
     receipt = anchor_run(manifest, cid="bafytest")
@@ -47,7 +49,13 @@ def test_get_backend_names():
 
 def test_notarize_run_writes_stamped_manifest(tmp_path: Path):
     make_run_dir(tmp_path)
-    manifest, receipt = notarize_run(tmp_path, publish_patterns=["*.csv"], git_sha="abc", runner="consensus")
+    manifest, receipt = notarize_run(
+        tmp_path,
+        publish_patterns=["*.csv"],
+        git_sha="abc",
+        git_dirty=False,
+        runner="consensus",
+    )
 
     on_disk = load_manifest(tmp_path)
     assert on_disk.anchor["backend"] == "dry-run"
@@ -90,7 +98,13 @@ def test_notarize_run_with_ots_backend_writes_proof(stub_server, tmp_path: Path)
     )
 
     backend = OpenTimestampsBackend(calendars=[stub_server.url])
-    manifest, receipt = notarize_run(tmp_path, publish_patterns=["*.csv"], git_sha="abc", backend=backend)
+    manifest, receipt = notarize_run(
+        tmp_path,
+        publish_patterns=["*.csv"],
+        git_sha="abc",
+        git_dirty=False,
+        backend=backend,
+    )
 
     expected_hash = receipt.manifest_hash
     assert manifest.content_hash() == expected_hash

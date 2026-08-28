@@ -56,6 +56,28 @@ def test_system_and_machine_fields_win_over_platform():
     )
 
 
+def test_partial_environment_fills_only_the_missing_field():
+    """An explicit system/machine is kept; only the unset field is parsed."""
+    assert (
+        environment_machine(
+            {
+                "system": "Linux",
+                "platform": "macOS-14.6-arm64-arm-64bit",
+            }
+        )
+        == "ARM64 Linux"
+    )
+    assert (
+        environment_machine(
+            {
+                "machine": "x86_64",
+                "platform": "macOS-14.6-arm64-arm-64bit",
+            }
+        )
+        == "x86-64 Linux"
+    )
+
+
 def test_allowed_sentence_only_on_demonstrated_ok_receipt():
     linux = {"system": "Linux", "machine": "x86_64"}
     assert scoped_clause(linux, ok=True) == ALLOWED_SENTENCE

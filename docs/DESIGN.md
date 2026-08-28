@@ -121,7 +121,8 @@ The manifest records everything a stranger needs to re-derive the run:
 `command` (with a `{run_dir}` placeholder), `config`, `git_sha` plus a
 `git_dirty` flag (a dirty tree means the sha does not identify the code that
 ran, so it is recorded, not hidden — and `precommit` / `anchor` refuse it
-unless `--allow-dirty`, so code identity is a claim rather than a flag), and
+unless `--allow-dirty`. Omitting `git_dirty` still inspects the working
+tree; a supplied SHA is not a bypass), and
 `environment` (python, platform, `system`, `machine`, a hash of the installed
 package set, optional lockfile hash). `system` + `machine` are what the
 claim card uses to decide whether it may emit the scoped sentence in

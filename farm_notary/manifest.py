@@ -111,14 +111,18 @@ DIRTY_TREE_MESSAGE = (
 
 
 def require_clean_identity(
-    git_dirty: Optional[bool], *, allow_dirty: bool = False
+    git_dirty: Optional[bool], *, allow_dirty: bool = False, cwd: Optional[Path] = None
 ) -> None:
     """Refuse a dirty tree unless the caller opted out of the code-identity claim.
 
     ``git_dirty is True`` means the SHA does not identify the code. Recording
     that flag is not enough — anchoring it would still let someone walk the
-    science back. ``allow_dirty`` is the explicit exception.
+    science back. ``git_dirty is None`` is not a pass: detect the working
+    tree so a caller who supplied only a SHA cannot skip the check.
+    ``allow_dirty`` is the explicit exception.
     """
+    if git_dirty is None:
+        _, git_dirty = detect_git_status(cwd=cwd)
     if git_dirty and not allow_dirty:
         raise DirtyTreeError(DIRTY_TREE_MESSAGE)
 
@@ -141,6 +145,25 @@ def detect_git_status(cwd: Optional[Path] = None) -> Tuple[Optional[str], Option
 
 def detect_git_sha(cwd: Optional[Path] = None) -> Optional[str]:
     return detect_git_status(cwd)[0]
+
+
+def resolve_git_identity(
+    git_sha: Optional[str] = None,
+    git_dirty: Optional[bool] = None,
+    cwd: Optional[Path] = None,
+) -> Tuple[Optional[str], Optional[bool]]:
+    """Fill omitted sha / dirty from the working tree.
+
+    A supplied SHA is not a substitute for the dirty check. Callers that
+    pass ``git_sha`` without ``git_dirty`` still get a live detection.
+    """
+    if git_sha is None or git_dirty is None:
+        detected_sha, detected_dirty = detect_git_status(cwd=cwd)
+        if git_sha is None:
+            git_sha = detected_sha
+        if git_dirty is None:
+            git_dirty = detected_dirty
+    return git_sha, git_dirty
 
 
 def capture_environment(lockfile: Optional[Path] = None) -> dict:
@@ -344,10 +367,7 @@ def build_manifest(
             stacklevel=2,
         )
 
-    if git_sha is None:
-        git_sha, detected_dirty = detect_git_status()
-        if git_dirty is None:
-            git_dirty = detected_dirty
+    git_sha, git_dirty = resolve_git_identity(git_sha, git_dirty)
     manifest = Manifest(
         farm_notary_version=TOOL_VERSION,
         created_utc=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

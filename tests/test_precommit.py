@@ -26,7 +26,9 @@ from farm_notary.verify import verify_precommit
 
 
 def test_build_precommit_contains_expected_keys():
-    pc = build_precommit(config={"trials": 5}, command="python run.py", git_sha="abc")
+    pc = build_precommit(
+        config={"trials": 5}, command="python run.py", git_sha="abc", git_dirty=False
+    )
     assert pc["schema"] == PRECOMMIT_VERSION
     assert pc["config"] == {"trials": 5}
     assert pc["command"] == "python run.py"
@@ -35,12 +37,12 @@ def test_build_precommit_contains_expected_keys():
 
 
 def test_precommit_hash_deterministic():
-    pc = build_precommit(config={"x": 1}, command="cmd", git_sha="aaa")
+    pc = build_precommit(config={"x": 1}, command="cmd", git_sha="aaa", git_dirty=False)
     assert precommit_hash(pc) == precommit_hash(pc)
 
 
 def test_precommit_hash_changes_on_mutation():
-    pc = build_precommit(config={"x": 1}, command="cmd", git_sha="aaa")
+    pc = build_precommit(config={"x": 1}, command="cmd", git_sha="aaa", git_dirty=False)
     h1 = precommit_hash(pc)
     pc2 = dict(pc)
     pc2["command"] = "different"
@@ -48,7 +50,9 @@ def test_precommit_hash_changes_on_mutation():
 
 
 def test_write_and_load_precommit(tmp_path):
-    pc = build_precommit(config={"k": "v"}, command="go run .", git_sha="deadbeef")
+    pc = build_precommit(
+        config={"k": "v"}, command="go run .", git_sha="deadbeef", git_dirty=False
+    )
     dest = tmp_path / PRECOMMIT_NAME
     write_precommit(pc, dest)
     loaded = load_precommit(dest)
@@ -72,7 +76,7 @@ def test_load_precommit_rejects_non_object(tmp_path):
 def test_precommit_with_lockfile(tmp_path):
     lf = tmp_path / "requirements.txt"
     lf.write_text("numpy==1.24.0\n", encoding="utf-8")
-    pc = build_precommit(git_sha="abc", lockfile=lf)
+    pc = build_precommit(git_sha="abc", git_dirty=False, lockfile=lf)
     assert pc["lockfile"] == "requirements.txt"
     assert len(pc["lockfile_sha256"]) == 64
 
@@ -91,19 +95,31 @@ def _make_run_dir(tmp_path):
 
 def _make_manifest_with_precommit(tmp_path):
     run_dir = _make_run_dir(tmp_path)
-    pc = build_precommit(config={"trials": 3}, command="python run.py {run_dir}", git_sha="abc")
+    pc = build_precommit(
+        config={"trials": 3},
+        command="python run.py {run_dir}",
+        git_sha="abc",
+        git_dirty=False,
+    )
     pc_path = run_dir / PRECOMMIT_NAME
     write_precommit(pc, pc_path)
     manifest = build_manifest(
-        run_dir, publish_patterns=["*.csv"], git_sha="abc", command="python run.py {run_dir}",
-        config={"trials": 3}, precommit_path=pc_path,
+        run_dir,
+        publish_patterns=["*.csv"],
+        git_sha="abc",
+        git_dirty=False,
+        command="python run.py {run_dir}",
+        config={"trials": 3},
+        precommit_path=pc_path,
     )
     return manifest, run_dir, pc
 
 
 def test_verify_precommit_no_precommit_hash(tmp_path):
     run_dir = _make_run_dir(tmp_path)
-    manifest = build_manifest(run_dir, publish_patterns=["*.csv"], git_sha="abc")
+    manifest = build_manifest(
+        run_dir, publish_patterns=["*.csv"], git_sha="abc", git_dirty=False
+    )
     assert verify_precommit(manifest, run_dir) == []
 
 
@@ -130,12 +146,22 @@ def test_verify_precommit_hash_mismatch(tmp_path):
 
 def test_verify_precommit_field_mismatch(tmp_path):
     run_dir = _make_run_dir(tmp_path)
-    pc = build_precommit(config={"trials": 3}, command="python run.py {run_dir}", git_sha="abc")
+    pc = build_precommit(
+        config={"trials": 3},
+        command="python run.py {run_dir}",
+        git_sha="abc",
+        git_dirty=False,
+    )
     pc_path = run_dir / PRECOMMIT_NAME
     write_precommit(pc, pc_path)
     manifest = build_manifest(
-        run_dir, publish_patterns=["*.csv"], git_sha="abc", command="python DIFFERENT.py {run_dir}",
-        config={"trials": 3}, precommit_path=pc_path,
+        run_dir,
+        publish_patterns=["*.csv"],
+        git_sha="abc",
+        git_dirty=False,
+        command="python DIFFERENT.py {run_dir}",
+        config={"trials": 3},
+        precommit_path=pc_path,
     )
     manifest.command = "python DIFFERENT.py {run_dir}"
     problems = verify_precommit(manifest, run_dir)
@@ -318,7 +344,9 @@ def test_verify_reports_precommit_mismatch(tmp_path, capsys):
 
 def test_notarize_run_with_precommit(tmp_path):
     run_dir = make_run_dir(tmp_path)
-    pc = build_precommit(config={"x": 1}, command="cmd {run_dir}", git_sha="abc")
+    pc = build_precommit(
+        config={"x": 1}, command="cmd {run_dir}", git_sha="abc", git_dirty=False
+    )
     pc_path = run_dir / PRECOMMIT_NAME
     write_precommit(pc, pc_path)
 
@@ -328,6 +356,7 @@ def test_notarize_run_with_precommit(tmp_path):
         config={"x": 1},
         command="cmd {run_dir}",
         git_sha="abc",
+        git_dirty=False,
         precommit_path=pc_path,
     )
     assert manifest.precommit_hash is not None
