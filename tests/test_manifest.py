@@ -139,7 +139,16 @@ def test_content_hash_excludes_cid_and_anchor(tmp_path: Path):
     before = manifest.content_hash()
     manifest.cid = "bafyexample"
     manifest.anchor = {"backend": "dry-run"}
+    manifest.identity = {"scheme": "ssh", "signature": "x"}
     assert manifest.content_hash() == before
+
+
+def test_derived_from_omitted_when_empty_keeps_old_hash(tmp_path: Path):
+    make_run_dir(tmp_path)
+    manifest = build_manifest(tmp_path, publish_patterns=["*.csv"], git_sha="abc")
+    data = manifest.to_dict()
+    assert "derived_from" not in data
+    assert "identity" not in data
 
 
 def test_from_dict_ignores_unknown_keys(tmp_path: Path):
@@ -173,6 +182,8 @@ def test_environment_captured_by_default(tmp_path: Path):
     make_run_dir(tmp_path)
     manifest = build_manifest(tmp_path, publish_patterns=["*.csv"], git_sha="abc")
     assert manifest.environment["python"]
+    assert manifest.environment["os"]
+    assert manifest.environment["arch"]
     assert len(manifest.environment["packages_hash"]) == 64
     assert manifest.environment["package_count"] > 0
 

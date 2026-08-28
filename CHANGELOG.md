@@ -66,6 +66,45 @@ how many files were left out without revealing their names.
 `notarize_run()` now accepts a `publish_patterns` keyword argument, forwarded
 to `build_manifest()`.
 
+### Added
+
+#### Campaign / sweep manifests
+- `farm-notary campaign` writes `campaign.json` (`farmnotary.campaign.v1`):
+  child run CIDs, seeds, and a seed-excluded config hash so a reviewer can
+  check a paper figure (100 trials, seed 0…N) instead of one folder.
+- `farm-notary verify --campaign` checks shared config hash and, when child
+  directories are present, each child's content hash.
+
+#### Derivation claims
+- Optional `notary.derived_from` rules in the experiment profile are copied
+  onto the manifest. `verify` recomputes named outputs from sources (or runs
+  a verify-style command) so "statistics recompute exactly" is a first-class
+  claim even when a PNG is renderer-dependent.
+
+#### Environment fingerprint
+- `environment` now records `os`, `arch`, `python`, `python_implementation`,
+  and — when numpy is installed — the BLAS/LAPACK build. Lockfile hash is
+  unchanged. This keeps “bitwise on x86-64 Linux, pinned env” scoped when a
+  reviewer reproduces on Apple Silicon and sees a 1-ulp diff.
+
+#### Optional identity
+- `farm-notary sign --scheme ssh|minisign` records a signature of the
+  content hash. Stamp field: excluded from `content_hash`. No protocol token;
+  EAS stays experimental.
+
+#### Paper pack and public index
+- `farm-notary paper-pack` writes an appendix snippet (CID, content hash,
+  Bitcoin attestation or pending, publish allowlist, unmatched count,
+  precommit hash, scoped reproducibility sentence).
+- `farm-notary index` maintains a static registry (Markdown + JSON) of
+  published manifests: experiment, seed, CID, claim level, date. Scores and
+  rankings are rejected.
+
+#### Reusable GitHub Action
+- Root `action.yml` (`dooders/farm-notary-action`): precommit on workflow
+  start, notarize + optional pin-remote on success, upload `manifest.json` +
+  `manifest.ots`, fail the job if verify fails. See `docs/ACTION.md`.
+
 ---
 
 

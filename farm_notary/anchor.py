@@ -130,6 +130,9 @@ def notarize_run(
     ``farm-notary precommit``, its content hash is recorded in the manifest's
     ``precommit_hash`` field, binding the post-run proof to the pre-run
     specification.
+
+    Derivation rules (``config.notary.derived_from``) are copied onto the
+    manifest by ``build_manifest``.
     """
     run_dir = Path(run_dir)
     manifest = build_manifest(
