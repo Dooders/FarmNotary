@@ -207,10 +207,15 @@ def test_claim_card_bitwise_scoped_with_ignore_globs(tmp_path: Path):
         ignored=["media.mp4"],
         ignore=["*.mp4"],
     )
-    write_receipt(build_receipt(manifest, result), tmp_path)
+    receipt = build_receipt(manifest, result)
+    write_receipt(receipt, tmp_path)
     card = evaluate_claims(manifest, tmp_path)
     assert card.ok
-    assert card.bitwise_reproducible == "1/1, ignored: *.mp4"
+    from farm_notary.scope import format_bitwise_status
+
+    assert card.bitwise_reproducible == format_bitwise_status(
+        "1/1, ignored: *.mp4", receipt["environment"], ok=True
+    )
 
 
 def test_claim_card_bitwise_old_receipt_lists_ignored_files(tmp_path: Path):
@@ -231,7 +236,38 @@ def test_claim_card_bitwise_old_receipt_lists_ignored_files(tmp_path: Path):
     write_receipt(receipt, tmp_path)
     card = evaluate_claims(manifest, tmp_path)
     assert card.ok
-    assert card.bitwise_reproducible == "1/1, ignored: media.mp4"
+    from farm_notary.scope import format_bitwise_status
+
+    assert card.bitwise_reproducible == format_bitwise_status(
+        "1/1, ignored: media.mp4", receipt["environment"], ok=True
+    )
+
+
+def test_claim_card_arm_receipt_refuses_cross_hardware_claim(tmp_path: Path):
+    from farm_notary.reproduce import ReproductionResult
+    from farm_notary.scope import ALLOWED_SENTENCE, CROSS_HARDWARE_NOT_A_CLAIM
+
+    manifest = make_manifest(tmp_path)
+    write_manifest(manifest, tmp_path)
+    result = ReproductionResult(
+        command="python run.py",
+        returncode=0,
+        matched=["summary.csv"],
+    )
+    receipt = build_receipt(manifest, result)
+    receipt["environment"] = {
+        "python": "3.12.0",
+        "system": "Darwin",
+        "machine": "arm64",
+        "platform": "macOS-14.6-arm64-arm-64bit",
+    }
+    write_receipt(receipt, tmp_path)
+    card = evaluate_claims(manifest, tmp_path)
+    assert card.ok
+    assert card.bitwise_reproducible == (
+        f"1/1 on ARM64 macOS; {CROSS_HARDWARE_NOT_A_CLAIM}"
+    )
+    assert ALLOWED_SENTENCE not in card.bitwise_reproducible
 
 
 def test_claim_card_bitwise_fail_shows_score(tmp_path: Path):

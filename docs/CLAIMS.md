@@ -13,7 +13,7 @@ claim card
 •  tamper-evident record           — pass
 •  existed by time T               — pending
 •  pre-specified design            — missing
-•  bitwise reproducible (scoped)   — 6/6, ignored: *.mp4
+•  bitwise reproducible (scoped)   — 6/6, ignored: *.mp4; byte-identical on x86-64 Linux in a pinned environment
 •  not claimed: scientific correctness
 ```
 
@@ -94,24 +94,40 @@ bitwise reproducible from the committed seed in a pinned environment,
 verified by re-execution, and its summary statistics recompute exactly from
 the raw trial data."*
 
-Not yet demonstrated: cross-machine reproduction (different hardware/BLAS)
-outside a CI environment. Until a clean-machine receipt produced on different
-hardware exists, do not claim more than same-environment reproducibility.
+Not yet demonstrated: bitwise identity across hardware or BLAS. Until
+Linux ARM and macOS ARM receipts are `ok` *and*
+`farm_notary.scope.DEMONSTRATED_SCOPES` is expanded, do not claim more.
 
 ## Cross-machine reproduction status
 
-CI-machine reproduction is demonstrated via AgentFarm's
-`.github/workflows/reproduce-consensus.yml` (see
-`integration/agentfarm/README.md`): on every change to the experiment, a
-GitHub Actions runner re-runs the recorded command from the committed seed and
-fails unless every artifact is byte-identical. Because GitHub-hosted runners
-The successful workflow run on a GitHub-hosted x86-64 Linux runner confirms
-reproducibility in a different process/filesystem than the original run; the
-workflow does not establish an identical dependency set or BLAS.
+Bitwise identity is shown on **x86-64 Linux** in a pinned environment (the
+original lab machine, and GitHub Actions `ubuntu-latest`). That is the only
+hardware class in `farm_notary.scope.DEMONSTRATED_SCOPES`.
 
-What remains undemonstrated: reproduction on **different hardware** (e.g.,
-Apple Silicon, AMD EPYC) or a **different BLAS** implementation. If the
-experiment relies on floating-point operations whose result depends on SIMD
-instruction sets or BLAS routing, bit-for-bit output is not guaranteed across
-architectures. Until such a receipt exists, scope the claim to
-"byte-identical on x86-64 Linux in a pinned environment."
+The sentence the tool is allowed to emit — and the only sentence `verify` /
+`reproduce` will print on a passing receipt from that class:
+
+> byte-identical on x86-64 Linux in a pinned environment
+
+A passing receipt from any other machine still reports `N/M`, then:
+
+> on *machine*; cross-hardware bitwise identity is not a claim
+
+A failed receipt reports `fail — N/M` and does not emit the sentence.
+
+`.github/workflows/reproduce-consensus-matrix.yml` produces the consensus
+experiment on x86-64 Linux and re-runs the recorded command on Linux x86,
+Linux ARM (`ubuntu-24.04-arm`), and macOS ARM (`macos-14`). That workflow
+is a hardware/BLAS smoke (12 trials × 50 voters, seed 0), not the 100×300
+scientific cell. A mismatch on ARM does not widen or shrink the published
+sentence; it is evidence. Same-arch x86-64 Linux must still pass, or the
+demonstrated scope is broken.
+
+AgentFarm's `.github/workflows/reproduce-consensus.yml` is same-arch x86-64
+Linux CI on a different process/filesystem. It does not establish an
+identical dependency set, a different BLAS, or a different ISA.
+
+If the experiment relies on floating-point operations whose result depends
+on SIMD instruction sets or BLAS routing, bit-for-bit output is not
+guaranteed across architectures. Keep the claim narrow until the matrix
+receipts say otherwise.

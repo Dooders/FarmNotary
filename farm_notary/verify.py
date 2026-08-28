@@ -287,9 +287,10 @@ def _pre_specified_status(manifest: Manifest, precommit_problems: List[str]) -> 
 def _bitwise_status(
     manifest: Manifest, run_dir: Path, receipt_problems: List[str]
 ) -> str:
-    """CLAIMS.md 'bitwise reproducible (scoped)': N/M plus ignored globs."""
+    """CLAIMS.md 'bitwise reproducible (scoped)': N/M plus the allowed sentence."""
     from farm_notary.manifest import RECEIPT_NAME
     from farm_notary.reproduce import load_receipt
+    from farm_notary.scope import format_bitwise_status
 
     receipt_path = Path(run_dir) / RECEIPT_NAME
     if not receipt_path.is_file():
@@ -311,9 +312,10 @@ def _bitwise_status(
     ignored = ignore_globs or ignored_files
     if ignored:
         score = f"{score}, ignored: {', '.join(ignored)}"
-    if receipt_problems or not receipt.get("ok"):
-        return f"fail — {score}"
-    return score
+    ok = not receipt_problems and bool(receipt.get("ok"))
+    return format_bitwise_status(
+        score, receipt.get("environment") or {}, ok=ok
+    )
 
 
 def evaluate_claims(manifest: Manifest, run_dir: Path) -> ClaimCard:

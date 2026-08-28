@@ -40,6 +40,7 @@ PUBLISH_PROFILES: Dict[str, PublishProfile] = {
             "trials.csv",
             "summary.csv",
             "allocation_means.csv",
+            "contrasts.csv",
             "REPORT.md",
             "run_config.json",
             "*.png",

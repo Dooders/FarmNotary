@@ -11,10 +11,30 @@ FarmNotary uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### Scoped bitwise sentence (x86-64 Linux only)
+
+`farm-notary verify` and `farm-notary reproduce` emit the CLAIMS.md sentence
+the tool is allowed to print:
+
+> byte-identical on x86-64 Linux in a pinned environment
+
+That sentence is earned only by a passing receipt whose machine is in
+`farm_notary.scope.DEMONSTRATED_SCOPES` (today: `x86-64 Linux`). A passing
+receipt on Linux ARM or macOS ARM reports `N/M on <machine>; cross-hardware
+bitwise identity is not a claim`. Failed receipts report `fail — N/M` and
+do not emit the sentence. Manifests and receipts now record `system` and
+`machine` so the card does not have to parse `platform.platform()`.
+
+`.github/workflows/reproduce-consensus-matrix.yml` produces the consensus
+experiment on x86-64 Linux and reproduces it on Linux x86, Linux ARM, and
+macOS ARM. Until those ARM receipts are `ok` and the demonstrated set is
+expanded, the claim stays that one sentence.
+
 #### Experiment-type publish profiles
 
 Named profiles `consensus`, `rl-sweep`, and `evolution-run` are checked-in
-allowlists of official artifacts (`farm_notary/profiles.py`). Prefer
+allowlists of official artifacts (`farm_notary/profiles.py`). The consensus
+profile includes `contrasts.csv` (official AgentFarm record). Prefer
 `--profile consensus` (or `notary.profile` in the run config) over inventing
 globs. The denylist still applies. Extra `--publish` / `notary.publish`
 patterns append. The resolved allowlist is recorded as `publish_patterns`
@@ -41,7 +61,7 @@ claim card
 •  tamper-evident record           — pass
 •  existed by time T               — pending | Bitcoin height N | missing | fail
 •  pre-specified design            — precommit bound | missing | fail
-•  bitwise reproducible (scoped)   — N/M[, ignored: globs] | missing | fail
+•  bitwise reproducible (scoped)   — N/M[, ignored: globs]; byte-identical on x86-64 Linux in a pinned environment | missing | fail
 •  not claimed: scientific correctness
 ```
 

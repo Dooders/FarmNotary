@@ -122,8 +122,11 @@ The manifest records everything a stranger needs to re-derive the run:
 `git_dirty` flag (a dirty tree means the sha does not identify the code that
 ran, so it is recorded, not hidden — and `precommit` / `anchor` refuse it
 unless `--allow-dirty`, so code identity is a claim rather than a flag), and
-`environment` (python, platform, a hash of the installed package set, optional
-lockfile hash).
+`environment` (python, platform, `system`, `machine`, a hash of the installed
+package set, optional lockfile hash). `system` + `machine` are what the
+claim card uses to decide whether it may emit the scoped sentence in
+[CLAIMS.md](CLAIMS.md) (`byte-identical on x86-64 Linux in a pinned
+environment`). Other hardware is reported, not claimed.
 
 `farm-notary reproduce` turns reproducibility from a claim into a procedure:
 re-run the recorded command into a fresh directory, rehash, byte-compare

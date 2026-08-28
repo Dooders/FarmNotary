@@ -181,6 +181,10 @@ def test_cli_reproduce_flow(tmp_path: Path, capsys):
     out = capsys.readouterr().out
     assert "bitwise reproducible (scoped)" in out
     assert "2/2" in out
+    from farm_notary.scope import format_bitwise_status
+
+    receipt = json.loads((run_dir / RECEIPT_NAME).read_text(encoding="utf-8"))
+    assert format_bitwise_status("2/2", receipt["environment"], ok=True) in out
 
     # A nondeterministic artifact fails unless ignored.
     data = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))

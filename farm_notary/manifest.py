@@ -160,6 +160,8 @@ def capture_environment(lockfile: Optional[Path] = None) -> dict:
     env = {
         "python": platform.python_version(),
         "platform": platform.platform(),
+        "system": platform.system(),
+        "machine": platform.machine(),
         "packages_hash": hashlib.sha256(
             "\n".join(sorted(dists)).encode("utf-8")
         ).hexdigest(),

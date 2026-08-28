@@ -453,6 +453,19 @@ def _cmd_reproduce(args: argparse.Namespace) -> int:
     print(f"receipt written to {receipt_path}")
     print("receipt_hash", receipt_hash(receipt))
 
+    from farm_notary.scope import format_bitwise_status
+
+    compared = len(result.matched) + len(result.mismatched) + len(result.missing)
+    score = f"{len(result.matched)}/{compared}"
+    if result.ignore:
+        score = f"{score}, ignored: {', '.join(result.ignore)}"
+    elif result.ignored:
+        score = f"{score}, ignored: {', '.join(result.ignored)}"
+    print(
+        "bitwise reproducible (scoped) —",
+        format_bitwise_status(score, receipt.get("environment") or {}, ok=result.ok),
+    )
+
     if args.anchor:
         from farm_notary.ots import stamp_digest
         from farm_notary.reproduce import RECEIPT_PROOF_NAME

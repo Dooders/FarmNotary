@@ -190,8 +190,11 @@ farm-notary reproduce --run-dir path/to/run --ignore '*.mp4' --anchor
 artifact's bytes against the manifest, and writes a `reproduction.json`
 receipt (rerunner's environment, per-file results). `--anchor` timestamps the
 receipt itself via OpenTimestamps, so "independently reproduced" comes with a
-proof. `verify` reports the receipt as **bitwise reproducible (scoped)** — `N/M`
-of compared artifacts, with any `--ignore` globs listed.
+proof. `verify` reports the receipt as **bitwise reproducible (scoped)** —
+`N/M` of compared artifacts, any `--ignore` globs, and the only sentence the
+tool may emit today: *byte-identical on x86-64 Linux in a pinned
+environment*. A match on other hardware still reports `N/M` and refuses a
+cross-hardware claim. See [docs/CLAIMS.md](docs/CLAIMS.md).
 
 See [docs/CLAIMS.md](docs/CLAIMS.md) for exactly which claim each check earns.
 

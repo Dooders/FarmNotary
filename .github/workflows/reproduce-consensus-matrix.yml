@@ -1,0 +1,329 @@
+name: Consensus hardware matrix
+
+# Produce the consensus experiment on x86-64 Linux, then reproduce the
+# recorded command on Linux x86, Linux ARM, and macOS ARM.
+#
+# This is a hardware/BLAS identity smoke (12 trials × 50 voters), not the
+# 100×300 scientific cell. A mismatch on ARM does not fail the workflow:
+# cross-hardware bitwise identity is not a claim. Same-arch x86-64 Linux
+# must still pass, or the demonstrated scope is broken.
+#
+# farm_notary.scope.DEMONSTRATED_SCOPES stays {x86-64 Linux} until ARM
+# receipts are ok *and* that set is expanded on purpose.
+
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  AGENTFARM_REPO: Dooders/AgentFarm
+  AGENTFARM_REF: dev
+  PYTHON_VERSION: "3.12"
+  CELL: "--trials 12 --voters 50 --candidates 8 --population two_cluster --seed 0 --no-persist-ballots"
+
+jobs:
+  produce:
+    name: Produce on x86-64 Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      agentfarm_sha: ${{ steps.meta.outputs.agentfarm_sha }}
+    steps:
+      - name: Checkout FarmNotary
+        uses: actions/checkout@v4
+
+      - name: Checkout AgentFarm
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.AGENTFARM_REPO }}
+          ref: ${{ env.AGENTFARM_REF }}
+          path: agentfarm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install FarmNotary and AgentFarm consensus deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install -r agentfarm/requirements-ci-lock.txt
+          pip install -e ./agentfarm --no-deps
+
+      - name: Record AgentFarm SHA
+        id: meta
+        run: |
+          sha=$(git -C agentfarm rev-parse HEAD)
+          echo "agentfarm_sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "AgentFarm $sha"
+
+      - name: Run consensus smoke cell
+        working-directory: agentfarm
+        run: python run_experiment.py ${{ env.CELL }} --out "$RUNNER_TEMP/consensus-run"
+
+      - name: Notarize with this FarmNotary (--profile consensus)
+        env:
+          AGENTFARM_SHA: ${{ steps.meta.outputs.agentfarm_sha }}
+          RUN: ${{ runner.temp }}/consensus-run
+        run: |
+          python - <<'PY'
+          import json, os, shlex, sys
+          from pathlib import Path
+
+          from farm_notary.manifest import build_manifest, write_manifest
+
+          run = Path(os.environ["RUN"])
+          agentfarm = Path("agentfarm").resolve()
+          rc = json.loads((run / "run_config.json").read_text())
+          cfg = rc.get("config") or {}
+          script = agentfarm / "run_experiment.py"
+          command = (
+              f"{shlex.quote(sys.executable)} {shlex.quote(str(script))} "
+              f"--trials {cfg['trials']} --voters {cfg['voters']} "
+              f"--candidates {cfg['candidates']} --population {cfg['population']} "
+              f"--seed {cfg['seed']} --no-persist-ballots --out {{run_dir}}"
+          )
+          git_sha = os.environ["AGENTFARM_SHA"]
+          lock = agentfarm / "requirements-ci-lock.txt"
+          manifest = build_manifest(
+              run,
+              publish_profile="consensus",
+              git_sha=git_sha,
+              git_dirty=False,
+              runner="farm-notary-consensus-matrix",
+              command=command,
+              config=cfg,
+              lockfile=lock,
+          )
+          write_manifest(manifest, run)
+          print("command", command)
+          print("artifacts", manifest.artifacts)
+          print("content_hash", manifest.content_hash())
+          print("producer", manifest.environment.get("system"), manifest.environment.get("machine"))
+          PY
+
+      - name: Upload produced run
+        uses: actions/upload-artifact@v4
+        with:
+          name: consensus-produced
+          path: ${{ runner.temp }}/consensus-run
+          if-no-files-found: error
+
+  reproduce:
+    name: Reproduce on ${{ matrix.label }}
+    needs: produce
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: x86-64-linux
+            required: true
+          - os: ubuntu-24.04-arm
+            label: arm64-linux
+            required: false
+          - os: macos-14
+            label: arm64-macos
+            required: false
+    steps:
+      - name: Checkout FarmNotary
+        uses: actions/checkout@v4
+
+      - name: Checkout AgentFarm at produce SHA
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.AGENTFARM_REPO }}
+          ref: ${{ needs.produce.outputs.agentfarm_sha }}
+          path: agentfarm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install FarmNotary and AgentFarm consensus deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install -r agentfarm/requirements-ci-lock.txt
+          pip install -e ./agentfarm --no-deps
+
+      - name: Download produced run
+        uses: actions/download-artifact@v4
+        with:
+          name: consensus-produced
+          path: ${{ runner.temp }}/consensus-run
+
+      - name: Reproduce recorded command
+        id: repro
+        continue-on-error: true
+        env:
+          RUN: ${{ runner.temp }}/consensus-run
+          FRESH: ${{ runner.temp }}/consensus-fresh
+        run: farm-notary reproduce --run-dir "$RUN" --fresh-dir "$FRESH"
+
+      - name: Verify claim card
+        if: always()
+        continue-on-error: true
+        env:
+          RUN: ${{ runner.temp }}/consensus-run
+        run: farm-notary verify --run-dir "$RUN"
+
+      - name: Write matrix receipt summary
+        if: always()
+        env:
+          RUN: ${{ runner.temp }}/consensus-run
+          LABEL: ${{ matrix.label }}
+          OS: ${{ matrix.os }}
+          REQUIRED: ${{ matrix.required }}
+        run: |
+          python - <<'PY'
+          import json, os, platform
+          from pathlib import Path
+
+          from farm_notary.scope import (
+              ALLOWED_SENTENCE,
+              DEMONSTRATED_SCOPES,
+              environment_machine,
+              format_bitwise_status,
+          )
+
+          run = Path(os.environ["RUN"])
+          receipt_path = run / "reproduction.json"
+          receipt = json.loads(receipt_path.read_text()) if receipt_path.is_file() else {}
+          env = receipt.get("environment") or {}
+          matched = list(receipt.get("matched") or [])
+          mismatched = list(receipt.get("mismatched") or [])
+          missing = list(receipt.get("missing") or [])
+          compared = len(matched) + len(mismatched) + len(missing)
+          score = f"{len(matched)}/{compared}" if compared else "missing"
+          ok = bool(receipt.get("ok"))
+          label = environment_machine(env) if env else "unknown"
+          status = (
+              format_bitwise_status(score, env, ok=ok)
+              if compared
+              else "missing"
+          )
+          summary = {
+              "job_label": os.environ["LABEL"],
+              "runs_on": os.environ["OS"],
+              "required": os.environ["REQUIRED"] == "true",
+              "ok": ok,
+              "score": score,
+              "matched": matched,
+              "mismatched": mismatched,
+              "missing": missing,
+              "machine": label,
+              "system": env.get("system") or platform.system(),
+              "arch": env.get("machine") or platform.machine(),
+              "python": env.get("python"),
+              "status": status,
+              "allowed_sentence": ALLOWED_SENTENCE,
+              "demonstrated_scopes": sorted(DEMONSTRATED_SCOPES),
+          }
+          out = Path(os.environ["RUNNER_TEMP"]) / "matrix-result.json"
+          out.write_text(json.dumps(summary, indent=2) + "\n")
+          print(json.dumps(summary, indent=2))
+          PY
+
+      - name: Upload receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: consensus-receipt-${{ matrix.label }}
+          path: |
+            ${{ runner.temp }}/consensus-run/reproduction.json
+            ${{ runner.temp }}/matrix-result.json
+          if-no-files-found: error
+
+      - name: Same-arch x86-64 Linux must still pass
+        if: matrix.required
+        env:
+          RUN: ${{ runner.temp }}/consensus-run
+        run: |
+          python - <<'PY'
+          import json, sys
+          from pathlib import Path
+          receipt = json.loads(Path("${{ runner.temp }}/consensus-run/reproduction.json").read_text())
+          if not receipt.get("ok"):
+              print("x86-64 Linux reproduction failed; the demonstrated scope is broken")
+              print("mismatched:", receipt.get("mismatched"))
+              print("missing:", receipt.get("missing"))
+              sys.exit(1)
+          PY
+
+  summarize:
+    name: Scoped sentence
+    needs: reproduce
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout FarmNotary
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install FarmNotary
+        run: pip install -e .
+
+      - name: Download receipts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: consensus-receipt-*
+          path: ${{ runner.temp }}/receipts
+          merge-multiple: false
+
+      - name: Emit the sentence the tool is allowed to print
+        run: |
+          python - <<'PY'
+          import json, sys
+          from pathlib import Path
+
+          from farm_notary.scope import ALLOWED_SENTENCE, DEMONSTRATED_SCOPES
+
+          root = Path("${{ runner.temp }}") / "receipts"
+          rows = []
+          for path in sorted(root.rglob("matrix-result.json")):
+              rows.append(json.loads(path.read_text()))
+
+          print("demonstrated scopes:", ", ".join(sorted(DEMONSTRATED_SCOPES)))
+          print("allowed sentence:", ALLOWED_SENTENCE)
+          print()
+          print(f"{'job':<16} {'machine':<14} {'score':<8} {'ok':<6} status")
+          required_ok = True
+          for row in rows:
+              print(
+                  f"{row['job_label']:<16} {row['machine']:<14} "
+                  f"{row['score']:<8} {str(row['ok']):<6} {row['status']}"
+              )
+              if row.get("required") and not row.get("ok"):
+                  required_ok = False
+              extra = []
+              if row.get("mismatched"):
+                  extra.append("mismatched=" + ",".join(row["mismatched"]))
+              if row.get("missing"):
+                  extra.append("missing=" + ",".join(row["missing"]))
+              if extra:
+                  print("   ", "; ".join(extra))
+
+          print()
+          print(
+              "Until ARM64 Linux and ARM64 macOS receipts are ok and "
+              "DEMONSTRATED_SCOPES is expanded, the tool will not emit a "
+              "wider sentence."
+          )
+          if not rows:
+              print("error: no matrix-result.json artifacts")
+              sys.exit(1)
+          if not required_ok:
+              print("error: required x86-64 Linux reproduction failed")
+              sys.exit(1)
+          PY

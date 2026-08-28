@@ -33,6 +33,7 @@ def test_consensus_profile_records_official_artifacts(tmp_path: Path):
     (tmp_path / "trials.csv").write_text("paradigm,trial\nparty,0\n", encoding="utf-8")
     (tmp_path / "summary.csv").write_text("paradigm,total\nparty,0.2\n", encoding="utf-8")
     (tmp_path / "allocation_means.csv").write_text("paradigm,mean\nparty,0.2\n", encoding="utf-8")
+    (tmp_path / "contrasts.csv").write_text("contrast,delta\nparty_vs_score,0.1\n", encoding="utf-8")
     (tmp_path / "REPORT.md").write_text("# report\n", encoding="utf-8")
     (tmp_path / "run_config.json").write_text("{}", encoding="utf-8")
     (tmp_path / "figures").mkdir()
@@ -47,6 +48,7 @@ def test_consensus_profile_records_official_artifacts(tmp_path: Path):
         "trials.csv",
         "summary.csv",
         "allocation_means.csv",
+        "contrasts.csv",
         "REPORT.md",
         "run_config.json",
         "figures/welfare.png",
