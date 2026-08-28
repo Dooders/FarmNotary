@@ -1,9 +1,4 @@
-__pycache__/
-*.py[cod]
-*.egg-info/
 .venv/
-venv/
-dist/
-build/
-.env
-*.jsonl
+__pycache__/
+*.egg-info/
+.pytest_cache/
