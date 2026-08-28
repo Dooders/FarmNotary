@@ -8,6 +8,7 @@ from farm_notary import __version__
 from farm_notary.manifest import (
     Manifest,
     build_manifest,
+    hash_json,
     is_private_path,
     load_manifest,
     write_manifest,
@@ -261,6 +262,19 @@ def test_farm_notary_version_in_serialised_dict(tmp_path: Path):
     d = manifest.to_dict()
     assert "farm_notary_version" in d
     assert d["farm_notary_version"] == __version__
+
+
+def test_load_v1_manifest_without_farm_notary_version_preserves_hash(tmp_path: Path):
+    make_run_dir(tmp_path)
+    manifest = build_manifest(tmp_path, publish_patterns=["*.csv"], git_sha="abc")
+    data = manifest.to_dict()
+    data.pop("farm_notary_version", None)
+    expected_hash = hash_json(data)
+    (tmp_path / "manifest.json").write_text(json.dumps(data), encoding="utf-8")
+
+    loaded = load_manifest(tmp_path)
+    assert loaded.farm_notary_version is None
+    assert loaded.content_hash() == expected_hash
 
 
 def test_schema_version_skew_warning(tmp_path: Path):
