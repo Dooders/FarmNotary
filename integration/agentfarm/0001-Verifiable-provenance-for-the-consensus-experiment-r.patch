@@ -1,0 +1,565 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Thu, 27 Aug 2026 23:17:57 +0000
+Subject: [PATCH] Verifiable provenance for the consensus experiment:
+ reproducible reports, verify-report derivation check, FarmNotary adapter, CI
+ reproduction job
+
+---
+ .github/workflows/reproduce-consensus.yml     |  73 +++++++++++
+ farm/experiments/consensus/README.md          |   8 +-
+ farm/experiments/consensus/experiment.py      |  12 +-
+ farm/experiments/consensus/report.py          |  23 ++--
+ farm/provenance/__init__.py                   |   5 +
+ farm/provenance/notary.py                     | 116 ++++++++++++++++++
+ run_experiment.py                             |  76 +++++++++++-
+ .../experiments/test_consensus_invariants.py  |  47 +++++++
+ tests/test_provenance_notary.py               |  62 ++++++++++
+ 9 files changed, 409 insertions(+), 13 deletions(-)
+ create mode 100644 .github/workflows/reproduce-consensus.yml
+ create mode 100644 farm/provenance/__init__.py
+ create mode 100644 farm/provenance/notary.py
+ create mode 100644 tests/test_provenance_notary.py
+
+diff --git a/.github/workflows/reproduce-consensus.yml b/.github/workflows/reproduce-consensus.yml
+new file mode 100644
+index 00000000..6eaa5879
+--- /dev/null
++++ b/.github/workflows/reproduce-consensus.yml
+@@ -0,0 +1,73 @@
++name: Reproduce consensus experiment
++
++# Machine reproduction: run the experiment, notarize it, re-run the recorded
++# command into a fresh directory, and fail unless every artifact is
++# byte-identical. Also recomputes the derived artifacts (summary, report)
++# from the raw trial data. Green here backs the claim "bitwise reproducible
++# from the committed seed in a pinned environment, verified on every change".
++
++on:
++  push:
++    branches: [main, dev]
++    paths:
++      - "farm/experiments/consensus/**"
++      - "farm/provenance/**"
++      - "run_experiment.py"
++      - ".github/workflows/reproduce-consensus.yml"
++  pull_request:
++    paths:
++      - "farm/experiments/consensus/**"
++      - "farm/provenance/**"
++      - "run_experiment.py"
++      - ".github/workflows/reproduce-consensus.yml"
++
++jobs:
++  reproduce:
++    runs-on: ubuntu-latest
++    timeout-minutes: 15
++    steps:
++      - uses: actions/checkout@v4
++
++      - uses: actions/setup-python@v5
++        with:
++          python-version: "3.12"
++
++      - name: Install dependencies
++        run: |
++          python -m pip install --upgrade pip
++          pip install numpy pandas matplotlib
++          pip install -e . --no-deps
++          # TODO: switch to a released farm-notary once FarmNotary PR #1 ships.
++          pip install "git+https://github.com/Dooders/FarmNotary@cursor/farmnotary-mvp-2e2d" \
++            || pip install "git+https://github.com/Dooders/FarmNotary@main"
++
++      - name: Run experiment
++        run: python run_experiment.py --trials 60 --voters 200 --candidates 8 --population two_cluster --seed 0 --out /tmp/consensus-run
++
++      - name: Verify derived artifacts follow from trials.csv
++        run: python run_experiment.py verify-report --results /tmp/consensus-run
++
++      - name: Notarize
++        run: |
++          python - <<'EOF'
++          import json
++          from pathlib import Path
++          from farm_notary import build_manifest, write_manifest
++
++          run_dir = Path("/tmp/consensus-run")
++          run_config = json.loads((run_dir / "run_config.json").read_text())
++          manifest = build_manifest(
++              run_dir,
++              config=run_config["config"],
++              command=run_config["command"],
++              runner="agentfarm-ci",
++          )
++          write_manifest(manifest, run_dir)
++          print("content_hash", manifest.content_hash())
++          EOF
++
++      - name: Reproduce (byte-compare every artifact)
++        run: farm-notary reproduce --run-dir /tmp/consensus-run
++
++      - name: Verify manifest integrity
++        run: farm-notary verify --run-dir /tmp/consensus-run
+diff --git a/farm/experiments/consensus/README.md b/farm/experiments/consensus/README.md
+index 5ebcceab..514ef3cc 100644
+--- a/farm/experiments/consensus/README.md
++++ b/farm/experiments/consensus/README.md
+@@ -70,11 +70,17 @@ Population types: `one_cluster`, `two_cluster` (default), `three_cluster`,
+ `--lambda-cap`, `--lambda-correlated` (ties high λ to cluster-extreme platforms).
+ 
+ Outputs in `--out`: `trials.csv` (one row per paradigm × trial), `summary.csv`,
+-`allocation_means.csv`, `manifest.json`, `figures/{welfare_by_paradigm,
++`allocation_means.csv`, `run_config.json` (the exact command with a `{run_dir}`
++placeholder, plus the parsed config), `figures/{welfare_by_paradigm,
+ gap_vs_loser_share,lambda_by_paradigm}.png`, and `REPORT.md` auto-written from the
+ just-run numbers. Only aggregates and winner allocations are persisted — no
+ individual ballots.
+ 
++`python run_experiment.py verify-report --results <dir>` recomputes
++`summary.csv`, `allocation_means.csv`, and `REPORT.md` from `trials.csv` and
++byte-compares them against the files on disk, so the derived artifacts are
++verified to follow from the raw trial data.
++
+ ## Metrics
+ 
+ Per trial and aggregated: `total_welfare`, `supporter_welfare`, `loser_welfare`,
+diff --git a/farm/experiments/consensus/experiment.py b/farm/experiments/consensus/experiment.py
+index 8085aa8d..bd9abaf7 100644
+--- a/farm/experiments/consensus/experiment.py
++++ b/farm/experiments/consensus/experiment.py
+@@ -121,8 +121,12 @@ def allocation_means(trials: pd.DataFrame) -> pd.DataFrame:
+     return grouped.mean().reset_index()
+ 
+ 
+-def write_outputs(trials: pd.DataFrame, out_dir: Path, manifest: dict) -> None:
+-    """Write trials.csv, summary.csv, allocation_means.csv, manifest.json, figures, REPORT.md."""
++def write_outputs(trials: pd.DataFrame, out_dir: Path, run_config: dict) -> None:
++    """Write trials.csv, summary.csv, allocation_means.csv, run_config.json, figures, REPORT.md.
++
++    The run config is written as run_config.json, not manifest.json: the
++    manifest.json name is reserved for the FarmNotary artifact manifest.
++    """
+     from farm.experiments.consensus.plots import write_figures
+     from farm.experiments.consensus.report import write_report
+ 
+@@ -133,10 +137,10 @@ def write_outputs(trials: pd.DataFrame, out_dir: Path, manifest: dict) -> None:
+     trials.to_csv(out_dir / "trials.csv", index=False)
+     summary.to_csv(out_dir / "summary.csv", index=False)
+     allocations.to_csv(out_dir / "allocation_means.csv", index=False)
+-    (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
++    (out_dir / "run_config.json").write_text(json.dumps(run_config, indent=2) + "\n")
+ 
+     write_figures(trials, out_dir / "figures")
+-    write_report(trials, summary, allocations, manifest, out_dir / "REPORT.md")
++    write_report(trials, summary, allocations, run_config, out_dir / "REPORT.md")
+ 
+ 
+ def config_manifest(config: ExperimentConfig, command: str) -> dict:
+diff --git a/farm/experiments/consensus/report.py b/farm/experiments/consensus/report.py
+index badee27a..5a108d74 100644
+--- a/farm/experiments/consensus/report.py
++++ b/farm/experiments/consensus/report.py
+@@ -141,14 +141,13 @@ def _hypothesis_lines(cell: pd.DataFrame) -> list[str]:
+     return lines
+ 
+ 
+-def write_report(
++def render_report(
+     trials: pd.DataFrame,
+     summary: pd.DataFrame,
+     allocations: pd.DataFrame,
+-    manifest: dict,
+-    path: Path,
+-) -> None:
+-    config = manifest["config"]
++    run_config: dict,
++) -> str:
++    config = run_config["config"]
+     populations = list(trials["population"].unique())
+     cells = _cell_means(trials)
+     paradigms = list(trials["paradigm"].unique())
+@@ -216,10 +215,20 @@ def write_report(
+     )
+ 
+     parts.append("## Reproduce\n")
+-    parts.append("```\n" + manifest["command"] + "\n```\n")
++    parts.append("```\n" + run_config["command"] + "\n```\n")
+     parts.append(
+         "Deterministic given identical parameters and seed (per-trial streams are derived from "
+         "`numpy.random.default_rng([seed, population, candidates, trial])`).\n"
+     )
+ 
+-    path.write_text("\n".join(parts))
++    return "\n".join(parts)
++
++
++def write_report(
++    trials: pd.DataFrame,
++    summary: pd.DataFrame,
++    allocations: pd.DataFrame,
++    run_config: dict,
++    path: Path,
++) -> None:
++    path.write_text(render_report(trials, summary, allocations, run_config))
+diff --git a/farm/provenance/__init__.py b/farm/provenance/__init__.py
+new file mode 100644
+index 00000000..140c9826
+--- /dev/null
++++ b/farm/provenance/__init__.py
+@@ -0,0 +1,5 @@
++"""Optional run notarization via FarmNotary (pip install farm-notary)."""
++
++from farm.provenance.notary import notarize, reproduce, verify
++
++__all__ = ["notarize", "reproduce", "verify"]
+diff --git a/farm/provenance/notary.py b/farm/provenance/notary.py
+new file mode 100644
+index 00000000..8198b5f0
+--- /dev/null
++++ b/farm/provenance/notary.py
+@@ -0,0 +1,116 @@
++"""AgentFarm adapter for FarmNotary.
++
++FarmNotary is an optional dependency; every entry point here raises a helpful
++error when it is missing. The adapter is a thin veneer: manifests record the
++command (with a ``{run_dir}`` placeholder), config, git identity, and
++environment; anchoring goes through OpenTimestamps (free public calendars) or
++stays a dry run; reproduction re-executes the recorded command and
++byte-compares the artifacts.
++"""
++
++from __future__ import annotations
++
++import json
++from pathlib import Path
++from typing import Any, Mapping, Optional, Sequence, Tuple
++
++RUN_CONFIG_NAME = "run_config.json"
++
++
++def _require_farm_notary():
++    try:
++        import farm_notary
++    except ImportError as exc:
++        raise ImportError(
++            "Run notarization needs the optional farm-notary package: "
++            "pip install farm-notary (add farm-notary[ots] to anchor via "
++            "OpenTimestamps)"
++        ) from exc
++    return farm_notary
++
++
++def _read_run_config(run_dir: Path) -> dict:
++    """The experiment's own run_config.json, when present."""
++    path = Path(run_dir) / RUN_CONFIG_NAME
++    if path.is_file():
++        return json.loads(path.read_text())
++    return {}
++
++
++def notarize(
++    run_dir: Path,
++    *,
++    config: Optional[Mapping[str, Any]] = None,
++    command: Optional[str] = None,
++    runner: str = "agentfarm",
++    official_record: Optional[Mapping[str, Any]] = None,
++    backend: str = "dry-run",
++    calendars: Optional[Sequence[str]] = None,
++    pin: bool = False,
++    ipfs_api: Optional[str] = None,
++    lockfile: Optional[Path] = None,
++) -> Tuple[Any, Any]:
++    """Notarize a finished run directory; returns (manifest, receipt).
++
++    When the run directory contains run_config.json (written by
++    run_experiment.py), its command and config are used automatically, so the
++    manifest is reproduce-ready without extra arguments. backend is "dry-run"
++    (default, no network) or "ots" (OpenTimestamps public calendars, free).
++    """
++    fn = _require_farm_notary()
++    from farm_notary.anchor import get_backend
++
++    run_config = _read_run_config(run_dir)
++    return fn.notarize_run(
++        Path(run_dir),
++        config=dict(config) if config is not None else run_config.get("config", {}),
++        command=command or run_config.get("command"),
++        runner=runner,
++        lockfile=lockfile,
++        official_record=official_record,
++        backend=get_backend(backend, calendars=calendars),
++        pin=pin,
++        ipfs_api=ipfs_api,
++    )
++
++
++def verify(run_dir: Path) -> list:
++    """All integrity problems for a notarized run directory ([] means OK)."""
++    fn = _require_farm_notary()
++    from farm_notary.verify import verify_anchor, verify_receipt, verify_run_dir
++
++    run_dir = Path(run_dir)
++    manifest = fn.load_manifest(run_dir)
++    return (
++        verify_run_dir(manifest, run_dir)
++        + verify_anchor(manifest, run_dir)
++        + verify_receipt(manifest, run_dir)
++    )
++
++
++def reproduce(run_dir: Path, *, ignore: Sequence[str] = (), anchor: bool = False):
++    """Re-run the notarized command and byte-compare; returns the result.
++
++    Writes a reproduction.json receipt into run_dir; with anchor=True the
++    receipt hash is timestamped via OpenTimestamps (reproduction.ots).
++    """
++    fn = _require_farm_notary()
++    from farm_notary.reproduce import (
++        RECEIPT_PROOF_NAME,
++        build_receipt,
++        receipt_hash,
++        reproduce_run,
++        write_receipt,
++    )
++
++    run_dir = Path(run_dir)
++    manifest = fn.load_manifest(run_dir)
++    result = reproduce_run(manifest, ignore=ignore)
++    receipt = build_receipt(manifest, result)
++    write_receipt(receipt, run_dir)
++    if anchor:
++        from farm_notary.ots import stamp_digest
++
++        proof, _ = stamp_digest(bytes.fromhex(receipt_hash(receipt)))
++        (run_dir / RECEIPT_PROOF_NAME).write_bytes(proof)
++    return result
+diff --git a/run_experiment.py b/run_experiment.py
+index d7ff5123..86d8c8eb 100755
+--- a/run_experiment.py
++++ b/run_experiment.py
+@@ -16,6 +16,11 @@ Render a social-media MP4 of one trial's dynamic (requires ffmpeg):
+     python run_experiment.py animate --seed 0 --trial 0 \
+         --out results/consensus_media/consensus_dynamics.mp4
+ 
++Verify that the derived artifacts (summary.csv, allocation_means.csv, REPORT.md)
++recompute byte-identically from trials.csv:
++
++    python run_experiment.py verify-report --results results/consensus
++
+ Render the produced audience explainer from run outputs (requires manim):
+ 
+     python run_experiment.py overview --results results/consensus \
+@@ -33,6 +38,7 @@ from farm.experiments.consensus.experiment import (
+     DEFAULT_LAMBDA_CAP,
+     ExperimentConfig,
+     SweepConfig,
++    allocation_means,
+     config_manifest,
+     run_sweep,
+     run_trials,
+@@ -164,9 +170,77 @@ def _print_summary(trials: pd.DataFrame, out_dir: Path) -> None:
+     print(f"\nArtifacts written to {out_dir}/ (trials.csv, summary.csv, allocation_means.csv, figures/, REPORT.md)")
+ 
+ 
++def _portable_command(argv: list) -> str:
++    """The recorded command with the output directory replaced by {run_dir}.
++
++    Keeps REPORT.md byte-identical across re-runs into different directories
++    and makes the record directly usable by `farm-notary reproduce`.
++    """
++    parts: list = []
++    saw_out = False
++    skip = False
++    for tok in argv:
++        if skip:
++            parts.append("{run_dir}")
++            skip = False
++        elif tok == "--out":
++            parts.append(tok)
++            saw_out = skip = True
++        elif tok.startswith("--out="):
++            parts.append("--out={run_dir}")
++            saw_out = True
++        else:
++            parts.append(tok)
++    if not saw_out:
++        parts += ["--out", "{run_dir}"]
++    return "python run_experiment.py " + " ".join(parts)
++
++
++def _verify_report(results: Path) -> int:
++    """Recompute summary.csv, allocation_means.csv, and REPORT.md from trials.csv.
++
++    Byte-compares the recomputation against the files on disk, so the derived
++    artifacts are verified to follow from the raw trial data.
++    """
++    import json
++
++    from farm.experiments.consensus.report import render_report
++
++    # round_trip parsing recovers the exact float64 values that were written;
++    # the default fast parser can be off by one ulp, which breaks byte equality.
++    trials = pd.read_csv(results / "trials.csv", float_precision="round_trip")
++    run_config = json.loads((results / "run_config.json").read_text())
++    summary = summarize(trials)
++    allocations = allocation_means(trials)
++
++    expected = {
++        "summary.csv": summary.to_csv(index=False),
++        "allocation_means.csv": allocations.to_csv(index=False),
++        "REPORT.md": render_report(trials, summary, allocations, run_config),
++    }
++    failures = []
++    for name, text in expected.items():
++        actual = (results / name).read_text()
++        if actual == text:
++            print(f"OK {name} recomputed from trials.csv is byte-identical")
++        else:
++            failures.append(name)
++            print(f"FAIL {name} does not match its recomputation from trials.csv")
++    return 1 if failures else 0
++
++
+ def main(argv=None) -> int:
+     argv = list(sys.argv[1:] if argv is None else argv)
+-    command = "python run_experiment.py " + " ".join(argv)
++    command = _portable_command(argv)
++
++    if argv and argv[0] == "verify-report":
++        parser = argparse.ArgumentParser(
++            prog="run_experiment.py verify-report",
++            description="Verify that derived artifacts follow from trials.csv",
++        )
++        parser.add_argument("--results", type=Path, default=Path("results/consensus"))
++        args = parser.parse_args(argv[1:])
++        return _verify_report(args.results)
+ 
+     if argv and argv[0] == "animate":
+         from farm.experiments.consensus.animate import render_animation
+diff --git a/tests/experiments/test_consensus_invariants.py b/tests/experiments/test_consensus_invariants.py
+index c3cd0251..5f0106bb 100644
+--- a/tests/experiments/test_consensus_invariants.py
++++ b/tests/experiments/test_consensus_invariants.py
+@@ -103,3 +103,50 @@ def test_benefits_are_normalized_rows() -> None:
+         population = generate_population(rng, n_voters=80, population_type=population_type)
+         np.testing.assert_allclose(population.benefits.sum(axis=1), 1.0, atol=1e-9)
+         assert (population.benefits >= 0.0).all()
++
++
++def test_portable_command_replaces_out_dir() -> None:
++    from run_experiment import _portable_command
++
++    assert (
++        _portable_command(["--seed", "0", "--out", "/tmp/x"])
++        == "python run_experiment.py --seed 0 --out {run_dir}"
++    )
++    assert (
++        _portable_command(["--out=/tmp/x", "--seed", "0"])
++        == "python run_experiment.py --out={run_dir} --seed 0"
++    )
++    assert _portable_command(["--seed", "0"]).endswith("--seed 0 --out {run_dir}")
++
++
++def test_outputs_are_bitwise_reproducible_and_derivations_verify(tmp_path) -> None:
++    """Two runs with the same seed produce byte-identical artifacts, and the
++    derived artifacts (summary, allocation means, report) recompute exactly
++    from trials.csv."""
++    import subprocess
++    import sys
++
++    from run_experiment import _verify_report
++
++    repo = Path(__file__).resolve().parents[2]
++    args = [
++        sys.executable,
++        str(repo / "run_experiment.py"),
++        "--trials", "6", "--voters", "60", "--candidates", "4",
++        "--population", "two_cluster", "--seed", "3",
++    ]
++    a, b = tmp_path / "a", tmp_path / "b"
++    subprocess.run(args + ["--out", str(a)], check=True, cwd=repo, capture_output=True)
++    subprocess.run(args + ["--out", str(b)], check=True, cwd=repo, capture_output=True)
++
++    artifacts = sorted(p.relative_to(a) for p in a.rglob("*") if p.is_file())
++    assert artifacts == sorted(p.relative_to(b) for p in b.rglob("*") if p.is_file())
++    for rel in artifacts:
++        assert (a / rel).read_bytes() == (b / rel).read_bytes(), f"{rel} differs between identical runs"
++
++    assert _verify_report(a) == 0
++
++    # Tampering with a derived artifact is caught.
++    summary = a / "summary.csv"
++    summary.write_text(summary.read_text().replace("0.", "1.", 1))
++    assert _verify_report(a) == 1
+diff --git a/tests/test_provenance_notary.py b/tests/test_provenance_notary.py
+new file mode 100644
+index 00000000..53faf8db
+--- /dev/null
++++ b/tests/test_provenance_notary.py
+@@ -0,0 +1,62 @@
++"""Tests for the FarmNotary adapter (skipped when farm-notary is not installed)."""
++
++import json
++import sys
++from pathlib import Path
++
++import pytest
++
++pytest.importorskip("farm_notary")
++
++from farm.provenance import notarize, reproduce, verify
++
++pytestmark = pytest.mark.unit
++
++
++def make_run(tmp_path: Path) -> Path:
++    """A tiny fake run whose recorded command regenerates it deterministically.
++
++    Like run_experiment.py, the generator writes run_config.json itself (with
++    the {run_dir} placeholder), so a re-run reproduces every artifact.
++    """
++    script = tmp_path / "gen.py"
++    script.write_text(
++        "import json, sys\nfrom pathlib import Path\n"
++        "out = Path(sys.argv[1]); out.mkdir(parents=True, exist_ok=True)\n"
++        "(out / 'summary.csv').write_text('a,b\\n1,2\\n')\n"
++        "command = f'{sys.executable} {sys.argv[0]} {{run_dir}}'\n"
++        "(out / 'run_config.json').write_text("
++        "json.dumps({'command': command, 'config': {'seed': 3}}))\n"
++    )
++    run_dir = tmp_path / "run"
++    command = f"{sys.executable} {script} {{run_dir}}"
++    import subprocess
++
++    subprocess.run(
++        command.replace("{run_dir}", str(run_dir)), shell=True, check=True
++    )
++    return run_dir
++
++
++def test_notarize_picks_up_run_config(tmp_path: Path) -> None:
++    run_dir = make_run(tmp_path)
++    manifest, receipt = notarize(run_dir)
++    assert receipt.backend == "dry-run" and receipt.dry_run
++    assert manifest.command.endswith("{run_dir}")
++    assert manifest.config == {"seed": 3}
++    assert "summary.csv" in manifest.artifact_hashes
++    assert verify(run_dir) == []
++
++
++def test_reproduce_byte_compares_and_writes_receipt(tmp_path: Path) -> None:
++    run_dir = make_run(tmp_path)
++    notarize(run_dir)
++    result = reproduce(run_dir)
++    assert result.ok
++    receipt = json.loads((run_dir / "reproduction.json").read_text())
++    assert receipt["ok"] is True
++    assert verify(run_dir) == []
++
++    # Tampering with an artifact after notarization is caught.
++    (run_dir / "summary.csv").write_text("a,b\n9,9\n")
++    assert any("summary.csv" in p for p in verify(run_dir))
+-- 
+2.43.0
+
