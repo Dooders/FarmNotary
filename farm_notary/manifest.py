@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator, List, Mapping, Optional, Sequence, Tuple
 
-from farm_notary.schema import MANIFEST_VERSION, PRIVATE_NAME_FRAGMENTS, REQUIRED_KEYS
+from farm_notary.schema import MANIFEST_VERSION, PRIVATE_NAME_FRAGMENTS, REQUIRED_KEYS, TOOL_VERSION
 
 MANIFEST_NAME = "manifest.json"
 RECEIPT_NAME = "reproduction.json"
@@ -150,6 +150,7 @@ def capture_environment(lockfile: Optional[Path] = None) -> dict:
 @dataclass
 class Manifest:
     schema: str = MANIFEST_VERSION
+    farm_notary_version: Optional[str] = None
     created_utc: str = ""
     git_sha: Optional[str] = None
     git_dirty: Optional[bool] = None
@@ -177,7 +178,14 @@ class Manifest:
         # Omit truly optional fields that are None so that loading an older
         # manifest (which does not contain e.g. ``precommit_hash``) does not
         # inject a ``null`` value and alter the recomputed content hash.
-        _OMIT_IF_NONE = {"precommit_hash", "cid", "cid_reachable", "cid_reachable_checked_utc", "anchor"}
+        _OMIT_IF_NONE = {
+            "farm_notary_version",
+            "precommit_hash",
+            "cid",
+            "cid_reachable",
+            "cid_reachable_checked_utc",
+            "anchor",
+        }
         return {k: v for k, v in d.items() if not (k in _OMIT_IF_NONE and v is None)}
 
     @classmethod
@@ -301,6 +309,7 @@ def build_manifest(
         if git_dirty is None:
             git_dirty = detected_dirty
     manifest = Manifest(
+        farm_notary_version=TOOL_VERSION,
         created_utc=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         git_sha=git_sha,
         git_dirty=git_dirty,
@@ -347,13 +356,13 @@ def write_manifest(manifest: Manifest, run_dir: Path) -> Path:
     return dest
 
 
-def load_manifest(path: Path) -> Manifest:
+def load_manifest(path: Path, *, validate: bool = True) -> Manifest:
     """Load manifest.json from a file path or a run directory."""
     path = Path(path)
     if path.is_dir():
         path = path / MANIFEST_NAME
     data = json.loads(path.read_text(encoding="utf-8"))
     manifest = Manifest.from_dict(data)
-    manifest.validate()
+    if validate:
+        manifest.validate()
     return manifest
-

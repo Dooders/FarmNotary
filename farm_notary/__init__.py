@@ -1,5 +1,7 @@
 """FarmNotary: attest AgentFarm runs without executing them on-chain."""
 
+from farm_notary.schema import TOOL_VERSION as __version__
+
 from farm_notary.anchor import (
     AnchorReceipt,
     anchor_run,
@@ -39,4 +41,3 @@ __all__ = [
     "write_proof",
     "__version__",
 ]
-__version__ = "0.1.0"

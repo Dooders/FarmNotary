@@ -283,6 +283,8 @@ def _cmd_anchor(args: argparse.Namespace) -> int:
 
 
 def _cmd_verify(args: argparse.Namespace) -> int:
+    import warnings
+
     if args.manifest:
         manifest_path = Path(args.manifest)
         run_dir = manifest_path.parent
@@ -293,12 +295,16 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         print("error: pass --run-dir or --manifest", file=sys.stderr)
         return 2
     try:
-        manifest = load_manifest(manifest_path)
+        manifest = load_manifest(manifest_path, validate=False)
     except (ValueError, OSError) as exc:
         print(f"error: could not load manifest: {exc}", file=sys.stderr)
         return 2
 
-    problems = verify_run_dir(manifest, run_dir)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        problems = verify_run_dir(manifest, run_dir)
+    for w in caught:
+        print(f"warning: {w.message}", file=sys.stderr)
     problems += verify_anchor(manifest, run_dir)
     problems += verify_receipt(manifest, run_dir)
     problems += verify_precommit(manifest, run_dir)

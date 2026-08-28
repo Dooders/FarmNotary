@@ -5,16 +5,43 @@ Both checks return a list of human-readable problems; empty means verified.
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from typing import List
 
 from farm_notary.manifest import Manifest, hash_file
+from farm_notary.schema import MANIFEST_VERSION
+
+
+def _schema_version_number(schema: str) -> int:
+    """Extract the integer version from 'farmnotary.manifest.vN'. Returns 0 for unrecognised strings."""
+    prefix = "farmnotary.manifest.v"
+    if schema.startswith(prefix):
+        try:
+            return int(schema[len(prefix):])
+        except ValueError:
+            pass
+    return 0
 
 
 def verify_run_dir(manifest: Manifest, run_dir: Path) -> List[str]:
     """Rehash every artifact in the manifest against the run directory."""
     problems: List[str] = []
     run_dir = Path(run_dir)
+
+    # Warn early when the manifest was produced by a newer tool version so
+    # callers know the check may miss schema fields introduced after this
+    # release, but still attempt verification.
+    if manifest.schema != MANIFEST_VERSION:
+        current_v = _schema_version_number(MANIFEST_VERSION)
+        manifest_v = _schema_version_number(manifest.schema)
+        if manifest_v > 0 and manifest_v > current_v:
+            warnings.warn(
+                f"manifest schema {manifest.schema!r} is newer than this tool's "
+                f"known schema {MANIFEST_VERSION!r}; upgrade farm-notary for full verification.",
+                stacklevel=2,
+            )
+
     try:
         manifest.validate()
     except ValueError as exc:

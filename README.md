@@ -61,8 +61,9 @@ publish pattern would otherwise admit them.
 ## Install
 
 ```bash
-pip install -e .            # manifest + verify, no chain deps
-pip install -e ".[chain]"   # adds web3 for the EAS backend
+pip install farm-notary          # manifest + verify, no chain deps
+pip install "farm-notary[chain]" # adds web3 for the EAS backend
+pip install "farm-notary[ots]"   # adds opentimestamps for anchoring and proof checks
 ```
 
 Extras:
@@ -70,6 +71,15 @@ Extras:
 - `farm-notary[chain]` — adds `web3`, needed for the EAS backend.
 - `farm-notary[ots]` — adds the `opentimestamps` library, needed to anchor and to check proofs. Manifest building and local verification are stdlib-only.
 - IPFS upload needs no extra, just a reachable Kubo daemon.
+
+## Schema stability
+
+Every manifest records the tool version that created it (`farm_notary_version`) and the schema identifier (`schema`).
+
+**Promise:** within the `0.x` line, schema changes are **minor-version bumps** (e.g. `0.1 → 0.2`). The `verify` command stays backward-compatible with all older manifests: fields added in a later version are simply ignored when reading an older manifest. Reading a manifest produced by a *newer* tool emits a warning and still attempts verification.
+
+Breaking changes (new required fields, renamed keys, removed fields) are reserved for a `1.0` bump and will be communicated in the changelog with a migration guide.
+
 ## Quick start
 
 ```bash

@@ -94,6 +94,22 @@ def test_verify_via_manifest_path(tmp_path: Path):
     assert main(["verify", "--manifest", str(run_dir / "manifest.json")]) == 0
 
 
+def test_verify_warns_and_continues_for_newer_schema(tmp_path: Path, capsys):
+    run_dir = make_run_dir(tmp_path)
+    assert main(["manifest", "--run-dir", str(run_dir), "--publish", "*.csv"]) == 0
+    manifest_data = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    manifest_data["schema"] = "farmnotary.manifest.v999"
+    (run_dir / "manifest.json").write_text(json.dumps(manifest_data), encoding="utf-8")
+    (run_dir / "summary.csv").write_text("tampered\n", encoding="utf-8")
+
+    assert main(["verify", "--run-dir", str(run_dir)]) == 1
+    captured = capsys.readouterr()
+    out = captured.out
+    assert "unsupported manifest schema" in out
+    assert "artifact hash mismatch: summary.csv" in out
+    assert "newer than this tool's known schema" in captured.err
+
+
 def test_upgrade_requires_proof(tmp_path: Path, capsys):
     run_dir = make_run_dir(tmp_path)
     assert main(["upgrade", "--run-dir", str(run_dir)]) == 2
