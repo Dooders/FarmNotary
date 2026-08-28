@@ -18,6 +18,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Sequence
 
+from farm_notary.diagnose import (
+    MismatchDiagnosis,
+    diagnose_mismatches,
+    format_diagnostics,
+)
 from farm_notary.manifest import (
     RECEIPT_NAME,
     Manifest,
@@ -45,6 +50,8 @@ class ReproductionResult:
     missing: List[str] = field(default_factory=list)
     ignored: List[str] = field(default_factory=list)
     extra: List[str] = field(default_factory=list)
+    ignore: List[str] = field(default_factory=list)
+    diagnostics: List[MismatchDiagnosis] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -55,11 +62,17 @@ class ReproductionResult:
             f"command exit code: {self.returncode}",
             f"matched: {len(self.matched)} artifact(s) bitwise-identical",
         ]
+        diagnosed = {item.artifact for item in self.diagnostics}
+        if self.diagnostics:
+            lines.extend(format_diagnostics(self.diagnostics))
         for name in self.mismatched:
-            lines.append(f"mismatch: {name}")
+            if name not in diagnosed:
+                lines.append(f"mismatch: {name}")
         for name in self.missing:
             lines.append(f"missing from re-run: {name}")
-        if self.ignored:
+        if self.ignore:
+            lines.append(f"ignored globs (excluded from the claim): {', '.join(self.ignore)}")
+        elif self.ignored:
             lines.append(f"ignored (excluded from the claim): {', '.join(self.ignored)}")
         if self.extra:
             lines.append(f"extra files in re-run (not compared): {', '.join(self.extra)}")
@@ -76,12 +89,15 @@ def reproduce_run(
     fresh_dir: Optional[Path] = None,
     ignore: Sequence[str] = (),
     timeout: Optional[float] = None,
+    original_dir: Optional[Path] = None,
+    cwd: Optional[Path] = None,
 ) -> ReproductionResult:
     """Re-run the manifest's command into fresh_dir and compare artifact bytes.
 
     The recorded command must contain "{run_dir}", which is substituted with
     the fresh output directory. Comparison covers exactly the artifacts the
-    manifest lists, minus any matching an ignore glob.
+    manifest lists, minus any matching an ignore glob. ``cwd`` is the
+    working directory for that command (the experiment repo, not the run dir).
     """
     if not manifest.command:
         raise ReproduceError(
@@ -98,8 +114,15 @@ def reproduce_run(
     fresh_dir.mkdir(parents=True, exist_ok=True)
     command = manifest.command.replace(RUN_DIR_PLACEHOLDER, str(fresh_dir))
 
-    proc = subprocess.run(command, shell=True, timeout=timeout)
-    result = ReproductionResult(command=command, returncode=proc.returncode)
+    proc = subprocess.run(
+        command,
+        shell=True,
+        timeout=timeout,
+        cwd=str(cwd) if cwd is not None else None,
+    )
+    result = ReproductionResult(
+        command=command, returncode=proc.returncode, ignore=list(ignore)
+    )
 
     for name in sorted(manifest.artifact_hashes):
         if _is_ignored(name, ignore):
@@ -112,6 +135,11 @@ def reproduce_run(
             result.matched.append(name)
         else:
             result.mismatched.append(name)
+
+    if result.mismatched and original_dir is not None:
+        result.diagnostics = diagnose_mismatches(
+            result.mismatched, Path(original_dir), fresh_dir
+        )
 
     listed = set(manifest.artifact_hashes)
     for path in iter_artifact_paths(fresh_dir, manifest.publish_patterns):
@@ -139,6 +167,8 @@ def build_receipt(manifest: Manifest, result: ReproductionResult) -> dict:
         "mismatched": result.mismatched,
         "missing": result.missing,
         "ignored": result.ignored,
+        "ignore": list(result.ignore),
+        "diagnostics": [item.to_dict() for item in result.diagnostics],
     }
 
 

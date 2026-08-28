@@ -173,6 +173,8 @@ def test_environment_captured_by_default(tmp_path: Path):
     make_run_dir(tmp_path)
     manifest = build_manifest(tmp_path, publish_patterns=["*.csv"], git_sha="abc")
     assert manifest.environment["python"]
+    assert manifest.environment["system"]
+    assert manifest.environment["machine"]
     assert len(manifest.environment["packages_hash"]) == 64
     assert manifest.environment["package_count"] > 0
 

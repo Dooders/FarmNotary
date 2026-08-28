@@ -31,7 +31,12 @@ git am path/to/0001-Verifiable-provenance-for-the-consensus-experiment-r.patch
 - **CI machine reproduction** (`.github/workflows/reproduce-consensus.yml`):
   on every change to the experiment, CI runs it, verifies the derived
   artifacts, notarizes, re-runs the recorded command, and fails unless every
-  artifact is byte-identical.
+  artifact is byte-identical. That job is x86-64 Linux only.
+- **FarmNotary hardware matrix**
+  (`.github/workflows/reproduce-consensus-matrix.yml` in this repo): produce
+  on x86-64 Linux, reproduce on Linux x86 / Linux ARM / macOS ARM. The tool
+  may emit *byte-identical on x86-64 Linux in a pinned environment* and
+  nothing wider until ARM receipts exist. See `docs/CLAIMS.md`.
 - **Tests**: same-seed bitwise reproducibility of all outputs, portable
   command recording, derivation verification (including tamper detection),
   and adapter tests that skip when farm-notary is not installed.

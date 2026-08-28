@@ -49,7 +49,18 @@ Artifact discovery is recursive; paths are stored POSIX-style relative to the ru
 
 ## Privacy
 
-Relative paths containing `ballot`, `vote`, `voter`, `individual_choice`, or `private` (any path component) are skipped by discovery, rejected by validation, and never uploaded. Do not put agent-level or citizen-level choices in `official_record`.
+Allowlist-first: nothing is hashed unless it matches a declared publish
+pattern. Named experiment-type profiles (`consensus`, `rl-sweep`,
+`evolution-run` in `farm_notary/profiles.py`) are the checked-in official
+artifact lists; `--publish` and `notary.publish` append extras. The resolved
+allowlist is recorded as `publish_patterns` (and `publish_profile` when a
+profile was used) so the policy is part of the claim.
+
+Relative paths containing `ballot`, `vote`, `voter`, `individual_choice`, or
+`private` (any path component) are skipped by discovery, rejected by
+validation, and never uploaded — including after a profile or `--publish`
+glob would otherwise admit them. Do not put agent-level or citizen-level
+choices in `official_record`.
 
 ## AgentFarm hook
 
@@ -59,8 +70,9 @@ After `ExperimentRunner` (or a dedicated consensus runner) flushes a run directo
 from farm_notary import notarize_run
 
 manifest, receipt = notarize_run(
-    run_dir, git_sha=sha, runner="consensus_paradigms", config=config
-)  # dry-run until a backend is passed; pin=True to upload to IPFS
+    run_dir, git_sha=sha, runner="consensus_paradigms", config=config,
+    publish_profile="consensus",
+)  # dry-run until a backend is passed; pin_remote="pinata" for a durable pin
 ```
 
 `notarize_run` builds and writes the manifest, optionally pins the directory (manifest included), anchors, persists any proof file, and rewrites `manifest.json` with the CID and anchor receipt.
@@ -69,7 +81,14 @@ manifest, receipt = notarize_run(
 
 `farm_notary.ipfs.IpfsClient` posts a multipart upload to a Kubo daemon's `/api/v0/add` with `wrap-with-directory=true&cid-version=1&pin=true` and takes the wrapping directory's CID as the run's content address. Standard library only; the endpoint comes from `FARM_NOTARY_IPFS_API` (default `http://127.0.0.1:5001`).
 
-The pinned tree includes `manifest.json`. Because `content_hash` excludes `cid`/`anchor`, the copy inside the pinned tree hashes to the same value that gets anchored, even though the local copy is later stamped.
+Local Kubo is a lab convenience, not archival. The published path is
+`--pin-remote`, which then calls Kubo's `/api/v0/pin/remote/add` for a
+registered pinning service (Pinata, web3.storage, or any Pinning Service
+API). The manifest records `pin_service` (`"local"` or the service name).
+
+The pinned tree includes `manifest.json`. Because `content_hash` excludes
+`cid` / `pin_service` / `anchor`, the copy inside the pinned tree hashes to
+the same value that gets anchored, even though the local copy is later stamped.
 
 ## Anchoring flow
 
@@ -85,8 +104,10 @@ The pinned tree includes `manifest.json`. Because `content_hash` excludes `cid`/
    for the completed path to a Bitcoin block header attestation and rewrites
    the proof. Exit code 1 means still pending; run it again later.
 3. **Verify** (`verify`): rehash artifacts, recompute the content hash, check
-   the proof commits to it, and report attestation status (pending calendars
-   or Bitcoin block heights). Checking the Bitcoin merkle path against a local
+   the proof commits to it, and print a CLAIMS.md claim card — tamper-evident
+   record, existed by time T (pending or Bitcoin height), pre-specified
+   design, bitwise reproducible (scoped), and an explicit non-claim of
+   scientific correctness. Checking the Bitcoin merkle path against a local
    node is left to the standard `ots verify` tooling — FarmNotary validates
    commitment integrity, not block headers.
 
@@ -99,18 +120,27 @@ invalidates the proof.
 The manifest records everything a stranger needs to re-derive the run:
 `command` (with a `{run_dir}` placeholder), `config`, `git_sha` plus a
 `git_dirty` flag (a dirty tree means the sha does not identify the code that
-ran, so it is recorded, not hidden), and `environment` (python, platform, a
-hash of the installed package set, optional lockfile hash).
+ran, so it is recorded, not hidden — and `precommit` / `anchor` refuse it
+unless `--allow-dirty`. Omitting `git_dirty` still inspects the working
+tree; a supplied SHA is not a bypass), and
+`environment` (python, platform, `system`, `machine`, a hash of the installed
+package set, optional lockfile hash). `system` + `machine` are what the
+claim card uses to decide whether it may emit the scoped sentence in
+[CLAIMS.md](CLAIMS.md) (`byte-identical on x86-64 Linux in a pinned
+environment`). Other hardware is reported, not claimed.
 
 `farm-notary reproduce` turns reproducibility from a claim into a procedure:
 re-run the recorded command into a fresh directory, rehash, byte-compare
-against the manifest. Known-nondeterministic artifacts (videos, databases)
+against the manifest. A mismatch is classified (`embedded_absolute_path`,
+`timestamp`, `float_print_format`, `video_encoder`) so a packaging bug is
+not read as a failed result — the consensus `{run_dir}` fix (7/7 → 8/8) is
+the type specimen. Known-nondeterministic artifacts (videos, databases)
 are excluded per-run with `--ignore` globs and recorded as excluded — the
 claim is scoped, never blanket. A successful reproduction writes
-`reproduction.json` (rerunner environment, per-file results, the original
-manifest hash) whose own hash can be anchored via OpenTimestamps
-(`reproduction.ots`), making "independently reproduced" a timestamped,
-third-party-checkable statement.
+`reproduction.json` (rerunner environment, per-file results, diagnostics,
+the original manifest hash) whose own hash can be anchored via
+OpenTimestamps (`reproduction.ots`), making "independently reproduced" a
+timestamped, third-party-checkable statement.
 
 Notary metadata (`manifest.json`, `reproduction.json`, `*.ots`) is never
 treated as an artifact: discovery skips it, so stamping and receipts don't

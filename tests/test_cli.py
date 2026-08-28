@@ -51,7 +51,26 @@ def test_manifest_command_no_publish_returns_error(tmp_path: Path, capsys):
     """manifest fails with exit code 2 when no publish patterns are given."""
     run_dir = make_run_dir(tmp_path)
     assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc"]) == 2
-    assert "publish patterns" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "publish patterns" in err
+    assert "--profile" in err
+
+
+def test_manifest_command_profile_consensus(tmp_path: Path, capsys):
+    run_dir = make_run_dir(tmp_path)
+    (run_dir / "REPORT.md").write_text("# report\n", encoding="utf-8")
+    (run_dir / "notes.txt").write_text("scratch\n", encoding="utf-8")
+    assert main(
+        ["manifest", "--run-dir", str(run_dir), "--git-sha", "abc", "--profile", "consensus"]
+    ) == 0
+    out = capsys.readouterr().out
+    assert "profile consensus" in out
+    manifest = load_manifest(run_dir)
+    assert manifest.publish_profile == "consensus"
+    assert "REPORT.md" in manifest.artifacts
+    assert "summary.csv" in manifest.artifacts
+    assert "notes.txt" not in manifest.artifacts
+    assert "REPORT.md" in manifest.publish_patterns
 
 
 def test_manifest_command_rejects_missing_dir(tmp_path: Path):
@@ -61,7 +80,7 @@ def test_manifest_command_rejects_missing_dir(tmp_path: Path):
 def test_anchor_dry_run_updates_manifest(tmp_path: Path, capsys):
     run_dir = make_run_dir(tmp_path)
     assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc", "--publish", "*.csv"]) == 0
-    assert main(["anchor", "--run-dir", str(run_dir)]) == 0
+    assert main(["anchor", "--run-dir", str(run_dir), "--allow-dirty"]) == 0
 
     manifest = load_manifest(run_dir)
     assert manifest.anchor["backend"] == "dry-run"
@@ -81,11 +100,18 @@ def test_verify_ok_and_tamper(tmp_path: Path, capsys):
     run_dir = make_run_dir(tmp_path)
     assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc", "--publish", "*.csv"]) == 0
     assert main(["verify", "--run-dir", str(run_dir)]) == 0
-    assert capsys.readouterr().out.count("OK") >= 1
+    out = capsys.readouterr().out
+    assert "claim card" in out
+    assert "tamper-evident record" in out
+    assert "pass" in out
+    assert "not claimed: scientific correctness" in out
 
     (run_dir / "summary.csv").write_text("tampered\n", encoding="utf-8")
     assert main(["verify", "--run-dir", str(run_dir)]) == 1
-    assert "hash mismatch" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "tamper-evident record" in out
+    assert "fail" in out
+    assert "hash mismatch" in out
 
 
 def test_verify_via_manifest_path(tmp_path: Path):
@@ -132,7 +158,7 @@ def test_anchor_eas_backend_writes_receipt(tmp_path: Path, capsys, monkeypatch):
     run_dir = make_run_dir(tmp_path)
     assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc", "--publish", "*.csv"]) == 0
     monkeypatch.setattr(cli, "get_backend", lambda name, **_kw: FakeEASBackend())
-    assert main(["anchor", "--run-dir", str(run_dir), "--backend", "eas", "--cid", "bafytest"]) == 0
+    assert main(["anchor", "--run-dir", str(run_dir), "--backend", "eas", "--cid", "bafytest", "--allow-dirty"]) == 0
     capsys.readouterr()
     manifest = load_manifest(run_dir)
     assert manifest.cid == "bafytest"
@@ -147,7 +173,7 @@ def test_anchor_no_write(tmp_path: Path, capsys, monkeypatch):
     assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc", "--publish", "*.csv"]) == 0
     before = (run_dir / "manifest.json").read_text(encoding="utf-8")
     monkeypatch.setattr(cli, "get_backend", lambda name, **_kw: FakeEASBackend())
-    assert main(["anchor", "--run-dir", str(run_dir), "--backend", "eas", "--no-write"]) == 0
+    assert main(["anchor", "--run-dir", str(run_dir), "--backend", "eas", "--no-write", "--allow-dirty"]) == 0
     assert (run_dir / "manifest.json").read_text(encoding="utf-8") == before
 
 
@@ -174,6 +200,7 @@ def test_full_pin_anchor_upgrade_verify_flow(tmp_path: Path, monkeypatch, capsys
                 "--no-check-gateway",
                 "--backend", "ots",
                 "--calendar", calendar.url,
+                "--allow-dirty",
             ]
         ) == 0
         capsys.readouterr()
@@ -186,7 +213,9 @@ def test_full_pin_anchor_upgrade_verify_flow(tmp_path: Path, monkeypatch, capsys
         assert b"votes_ballot" not in ipfs.requests[0]["body"]
 
         assert main(["verify", "--run-dir", str(run_dir)]) == 0
-        assert "pending at calendar" in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert "existed by time T" in out
+        assert "pending" in out
 
         # Still pending: calendar has no Bitcoin attestation yet.
         assert main(["upgrade", "--run-dir", str(run_dir)]) == 1
@@ -199,7 +228,9 @@ def test_full_pin_anchor_upgrade_verify_flow(tmp_path: Path, monkeypatch, capsys
         assert "Bitcoin block 800000" in capsys.readouterr().out
 
         assert main(["verify", "--run-dir", str(run_dir)]) == 0
-        assert "anchored in Bitcoin block 800000" in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert "existed by time T" in out
+        assert "Bitcoin height 800000" in out
     finally:
         ipfs.close()
         calendar.close()
@@ -222,13 +253,15 @@ def test_anchor_pin_gateway_reachable_recorded(tmp_path: Path, monkeypatch, caps
         import farm_notary.ipfs as _ipfs_mod
         monkeypatch.setattr(_ipfs_mod, "DEFAULT_GATEWAY_URL", gateway.url)
 
-        assert main(["anchor", "--run-dir", str(run_dir), "--pin"]) == 0
+        assert main(["anchor", "--run-dir", str(run_dir), "--pin", "--allow-dirty"]) == 0
 
         manifest = load_manifest(run_dir)
         assert manifest.cid == "bafyreach"
+        assert manifest.pin_service == "local"
         assert manifest.cid_reachable is True
         assert manifest.cid_reachable_checked_utc is not None
         assert manifest.content_hash() == pre_anchor_hash
+        assert "not archival" in capsys.readouterr().err
     finally:
         ipfs.close()
         gateway.close()
@@ -249,7 +282,7 @@ def test_anchor_pin_gateway_unreachable_warns(tmp_path: Path, monkeypatch, capsy
         import farm_notary.ipfs as _ipfs_mod
         monkeypatch.setattr(_ipfs_mod, "DEFAULT_GATEWAY_URL", gateway.url)
 
-        assert main(["anchor", "--run-dir", str(run_dir), "--pin"]) == 0
+        assert main(["anchor", "--run-dir", str(run_dir), "--pin", "--allow-dirty"]) == 0
 
         manifest = load_manifest(run_dir)
         assert manifest.cid_reachable is False
@@ -284,11 +317,13 @@ def test_anchor_pin_remote_delegates_to_kubo(tmp_path: Path, monkeypatch, capsys
 
         monkeypatch.setattr(IpfsClient, "pin_remote", fake_pin_remote)
 
-        assert main(["anchor", "--run-dir", str(run_dir), "--pin-remote", "pinata"]) == 0
+        assert main(["anchor", "--run-dir", str(run_dir), "--pin-remote", "pinata", "--allow-dirty"]) == 0
 
         manifest = load_manifest(run_dir)
         assert manifest.cid == "bafyremote"
+        assert manifest.pin_service == "pinata"
         assert pin_remote_calls == [("bafyremote", "pinata", None)]
+        assert "not archival" not in capsys.readouterr().err
     finally:
         ipfs.close()
         gateway.close()
@@ -304,7 +339,7 @@ def test_anchor_no_check_gateway_skips_reachability(tmp_path: Path, monkeypatch)
         ipfs.response_body = (json.dumps({"Name": "", "Hash": "bafyskip"}) + "\n").encode()
         monkeypatch.setenv("FARM_NOTARY_IPFS_API", ipfs.url)
 
-        assert main(["anchor", "--run-dir", str(run_dir), "--pin", "--no-check-gateway"]) == 0
+        assert main(["anchor", "--run-dir", str(run_dir), "--pin", "--no-check-gateway", "--allow-dirty"]) == 0
 
         manifest = load_manifest(run_dir)
         assert manifest.cid == "bafyskip"

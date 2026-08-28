@@ -9,7 +9,95 @@ FarmNotary uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased] — breaking changes
 
+### Added
+
+#### Determinism diagnostics on mismatch
+
+When `reproduce` finds a byte-diff it classifies the cause
+(`farm_notary/diagnose.py`) and writes `diagnostics` on the receipt:
+
+- `embedded_absolute_path` — output path baked into `REPORT.md` (the
+  `{run_dir}` fix that took 7/7 → 8/8)
+- `timestamp` — clock / ISO text in the artifact
+- `float_print_format` — same numbers, different spelling
+- `video_encoder` — MP4/WebM encoder output
+
+Classified diffs print **not a science failure** plus a fix. Unclassified
+diffs print **byte-diff is not a science verdict**. `verify` repeats the
+same notes under the claim card. A mismatch is still a failed bitwise
+claim; it is not a science claim.
+
+#### Scoped bitwise sentence (x86-64 Linux only)
+
+`farm-notary verify` and `farm-notary reproduce` emit the CLAIMS.md sentence
+the tool is allowed to print:
+
+> byte-identical on x86-64 Linux in a pinned environment
+
+That sentence is earned only by a passing receipt whose machine is in
+`farm_notary.scope.DEMONSTRATED_SCOPES` (today: `x86-64 Linux`). A passing
+receipt on Linux ARM or macOS ARM reports `N/M on <machine>; cross-hardware
+bitwise identity is not a claim`. Failed receipts report `fail — N/M` and
+do not emit the sentence. Manifests and receipts now record `system` and
+`machine` so the card does not have to parse `platform.platform()`.
+
+`.github/workflows/reproduce-consensus-matrix.yml` produces+reproduces on
+one x86-64 Linux VM (the demonstrated cell: 10/10 on 2026-08-28) and then
+re-runs on another x86 VM (also 10/10), Linux ARM (6/10), and macOS ARM
+(2/10). ARM receipts are not `ok`; the claim stays that one sentence.
+The recorded command is portable (`python run_experiment.py` plus `--cwd`);
+AgentFarm is a reviewed SHA pin, not a job-output checkout.
+
+#### Experiment-type publish profiles
+
+Named profiles `consensus`, `rl-sweep`, and `evolution-run` are checked-in
+allowlists of official artifacts (`farm_notary/profiles.py`). The consensus
+profile includes `contrasts.csv` (official AgentFarm record). Prefer
+`--profile consensus` (or `notary.profile` in the run config) over inventing
+globs. The denylist still applies. Extra `--publish` / `notary.publish`
+patterns append. The resolved allowlist is recorded as `publish_patterns`
+(already in the schema); `publish_profile` is recorded when a profile was
+used, so the policy is part of the claim.
+
+### Changed
+
+#### Durable pin is the published path
+
+`--pin-remote` (Pinata / web3.storage / pinning-service API) is the
+documented default for anything you cite. `--pin` to local Kubo remains a
+lab convenience and now always warns that it is not archival. The manifest
+records `pin_service` (`"local"` or the remote service name) as a stamp
+field (excluded from `content_hash`).
+
+#### `verify` prints a CLAIMS.md claim card
+
+`farm-notary verify` no longer leads with `OK <hash>` or requires reviewers
+to translate an exit code. It always prints a claim card:
+
+```
+claim card
+•  tamper-evident record           — pass
+•  existed by time T               — pending | Bitcoin height N | missing | fail
+•  pre-specified design            — precommit bound | missing | fail
+•  bitwise reproducible (scoped)   — N/M[, ignored: globs]; byte-identical on x86-64 Linux in a pinned environment | missing | fail
+•  not claimed: scientific correctness
+```
+
+Missing is not failure: a run with no timestamp, no precommit, and no
+reproduction receipt still exits 0 if the artifacts rehash. Failed checks
+still print `FAIL <detail>` under the card and exit 1. Reproduction
+receipts now record the `--ignore` globs so the scoped claim can list them.
+
 ### Breaking
+
+#### Dirty trees cannot be precommitted or anchored (`breaking-change`)
+
+`git_dirty` is still recorded, but recording a flag is not a code-identity
+claim. `farm-notary precommit`, `farm-notary anchor`, `build_precommit()`,
+`anchor_run()`, and `notarize_run()` now fail if the tree is dirty unless
+`--allow-dirty` / `allow_dirty=True` is passed. Supplying a SHA without
+`git_dirty` still inspects the working tree — an omitted flag is not a
+pass. `require_clean_identity(None)` detects rather than skipping.
 
 #### Privacy filter replaced with an explicit allowlist (`security`, `breaking-change`)
 
@@ -44,9 +132,10 @@ The substring denylist (`ballot`, `vote`, `voter`, `individual_choice`,
 `private`) is retained as a belt-and-braces second pass over whatever the
 allowlist admits.
 
-**Migration:** every existing `farm-notary manifest` invocation must add at
-least one `--publish <glob>` flag, or the `notary.publish` key to the run
-config, or `build_manifest()` will raise `ValueError`.
+**Migration:** every existing `farm-notary manifest` invocation must add
+`--profile <name>`, at least one `--publish <glob>` flag, or the
+`notary.profile` / `notary.publish` key to the run config, or
+`build_manifest()` will raise `ValueError`. Prefer a named profile.
 
 #### New manifest fields
 
