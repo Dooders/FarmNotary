@@ -36,6 +36,16 @@ class StubServer:
                 self.end_headers()
                 self.wfile.write(body)
 
+            def do_HEAD(self):
+                self._record()
+                body = outer.get_responses.get(self.path)
+                status = 200 if body is not None else 404
+                self.send_response(status)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", str(len(body or b"")))
+                self.end_headers()
+                # HEAD responses must not include a body.
+
             def do_POST(self):
                 length = int(self.headers.get("Content-Length", 0))
                 self._record(self.rfile.read(length))

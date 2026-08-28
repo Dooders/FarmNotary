@@ -94,6 +94,30 @@ farm-notary verify --run-dir path/to/run
 
 `--backend ots` submits the manifest content hash to public OpenTimestamps calendars (override with `--calendar` or `FARM_NOTARY_CALENDARS`) and writes the proof to `manifest.ots`. `--pin` uploads the run directory (manifest included) to the Kubo API at `FARM_NOTARY_IPFS_API` (default `http://127.0.0.1:5001`) and stores the root CID in the manifest. `upgrade` completes the pending proof with a Bitcoin attestation; `verify` then reports the block height.
 
+## IPFS persistence
+
+**Pinning to a local Kubo daemon is not archival.**
+
+The CID is content-addressed and immutable, but the _content_ is only reachable as long as at least one node holding it is online and responsive. A local daemon on a laptop goes offline when the lid closes — the manifest will still record the CID, but `ipfs get <cid>` will hang with no diagnosis.
+
+After each `--pin`, FarmNotary checks whether the CID is immediately resolvable through the public IPFS gateway (`https://ipfs.io/ipfs/<cid>`) and records the result in the manifest as `cid_reachable: true|false` with a timestamp. A warning is printed when the CID is not reachable.
+
+### Delegating to a persistent pinning service
+
+Use `--pin-remote <service>` to delegate to a remote pinning service (Pinata, web3.storage, or any service implementing the [IPFS Pinning Service API](https://ipfs.github.io/pinning-services-api-spec/)) via Kubo's built-in remote-pin API:
+
+```bash
+# Register the service once (Kubo stores the endpoint + token):
+ipfs pin remote service add pinata https://api.pinata.cloud/psa <jwt-token>
+
+# Then pin and delegate in one step:
+farm-notary anchor --run-dir path/to/run --pin --pin-remote pinata --backend ots
+```
+
+`--pin-remote` implies `--pin`; if you have already pinned locally and just want to replicate to a service, pass `--pin-remote` alongside `--cid`.
+
+To skip the gateway check (e.g. in CI where the CID will propagate later), pass `--no-check-gateway`.
+
 ## Anchoring with EAS
 
 The `eas` backend attests `(manifest_hash, cid)` on [EAS](https://attest.org), which is a predeploy on Base and Base Sepolia (contract `0x4200...0021` on both).
@@ -166,9 +190,14 @@ See [docs/CLAIMS.md](docs/CLAIMS.md) for exactly which claim each check earns.
 
 ## Verifying someone else's claim
 
-1. Fetch the CID (`ipfs get <cid>`), or obtain the run directory some other way.
+1. Fetch the CID (`ipfs get <cid>`), or obtain the run directory some other way. If `ipfs get` hangs, the CID may not be pinned on any reachable node — check the manifest's `cid_reachable` field and `cid_reachable_checked_utc` timestamp, and try the public gateway: `https://ipfs.io/ipfs/<cid>`.
 2. `farm-notary verify --run-dir <dir>`
 3. Exit code 0 means: these exact bytes hash to a manifest whose content hash the OpenTimestamps proof commits to, and the proof is attested (or pending) in Bitcoin. It does not mean the science is right — re-run from the committed seed for that.
+
+`verify` distinguishes two failure modes:
+
+- **`artifact unreachable: <name>`** — the file is absent from the local directory; if the manifest records a CID, the hint `(fetch with: ipfs get <cid>)` is appended.
+- **`artifact hash mismatch: <name>`** — the file is present but its content differs from what was hashed at notarization time.
 
 The proof in `manifest.ots` is a standard OpenTimestamps file: it commits to the manifest *content hash* (SHA-256 of the canonical manifest body, excluding the `cid` and `anchor` stamp fields), so it stays valid after the manifest is stamped with upload results. Full trust-minimized verification against your own Bitcoin node is possible with the standard `ots` tooling.
 

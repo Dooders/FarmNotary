@@ -19,14 +19,15 @@ def verify_run_dir(manifest: Manifest, run_dir: Path) -> List[str]:
         manifest.validate()
     except ValueError as exc:
         problems.append(f"invalid manifest: {exc}")
+    cid_hint = f" (fetch with: ipfs get {manifest.cid})" if manifest.cid else ""
     for name, expected in sorted(manifest.artifact_hashes.items()):
         path = run_dir / name
         if not path.is_file():
-            problems.append(f"missing artifact: {name}")
+            problems.append(f"artifact unreachable: {name}{cid_hint}")
             continue
         actual = hash_file(path)
         if actual != expected:
-            problems.append(f"hash mismatch: {name}")
+            problems.append(f"artifact hash mismatch: {name}")
     return problems
 
 
