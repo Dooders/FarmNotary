@@ -59,11 +59,23 @@ the manifest: the policy is part of the claim.
 
 ## Scoping the reproducibility claim
 
-`reproduce` compares every artifact the manifest lists. Artifacts that are
-legitimately nondeterministic (encoded videos, database files) must be
-excluded with `--ignore` globs — the receipt records what was ignored, so the
-claim stays honest: "bitwise reproducible except X" rather than a blanket
-statement that one MP4 can falsify.
+`reproduce` compares every artifact the manifest lists. A byte-diff is not a
+science failure. The receipt's `diagnostics` name the packaging causes we
+know how to spot:
+
+- `embedded_absolute_path` — the artifact baked in the output directory
+  (the `{run_dir}` fix that took the consensus experiment from 7/7 to 8/8)
+- `timestamp` — a clock reading in `REPORT.md` or similar
+- `float_print_format` — the same numbers, spelled differently
+- `video_encoder` — MP4/WebM output that is not bit-stable
+
+Those lines say **not a science failure** and how to fix the record
+(`{run_dir}`, pin a print format, `--ignore '*.mp4'`). An unclassified
+diff still says **byte-diff is not a science verdict**. Artifacts that are
+legitimately nondeterministic must be excluded with `--ignore` globs — the
+receipt records what was ignored, so the claim stays honest: "bitwise
+reproducible except X" rather than a blanket statement that one MP4 can
+falsify.
 
 ## Empirical baseline (2026-08-27)
 

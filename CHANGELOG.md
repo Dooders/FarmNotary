@@ -11,6 +11,22 @@ FarmNotary uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### Determinism diagnostics on mismatch
+
+When `reproduce` finds a byte-diff it classifies the cause
+(`farm_notary/diagnose.py`) and writes `diagnostics` on the receipt:
+
+- `embedded_absolute_path` — output path baked into `REPORT.md` (the
+  `{run_dir}` fix that took 7/7 → 8/8)
+- `timestamp` — clock / ISO text in the artifact
+- `float_print_format` — same numbers, different spelling
+- `video_encoder` — MP4/WebM encoder output
+
+Classified diffs print **not a science failure** plus a fix. Unclassified
+diffs print **byte-diff is not a science verdict**. `verify` repeats the
+same notes under the claim card. A mismatch is still a failed bitwise
+claim; it is not a science claim.
+
 #### Scoped bitwise sentence (x86-64 Linux only)
 
 `farm-notary verify` and `farm-notary reproduce` emit the CLAIMS.md sentence

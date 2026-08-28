@@ -194,7 +194,9 @@ def test_cli_reproduce_flow(tmp_path: Path, capsys):
     (run_dir / RECEIPT_NAME).unlink()
 
     assert main(["reproduce", "--run-dir", str(run_dir)]) == 1
-    capsys.readouterr()
+    out = capsys.readouterr().out
+    assert "video_encoder" in out
+    assert "not a science failure" in out
     assert main(["reproduce", "--run-dir", str(run_dir), "--ignore", "*.mp4"]) == 0
     assert "ignored globs (excluded from the claim): *.mp4" in capsys.readouterr().out
 

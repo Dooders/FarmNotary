@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List
 
-from farm_notary.manifest import Manifest, hash_file
+from farm_notary.manifest import RECEIPT_NAME, Manifest, hash_file
 from farm_notary.schema import MANIFEST_VERSION
 
 
@@ -226,6 +226,7 @@ class ClaimCard:
     pre_specified: str
     bitwise_reproducible: str
     problems: List[str] = field(default_factory=list)
+    notes: List[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -330,6 +331,15 @@ def evaluate_claims(manifest: Manifest, run_dir: Path) -> ClaimCard:
     anchor_problems = verify_anchor(manifest, run_dir)
     receipt_problems = verify_receipt(manifest, run_dir)
     precommit_problems = verify_precommit(manifest, run_dir)
+    notes: List[str] = []
+    from farm_notary.diagnose import diagnostics_from_receipt, format_diagnostics
+    from farm_notary.reproduce import load_receipt
+
+    if (run_dir / RECEIPT_NAME).is_file():
+        try:
+            notes = format_diagnostics(diagnostics_from_receipt(load_receipt(run_dir)))
+        except (ValueError, OSError, TypeError):
+            notes = []
     return ClaimCard(
         tamper_evident="pass" if not tamper_problems else "fail",
         existed_by=_existed_by_status(manifest, run_dir, anchor_problems),
@@ -339,5 +349,6 @@ def evaluate_claims(manifest: Manifest, run_dir: Path) -> ClaimCard:
         + anchor_problems
         + receipt_problems
         + precommit_problems,
+        notes=notes,
     )
 

@@ -130,13 +130,16 @@ environment`). Other hardware is reported, not claimed.
 
 `farm-notary reproduce` turns reproducibility from a claim into a procedure:
 re-run the recorded command into a fresh directory, rehash, byte-compare
-against the manifest. Known-nondeterministic artifacts (videos, databases)
+against the manifest. A mismatch is classified (`embedded_absolute_path`,
+`timestamp`, `float_print_format`, `video_encoder`) so a packaging bug is
+not read as a failed result — the consensus `{run_dir}` fix (7/7 → 8/8) is
+the type specimen. Known-nondeterministic artifacts (videos, databases)
 are excluded per-run with `--ignore` globs and recorded as excluded — the
 claim is scoped, never blanket. A successful reproduction writes
-`reproduction.json` (rerunner environment, per-file results, the original
-manifest hash) whose own hash can be anchored via OpenTimestamps
-(`reproduction.ots`), making "independently reproduced" a timestamped,
-third-party-checkable statement.
+`reproduction.json` (rerunner environment, per-file results, diagnostics,
+the original manifest hash) whose own hash can be anchored via
+OpenTimestamps (`reproduction.ots`), making "independently reproduced" a
+timestamped, third-party-checkable statement.
 
 Notary metadata (`manifest.json`, `reproduction.json`, `*.ots`) is never
 treated as an artifact: discovery skips it, so stamping and receipts don't

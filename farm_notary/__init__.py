@@ -20,6 +20,7 @@ from farm_notary.manifest import (
     write_manifest,
 )
 from farm_notary.profiles import PUBLISH_PROFILES, PublishProfile, get_profile
+from farm_notary.diagnose import MismatchDiagnosis, diagnose_mismatch
 from farm_notary.reproduce import ReproductionResult, reproduce_run
 from farm_notary.verify import (
     ClaimCard,
@@ -34,12 +35,14 @@ __all__ = [
     "ClaimCard",
     "DirtyTreeError",
     "Manifest",
+    "MismatchDiagnosis",
     "PUBLISH_PROFILES",
     "PublishProfile",
     "ReproductionResult",
     "anchor_run",
     "build_manifest",
     "capture_environment",
+    "diagnose_mismatch",
     "evaluate_claims",
     "get_backend",
     "get_profile",

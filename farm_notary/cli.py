@@ -360,6 +360,10 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         print(f"warning: {w.message}", file=sys.stderr)
 
     print(card.render(), end="")
+    if card.notes:
+        print()
+        for note in card.notes:
+            print(note)
     if card.problems:
         print()
         for problem in card.problems:
@@ -441,6 +445,7 @@ def _cmd_reproduce(args: argparse.Namespace) -> int:
             manifest,
             fresh_dir=Path(args.fresh_dir) if args.fresh_dir else None,
             ignore=args.ignore,
+            original_dir=run_dir,
         )
     except ReproduceError as exc:
         print(f"error: {exc}", file=sys.stderr)
