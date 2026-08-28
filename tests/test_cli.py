@@ -34,6 +34,7 @@ def test_manifest_command(tmp_path: Path, capsys):
             "--git-sha", "abc",
             "--runner", "consensus",
             "--config", str(config),
+            "--publish", "*.csv",
         ]
     ) == 0
 
@@ -43,6 +44,14 @@ def test_manifest_command(tmp_path: Path, capsys):
     assert manifest.artifacts == ["summary.csv"]
     out = capsys.readouterr().out
     assert "content_hash" in out
+    assert "unmatched" in out
+
+
+def test_manifest_command_no_publish_returns_error(tmp_path: Path, capsys):
+    """manifest fails with exit code 2 when no publish patterns are given."""
+    run_dir = make_run_dir(tmp_path)
+    assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc"]) == 2
+    assert "publish patterns" in capsys.readouterr().err
 
 
 def test_manifest_command_rejects_missing_dir(tmp_path: Path):
@@ -51,7 +60,7 @@ def test_manifest_command_rejects_missing_dir(tmp_path: Path):
 
 def test_anchor_dry_run_updates_manifest(tmp_path: Path, capsys):
     run_dir = make_run_dir(tmp_path)
-    assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc"]) == 0
+    assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc", "--publish", "*.csv"]) == 0
     assert main(["anchor", "--run-dir", str(run_dir)]) == 0
 
     manifest = load_manifest(run_dir)
@@ -70,7 +79,7 @@ def test_anchor_requires_manifest(tmp_path: Path, capsys):
 
 def test_verify_ok_and_tamper(tmp_path: Path, capsys):
     run_dir = make_run_dir(tmp_path)
-    assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc"]) == 0
+    assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc", "--publish", "*.csv"]) == 0
     assert main(["verify", "--run-dir", str(run_dir)]) == 0
     assert capsys.readouterr().out.count("OK") >= 1
 
@@ -81,7 +90,7 @@ def test_verify_ok_and_tamper(tmp_path: Path, capsys):
 
 def test_verify_via_manifest_path(tmp_path: Path):
     run_dir = make_run_dir(tmp_path)
-    assert main(["manifest", "--run-dir", str(run_dir)]) == 0
+    assert main(["manifest", "--run-dir", str(run_dir), "--publish", "*.csv"]) == 0
     assert main(["verify", "--manifest", str(run_dir / "manifest.json")]) == 0
 
 
@@ -105,7 +114,7 @@ class FakeEASBackend:
 
 def test_anchor_eas_backend_writes_receipt(tmp_path: Path, capsys, monkeypatch):
     run_dir = make_run_dir(tmp_path)
-    assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc"]) == 0
+    assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc", "--publish", "*.csv"]) == 0
     monkeypatch.setattr(cli, "get_backend", lambda name, **_kw: FakeEASBackend())
     assert main(["anchor", "--run-dir", str(run_dir), "--backend", "eas", "--cid", "bafytest"]) == 0
     capsys.readouterr()
@@ -119,7 +128,7 @@ def test_anchor_eas_backend_writes_receipt(tmp_path: Path, capsys, monkeypatch):
 
 def test_anchor_no_write(tmp_path: Path, capsys, monkeypatch):
     run_dir = make_run_dir(tmp_path)
-    assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc"]) == 0
+    assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc", "--publish", "*.csv"]) == 0
     before = (run_dir / "manifest.json").read_text(encoding="utf-8")
     monkeypatch.setattr(cli, "get_backend", lambda name, **_kw: FakeEASBackend())
     assert main(["anchor", "--run-dir", str(run_dir), "--backend", "eas", "--no-write"]) == 0
@@ -129,7 +138,7 @@ def test_anchor_no_write(tmp_path: Path, capsys, monkeypatch):
 def test_full_pin_anchor_upgrade_verify_flow(tmp_path: Path, monkeypatch, capsys):
     """manifest -> anchor --pin --backend ots -> verify (pending) -> upgrade -> verify (anchored)."""
     run_dir = make_run_dir(tmp_path)
-    assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc"]) == 0
+    assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc", "--publish", "*.csv"]) == 0
     digest = bytes.fromhex(load_manifest(run_dir).content_hash())
 
     ipfs = StubServer()

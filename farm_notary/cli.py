@@ -47,6 +47,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Dependency lockfile to hash into the environment record",
     )
     p_man.add_argument(
+        "--publish",
+        action="append",
+        dest="publish",
+        metavar="GLOB",
+        help=(
+            "Glob pattern for files to include in the manifest; repeatable. "
+            "Nothing is hashed or uploaded unless declared here or via "
+            "'notary.publish' in the run config."
+        ),
+    )
+    p_man.add_argument(
         "--official-record",
         help="Path to a JSON file with aggregate results (never per-agent choices)",
     )
@@ -117,15 +128,27 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
     if not run_dir.is_dir():
         print(f"error: {run_dir} is not a directory", file=sys.stderr)
         return 2
-    manifest = build_manifest(
-        run_dir,
-        git_sha=args.git_sha,
-        runner=args.runner,
-        command=args.command,
-        lockfile=Path(args.lockfile) if args.lockfile else None,
-        config=_load_json_arg(args.config),
-        official_record=_load_json_arg(args.official_record),
-    )
+    config = _load_json_arg(args.config)
+    import warnings
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        try:
+            manifest = build_manifest(
+                run_dir,
+                publish_patterns=args.publish or [],
+                git_sha=args.git_sha,
+                runner=args.runner,
+                command=args.command,
+                lockfile=Path(args.lockfile) if args.lockfile else None,
+                config=config,
+                official_record=_load_json_arg(args.official_record),
+            )
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+    for w in caught:
+        print(f"warning: {w.message}", file=sys.stderr)
     if manifest.git_dirty:
         print(
             "warning: git tree is dirty; the recorded sha does not identify the code that ran",
@@ -134,6 +157,7 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
     path = write_manifest(manifest, run_dir)
     print(path)
     print("artifacts", len(manifest.artifacts))
+    print("unmatched", manifest.unmatched_count)
     print("content_hash", manifest.content_hash())
     return 0
 

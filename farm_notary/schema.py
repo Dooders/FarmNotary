@@ -12,9 +12,13 @@ REQUIRED_KEYS = (
     "config",
     "artifacts",
     "artifact_hashes",
+    "publish_patterns",
+    "unmatched_count",
 )
 
-# Never hash or upload these names from a run directory.
+# Belt-and-braces denylist applied *after* the allowlist.
+# Files matching these fragments are never hashed, listed, or uploaded even
+# if a publish pattern would otherwise admit them.
 PRIVATE_NAME_FRAGMENTS = (
     "ballot",
     "vote",

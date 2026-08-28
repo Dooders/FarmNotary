@@ -37,7 +37,7 @@ def make_notarized_run(tmp_path: Path, *, media_arg: str = "static"):
     import subprocess
 
     subprocess.run(command.replace("{run_dir}", str(run_dir)), shell=True, check=True)
-    manifest = build_manifest(run_dir, git_sha="abc", command=command)
+    manifest = build_manifest(run_dir, publish_patterns=["*.csv", "*.mp4"], git_sha="abc", command=command)
     write_manifest(manifest, run_dir)
     return run_dir, manifest, script
 
@@ -156,7 +156,7 @@ def test_notary_files_excluded_from_discovery(tmp_path: Path):
     (run_dir / "manifest.ots").write_bytes(b"proof")
     (run_dir / RECEIPT_NAME).write_text("{}", encoding="utf-8")
     (run_dir / RECEIPT_PROOF_NAME).write_bytes(b"proof")
-    rebuilt = build_manifest(run_dir, git_sha="abc", command=manifest.command)
+    rebuilt = build_manifest(run_dir, publish_patterns=["*.csv", "*.mp4"], git_sha="abc", command=manifest.command)
     assert rebuilt.artifacts == ["media.mp4", "summary.csv"]
     assert rebuilt.content_hash() != ""  # sanity
 
