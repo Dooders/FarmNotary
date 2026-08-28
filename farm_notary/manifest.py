@@ -168,6 +168,8 @@ class Manifest:
     official_record: dict = field(default_factory=dict)
     precommit_hash: Optional[str] = None
     cid: Optional[str] = None
+    cid_reachable: Optional[bool] = None
+    cid_reachable_checked_utc: Optional[str] = None
     anchor: Optional[dict] = None
 
     def to_dict(self) -> dict:
@@ -175,7 +177,7 @@ class Manifest:
         # Omit truly optional fields that are None so that loading an older
         # manifest (which does not contain e.g. ``precommit_hash``) does not
         # inject a ``null`` value and alter the recomputed content hash.
-        _OMIT_IF_NONE = {"precommit_hash", "cid", "anchor"}
+        _OMIT_IF_NONE = {"precommit_hash", "cid", "cid_reachable", "cid_reachable_checked_utc", "anchor"}
         return {k: v for k, v in d.items() if not (k in _OMIT_IF_NONE and v is None)}
 
     @classmethod
@@ -191,6 +193,8 @@ class Manifest:
         """
         body = self.to_dict()
         body.pop("cid", None)
+        body.pop("cid_reachable", None)
+        body.pop("cid_reachable_checked_utc", None)
         body.pop("anchor", None)
         return hash_json(body)
 

@@ -155,6 +155,7 @@ def test_full_pin_anchor_upgrade_verify_flow(tmp_path: Path, monkeypatch, capsys
                 "anchor",
                 "--run-dir", str(run_dir),
                 "--pin",
+                "--no-check-gateway",
                 "--backend", "ots",
                 "--calendar", calendar.url,
             ]
@@ -186,3 +187,111 @@ def test_full_pin_anchor_upgrade_verify_flow(tmp_path: Path, monkeypatch, capsys
     finally:
         ipfs.close()
         calendar.close()
+
+
+def test_anchor_pin_gateway_reachable_recorded(tmp_path: Path, monkeypatch, capsys):
+    """--pin with reachable gateway records cid_reachable=True in manifest."""
+    run_dir = make_run_dir(tmp_path)
+    assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc", "--publish", "*.csv"]) == 0
+    pre_anchor_hash = load_manifest(run_dir).content_hash()
+
+    ipfs = StubServer()
+    gateway = StubServer()
+    try:
+        ipfs.response_body = (json.dumps({"Name": "", "Hash": "bafyreach"}) + "\n").encode()
+        # Gateway returns 200 for this CID
+        gateway.get_responses["/ipfs/bafyreach"] = b"data"
+        monkeypatch.setenv("FARM_NOTARY_IPFS_API", ipfs.url)
+
+        import farm_notary.ipfs as _ipfs_mod
+        monkeypatch.setattr(_ipfs_mod, "DEFAULT_GATEWAY_URL", gateway.url)
+
+        assert main(["anchor", "--run-dir", str(run_dir), "--pin"]) == 0
+
+        manifest = load_manifest(run_dir)
+        assert manifest.cid == "bafyreach"
+        assert manifest.cid_reachable is True
+        assert manifest.cid_reachable_checked_utc is not None
+        assert manifest.content_hash() == pre_anchor_hash
+    finally:
+        ipfs.close()
+        gateway.close()
+
+
+def test_anchor_pin_gateway_unreachable_warns(tmp_path: Path, monkeypatch, capsys):
+    """--pin with unreachable gateway records cid_reachable=False and warns."""
+    run_dir = make_run_dir(tmp_path)
+    assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc", "--publish", "*.csv"]) == 0
+
+    ipfs = StubServer()
+    gateway = StubServer()
+    try:
+        ipfs.response_body = (json.dumps({"Name": "", "Hash": "bafynope"}) + "\n").encode()
+        # Gateway returns 404 (CID not registered in get_responses)
+        monkeypatch.setenv("FARM_NOTARY_IPFS_API", ipfs.url)
+
+        import farm_notary.ipfs as _ipfs_mod
+        monkeypatch.setattr(_ipfs_mod, "DEFAULT_GATEWAY_URL", gateway.url)
+
+        assert main(["anchor", "--run-dir", str(run_dir), "--pin"]) == 0
+
+        manifest = load_manifest(run_dir)
+        assert manifest.cid_reachable is False
+        assert "warning" in capsys.readouterr().err
+    finally:
+        ipfs.close()
+        gateway.close()
+
+
+def test_anchor_pin_remote_delegates_to_kubo(tmp_path: Path, monkeypatch, capsys):
+    """--pin-remote calls Kubo's remote-pin API after uploading."""
+    run_dir = make_run_dir(tmp_path)
+    assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc", "--publish", "*.csv"]) == 0
+
+    ipfs = StubServer()
+    gateway = StubServer()
+    try:
+        ipfs.response_body = (json.dumps({"Name": "", "Hash": "bafyremote"}) + "\n").encode()
+        gateway.get_responses["/ipfs/bafyremote"] = b"data"
+
+        monkeypatch.setenv("FARM_NOTARY_IPFS_API", ipfs.url)
+        import farm_notary.ipfs as _ipfs_mod
+        monkeypatch.setattr(_ipfs_mod, "DEFAULT_GATEWAY_URL", gateway.url)
+
+        # Monkeypatch pin_remote to return success and capture call
+        from farm_notary.ipfs import IpfsClient
+        pin_remote_calls = []
+
+        def fake_pin_remote(self, cid, service, name=None):
+            pin_remote_calls.append((cid, service, name))
+            return {"Cid": cid, "Status": "queued"}
+
+        monkeypatch.setattr(IpfsClient, "pin_remote", fake_pin_remote)
+
+        assert main(["anchor", "--run-dir", str(run_dir), "--pin-remote", "pinata"]) == 0
+
+        manifest = load_manifest(run_dir)
+        assert manifest.cid == "bafyremote"
+        assert pin_remote_calls == [("bafyremote", "pinata", None)]
+    finally:
+        ipfs.close()
+        gateway.close()
+
+
+def test_anchor_no_check_gateway_skips_reachability(tmp_path: Path, monkeypatch):
+    """--no-check-gateway skips the reachability check; cid_reachable stays None."""
+    run_dir = make_run_dir(tmp_path)
+    assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc", "--publish", "*.csv"]) == 0
+
+    ipfs = StubServer()
+    try:
+        ipfs.response_body = (json.dumps({"Name": "", "Hash": "bafyskip"}) + "\n").encode()
+        monkeypatch.setenv("FARM_NOTARY_IPFS_API", ipfs.url)
+
+        assert main(["anchor", "--run-dir", str(run_dir), "--pin", "--no-check-gateway"]) == 0
+
+        manifest = load_manifest(run_dir)
+        assert manifest.cid == "bafyskip"
+        assert manifest.cid_reachable is None
+    finally:
+        ipfs.close()

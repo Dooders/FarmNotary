@@ -27,13 +27,26 @@ def test_verify_ok(tmp_path: Path):
 def test_verify_detects_tampering(tmp_path: Path):
     manifest = make_manifest(tmp_path)
     (tmp_path / "summary.csv").write_text("paradigm,total\nparty,0.9\n", encoding="utf-8")
-    assert verify_run_dir(manifest, tmp_path) == ["hash mismatch: summary.csv"]
+    assert verify_run_dir(manifest, tmp_path) == ["artifact hash mismatch: summary.csv"]
 
 
 def test_verify_detects_missing_artifact(tmp_path: Path):
     manifest = make_manifest(tmp_path)
     (tmp_path / "summary.csv").unlink()
-    assert verify_run_dir(manifest, tmp_path) == ["missing artifact: summary.csv"]
+    problems = verify_run_dir(manifest, tmp_path)
+    assert len(problems) == 1
+    assert "artifact unreachable" in problems[0]
+    assert "summary.csv" in problems[0]
+
+
+def test_verify_detects_missing_artifact_with_cid_hint(tmp_path: Path):
+    manifest = make_manifest(tmp_path)
+    manifest.cid = "bafytest123"
+    (tmp_path / "summary.csv").unlink()
+    problems = verify_run_dir(manifest, tmp_path)
+    assert len(problems) == 1
+    assert "artifact unreachable" in problems[0]
+    assert "bafytest123" in problems[0]
 
 
 def test_verify_flags_invalid_manifest(tmp_path: Path):

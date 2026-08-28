@@ -13,9 +13,11 @@ import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 DEFAULT_API_URL = "http://127.0.0.1:5001"
+DEFAULT_GATEWAY_URL = "https://ipfs.io"
+_GATEWAY_TIMEOUT = 15.0
 
 
 class IpfsError(RuntimeError):
@@ -89,3 +91,48 @@ class IpfsClient:
             path = run_dir / name
             files.append((name, path.read_bytes()))
         return self.add_files(files)
+
+    def pin_remote(self, cid: str, service: str, name: Optional[str] = None) -> dict:
+        """Delegate pinning to a remote service via Kubo's remote-pin API.
+
+        Calls ``/api/v0/pin/remote/add`` on the local Kubo daemon, which
+        forwards the request to *service* (a name registered with
+        ``ipfs pin remote service add``).  Returns the parsed JSON response.
+        """
+        params: dict = {"arg": cid, "service": service}
+        if name:
+            params["name"] = name
+        query = urllib.parse.urlencode(params)
+        request = urllib.request.Request(
+            f"{self.api_url}/api/v0/pin/remote/add?{query}",
+            data=b"",
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except OSError as exc:
+            raise IpfsError(
+                f"IPFS remote-pin via {self.api_url} failed: {exc}"
+            ) from exc
+
+
+def check_gateway_reachability(
+    cid: str,
+    gateway_url: Optional[str] = None,
+    timeout: float = _GATEWAY_TIMEOUT,
+) -> bool:
+    """Return True if *cid* is resolvable through *gateway_url*.
+
+    Issues a HEAD request to ``{gateway_url}/ipfs/{cid}`` so that no data is
+    transferred; a 2xx response is treated as reachable.  Network errors and
+    non-2xx responses both return False.
+    """
+    base = (gateway_url or DEFAULT_GATEWAY_URL).rstrip("/")
+    url = f"{base}/ipfs/{cid}"
+    request = urllib.request.Request(url, method="HEAD")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return 200 <= response.status < 300
+    except Exception:
+        return False
