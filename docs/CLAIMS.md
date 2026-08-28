@@ -40,6 +40,14 @@ implementation.
 > address that verifiers must know in advance.  See [EAS.md](EAS.md) for
 > details and a tradeoff table.
 
+## Durable pin as the published path
+
+A CID is not a citation if only a laptop holds the bytes. Local Kubo
+(`--pin`) is a lab convenience. For anything you cite in a paper or academy
+writeup, `--pin-remote` (Pinata, web3.storage, or a pinning-service API) is
+the documented default. The manifest records `pin_service` so reviewers can
+see which path was used.
+
 ## Official artifacts and publish profiles
 
 The allowlist is the privacy model; a named profile is how a lab should fill

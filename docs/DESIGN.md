@@ -72,7 +72,7 @@ from farm_notary import notarize_run
 manifest, receipt = notarize_run(
     run_dir, git_sha=sha, runner="consensus_paradigms", config=config,
     publish_profile="consensus",
-)  # dry-run until a backend is passed; pin=True to upload to IPFS
+)  # dry-run until a backend is passed; pin_remote="pinata" for a durable pin
 ```
 
 `notarize_run` builds and writes the manifest, optionally pins the directory (manifest included), anchors, persists any proof file, and rewrites `manifest.json` with the CID and anchor receipt.
@@ -81,7 +81,14 @@ manifest, receipt = notarize_run(
 
 `farm_notary.ipfs.IpfsClient` posts a multipart upload to a Kubo daemon's `/api/v0/add` with `wrap-with-directory=true&cid-version=1&pin=true` and takes the wrapping directory's CID as the run's content address. Standard library only; the endpoint comes from `FARM_NOTARY_IPFS_API` (default `http://127.0.0.1:5001`).
 
-The pinned tree includes `manifest.json`. Because `content_hash` excludes `cid`/`anchor`, the copy inside the pinned tree hashes to the same value that gets anchored, even though the local copy is later stamped.
+Local Kubo is a lab convenience, not archival. The published path is
+`--pin-remote`, which then calls Kubo's `/api/v0/pin/remote/add` for a
+registered pinning service (Pinata, web3.storage, or any Pinning Service
+API). The manifest records `pin_service` (`"local"` or the service name).
+
+The pinned tree includes `manifest.json`. Because `content_hash` excludes
+`cid` / `pin_service` / `anchor`, the copy inside the pinned tree hashes to
+the same value that gets anchored, even though the local copy is later stamped.
 
 ## Anchoring flow
 

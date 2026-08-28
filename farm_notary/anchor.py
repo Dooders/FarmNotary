@@ -126,6 +126,7 @@ def notarize_run(
     precommit_path: Optional[Path] = None,
     backend: Optional[AnchorBackend] = None,
     pin: bool = False,
+    pin_remote: Optional[str] = None,
     ipfs_api: Optional[str] = None,
     git_dirty: Optional[bool] = None,
     allow_dirty: bool = False,
@@ -133,9 +134,10 @@ def notarize_run(
     """One-call hook for AgentFarm: manifest, optional pin, anchor, stamp.
 
     Builds and writes manifest.json for run_dir, optionally uploads the run
-    directory to IPFS, anchors via the given backend (dry-run by default),
-    persists any proof file, and rewrites manifest.json with the cid and
-    anchor receipt.
+    directory to IPFS (``pin_remote`` is the published path; ``pin`` is a
+    local Kubo convenience), anchors via the given backend (dry-run by
+    default), persists any proof file, and rewrites manifest.json with the
+    cid and anchor receipt.
 
     When *precommit_path* points to a ``precommit.json`` produced by
     ``farm-notary precommit``, its content hash is recorded in the manifest's
@@ -163,11 +165,14 @@ def notarize_run(
     write_manifest(manifest, run_dir)
 
     cid = None
-    if pin:
+    if pin or pin_remote:
         from farm_notary.ipfs import IpfsClient
 
         client = IpfsClient(api_url=ipfs_api)
         cid = client.add_run_dir(run_dir, list(manifest.artifacts) + [MANIFEST_NAME])
+        manifest.pin_service = pin_remote or "local"
+        if pin_remote:
+            client.pin_remote(cid, pin_remote)
 
     receipt = anchor_run(manifest, cid=cid, backend=backend, allow_dirty=allow_dirty)
     write_proof(receipt, run_dir)

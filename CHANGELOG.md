@@ -23,6 +23,14 @@ used, so the policy is part of the claim.
 
 ### Changed
 
+#### Durable pin is the published path
+
+`--pin-remote` (Pinata / web3.storage / pinning-service API) is the
+documented default for anything you cite. `--pin` to local Kubo remains a
+lab convenience and now always warns that it is not archival. The manifest
+records `pin_service` (`"local"` or the remote service name) as a stamp
+field (excluded from `content_hash`).
+
 #### `verify` prints a CLAIMS.md claim card
 
 `farm-notary verify` no longer leads with `OK <hash>` or requires reviewers

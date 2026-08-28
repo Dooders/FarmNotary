@@ -104,16 +104,19 @@ farm-notary verify --run-dir path/to/run
 farm-notary anchor --run-dir path/to/run --backend ots
 ```
 
-Anchoring for real, with IPFS pinning:
+Anchoring for real, with a durable pin (the published path):
 
 ```bash
-farm-notary anchor --run-dir path/to/run --pin --backend ots
+# Register a pinning service once (Kubo stores the endpoint + token):
+ipfs pin remote service add pinata https://api.pinata.cloud/psa <jwt-token>
+
+farm-notary anchor --run-dir path/to/run --pin-remote pinata --backend ots
 # ... hours later, once a calendar has batched the digest into Bitcoin:
 farm-notary upgrade --run-dir path/to/run
 farm-notary verify --run-dir path/to/run
 ```
 
-`--backend ots` submits the manifest content hash to public OpenTimestamps calendars (override with `--calendar` or `FARM_NOTARY_CALENDARS`) and writes the proof to `manifest.ots`. `--pin` uploads the run directory (manifest included) to the Kubo API at `FARM_NOTARY_IPFS_API` (default `http://127.0.0.1:5001`) and stores the root CID in the manifest. `upgrade` completes the pending proof with a Bitcoin attestation; `verify` then reports **existed by time T** as a Bitcoin height.
+`--backend ots` submits the manifest content hash to public OpenTimestamps calendars (override with `--calendar` or `FARM_NOTARY_CALENDARS`) and writes the proof to `manifest.ots`. `--pin-remote` uploads the run directory (manifest included) to local Kubo, then delegates the pin to a registered service (Pinata, web3.storage, or any [IPFS Pinning Service API](https://ipfs.github.io/pinning-services-api-spec/)). That durable pin is what you cite in a paper or academy writeup. `upgrade` completes the pending proof with a Bitcoin attestation; `verify` then reports **existed by time T** as a Bitcoin height.
 
 `precommit` and `anchor` refuse a dirty git tree by default: the recorded SHA
 does not identify the code, so it is not a code-identity claim. `git_dirty` is
@@ -122,25 +125,22 @@ to make an explicit exception.
 
 ## IPFS persistence
 
-**Pinning to a local Kubo daemon is not archival.**
+**`--pin-remote` is the published path.** Local Kubo is a lab convenience.
 
-The CID is content-addressed and immutable, but the _content_ is only reachable as long as at least one node holding it is online and responsive. A local daemon on a laptop goes offline when the lid closes — the manifest will still record the CID, but `ipfs get <cid>` will hang with no diagnosis.
+The CID is content-addressed and immutable, but the _content_ is only reachable as long as at least one node holding it is online and responsive. A local daemon on a laptop goes offline when the lid closes — the manifest will still record the CID, but `ipfs get <cid>` will hang with no diagnosis. Do not cite a local-only pin in a paper or academy writeup.
 
-After each `--pin`, FarmNotary checks whether the CID is immediately resolvable through the public IPFS gateway (`https://ipfs.io/ipfs/<cid>`) and records the result in the manifest as `cid_reachable: true|false` with a timestamp. A warning is printed when the CID is not reachable.
-
-### Delegating to a persistent pinning service
-
-Use `--pin-remote <service>` to delegate to a remote pinning service (Pinata, web3.storage, or any service implementing the [IPFS Pinning Service API](https://ipfs.github.io/pinning-services-api-spec/)) via Kubo's built-in remote-pin API:
+`--pin-remote <service>` uploads via Kubo, then delegates to a remote pinning service (Pinata, web3.storage, or any [IPFS Pinning Service API](https://ipfs.github.io/pinning-services-api-spec/)). Register the service once:
 
 ```bash
-# Register the service once (Kubo stores the endpoint + token):
 ipfs pin remote service add pinata https://api.pinata.cloud/psa <jwt-token>
-
-# Then pin and delegate in one step:
-farm-notary anchor --run-dir path/to/run --pin --pin-remote pinata --backend ots
+farm-notary anchor --run-dir path/to/run --pin-remote pinata --backend ots
 ```
 
-`--pin-remote` implies `--pin`; the run directory is always uploaded before the remote pin is requested.
+`--pin-remote` implies `--pin`. The manifest records `pin_service` (`"local"` or the service name) so the pin path is part of the claim.
+
+`--pin` alone still uploads to local Kubo and warns. Use it at the bench; switch to `--pin-remote` before you publish.
+
+After each pin, FarmNotary checks whether the CID is immediately resolvable through the public IPFS gateway (`https://ipfs.io/ipfs/<cid>`) and records `cid_reachable` with a timestamp. A warning is printed when the CID is not reachable.
 
 To skip the gateway check (e.g. in CI where the CID will propagate later), pass `--no-check-gateway`.
 
@@ -171,7 +171,7 @@ manifest, receipt = notarize_run(
 )
 ```
 
-The example above uses `OpenTimestampsBackend()` (from `farm_notary.ots`); add `pin=True` to also upload the run directory to IPFS. Do not submodule unless the API is still thrashing.
+The example above uses `OpenTimestampsBackend()` (from `farm_notary.ots`); add `pin_remote="pinata"` for a durable pin (the published path), or `pin=True` for a local Kubo pin (lab convenience). Do not submodule unless the API is still thrashing.
 
 ## Reproducing a run
 
@@ -197,7 +197,7 @@ See [docs/CLAIMS.md](docs/CLAIMS.md) for exactly which claim each check earns.
 
 ## Verifying someone else's claim
 
-1. Fetch the CID (`ipfs get <cid>`), or obtain the run directory some other way. If `ipfs get` hangs, the CID may not be pinned on any reachable node — check the manifest's `cid_reachable` field and `cid_reachable_checked_utc` timestamp, and try the public gateway: `https://ipfs.io/ipfs/<cid>`.
+1. Fetch the CID (`ipfs get <cid>`), or obtain the run directory some other way. If `ipfs get` hangs, the CID may not be pinned on any reachable node — check `pin_service` (a local-only pin is not archival), `cid_reachable`, and `cid_reachable_checked_utc`, and try the public gateway: `https://ipfs.io/ipfs/<cid>`.
 2. `farm-notary verify --run-dir <dir>`
 3. Read the claim card. Each line is a CLAIMS.md claim (`pass` / `fail` /
    `pending` / Bitcoin height / `precommit bound` / `N/M` / `missing`).

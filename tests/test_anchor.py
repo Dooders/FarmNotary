@@ -70,7 +70,9 @@ def test_notarize_run_with_pin(monkeypatch, stub_server, tmp_path: Path):
     )
 
     assert receipt.cid == "bafypinned"
-    assert load_manifest(tmp_path).cid == "bafypinned"
+    on_disk = load_manifest(tmp_path)
+    assert on_disk.cid == "bafypinned"
+    assert on_disk.pin_service == "local"
     # The pinned upload includes manifest.json alongside the artifacts.
     body = stub_server.requests[0]["body"]
     assert b'filename="manifest.json"' in body

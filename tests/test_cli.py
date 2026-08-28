@@ -257,9 +257,11 @@ def test_anchor_pin_gateway_reachable_recorded(tmp_path: Path, monkeypatch, caps
 
         manifest = load_manifest(run_dir)
         assert manifest.cid == "bafyreach"
+        assert manifest.pin_service == "local"
         assert manifest.cid_reachable is True
         assert manifest.cid_reachable_checked_utc is not None
         assert manifest.content_hash() == pre_anchor_hash
+        assert "not archival" in capsys.readouterr().err
     finally:
         ipfs.close()
         gateway.close()
@@ -319,7 +321,9 @@ def test_anchor_pin_remote_delegates_to_kubo(tmp_path: Path, monkeypatch, capsys
 
         manifest = load_manifest(run_dir)
         assert manifest.cid == "bafyremote"
+        assert manifest.pin_service == "pinata"
         assert pin_remote_calls == [("bafyremote", "pinata", None)]
+        assert "not archival" not in capsys.readouterr().err
     finally:
         ipfs.close()
         gateway.close()

@@ -121,15 +121,23 @@ def _build_parser() -> argparse.ArgumentParser:
         default="dry-run",
         help="dry-run prints the payload; ots anchors via OpenTimestamps (recommended); eas anchors on Base (experimental — requires a funded key and costs gas; needs farm-notary[chain])",
     )
-    p_anc.add_argument("--pin", action="store_true", help="Upload the run directory to IPFS first")
+    p_anc.add_argument(
+        "--pin",
+        action="store_true",
+        help=(
+            "Upload the run directory to local Kubo (lab convenience; not "
+            "archival). For a paper or academy citation use --pin-remote."
+        ),
+    )
     p_anc.add_argument("--ipfs-api", help="Kubo API URL (default: FARM_NOTARY_IPFS_API or http://127.0.0.1:5001)")
     p_anc.add_argument(
         "--pin-remote",
         metavar="SERVICE",
         help=(
-            "After pinning, delegate to the named remote pinning service via "
-            "Kubo's /api/v0/pin/remote/add (the service must be registered with "
-            "`ipfs pin remote service add`). Implies --pin."
+            "Durable pin via a registered pinning service (Pinata, "
+            "web3.storage, or any IPFS Pinning Service API). This is the "
+            "published path for anything you cite. Implies --pin. Register "
+            "the service with `ipfs pin remote service add`."
         ),
     )
     p_anc.add_argument(
@@ -274,6 +282,7 @@ def _cmd_anchor(args: argparse.Namespace) -> int:
         manifest.cid = cid
         manifest.cid_reachable = None
         manifest.cid_reachable_checked_utc = None
+        manifest.pin_service = pin_remote_service or "local"
 
         if pin_remote_service:
             try:
@@ -281,6 +290,13 @@ def _cmd_anchor(args: argparse.Namespace) -> int:
             except Exception as exc:
                 print(f"error: remote pin to '{pin_remote_service}' failed: {exc}", file=sys.stderr)
                 return 1
+        else:
+            print(
+                "warning: pinned to local Kubo only — not archival. "
+                "For a paper or academy citation use --pin-remote "
+                "(Pinata / web3.storage / pinning-service API).",
+                file=sys.stderr,
+            )
 
         # Check that the CID is resolvable through a public gateway.
         if not getattr(args, "no_check_gateway", False):
@@ -293,9 +309,8 @@ def _cmd_anchor(args: argparse.Namespace) -> int:
             if not reachable:
                 print(
                     f"warning: CID {cid} is not yet reachable via the public gateway. "
-                    "Pinning to a local Kubo daemon is not archival — the content will "
-                    "become unreachable when the daemon is offline. "
-                    "Use --pin-remote to delegate to a persistent pinning service.",
+                    "A local pin is not archival — the content will become "
+                    "unreachable when the daemon is offline.",
                     file=sys.stderr,
                 )
 

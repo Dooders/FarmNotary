@@ -199,6 +199,9 @@ class Manifest:
     cid: Optional[str] = None
     cid_reachable: Optional[bool] = None
     cid_reachable_checked_utc: Optional[str] = None
+    # "local" for a Kubo-only pin (lab convenience); a service name
+    # (pinata, web3.storage, …) when --pin-remote was used. Stamp field.
+    pin_service: Optional[str] = None
     anchor: Optional[dict] = None
 
     def to_dict(self) -> dict:
@@ -213,6 +216,7 @@ class Manifest:
             "cid",
             "cid_reachable",
             "cid_reachable_checked_utc",
+            "pin_service",
             "anchor",
         }
         return {k: v for k, v in d.items() if not (k in _OMIT_IF_NONE and v is None)}
@@ -232,6 +236,7 @@ class Manifest:
         body.pop("cid", None)
         body.pop("cid_reachable", None)
         body.pop("cid_reachable_checked_utc", None)
+        body.pop("pin_service", None)
         body.pop("anchor", None)
         return hash_json(body)
 
