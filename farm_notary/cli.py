@@ -473,9 +473,6 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     for w in caught:
         print(f"warning: {w.message}", file=sys.stderr)
     problems = []
-    problems += verify_anchor(manifest, run_dir)
-    problems += verify_receipt(manifest, run_dir)
-    problems += verify_precommit(manifest, run_dir)
     problems += verify_derived_artifacts(manifest, run_dir)
     problems += verify_identity_record(manifest, run_dir)
 

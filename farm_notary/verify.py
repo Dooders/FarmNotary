@@ -303,7 +303,6 @@ def _bitwise_status(
     manifest: Manifest, run_dir: Path, receipt_problems: List[str]
 ) -> str:
     """CLAIMS.md 'bitwise reproducible (scoped)': N/M plus the allowed sentence."""
-    from farm_notary.manifest import RECEIPT_NAME
     from farm_notary.reproduce import load_receipt
     from farm_notary.scope import format_bitwise_status
 
@@ -367,4 +366,3 @@ def evaluate_claims(manifest: Manifest, run_dir: Path) -> ClaimCard:
         + precommit_problems,
         notes=notes,
     )
-
