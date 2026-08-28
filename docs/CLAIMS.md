@@ -54,5 +54,23 @@ verified by re-execution, and its summary statistics recompute exactly from
 the raw trial data."*
 
 Not yet demonstrated: cross-machine reproduction (different hardware/BLAS)
-and continuous reproduction in CI. Until a clean-machine receipt exists, do
-not claim more than same-environment reproducibility.
+outside a CI environment. Until a clean-machine receipt produced on different
+hardware exists, do not claim more than same-environment reproducibility.
+
+## Cross-machine reproduction status
+
+CI-machine reproduction is demonstrated via AgentFarm's
+`.github/workflows/reproduce-consensus.yml` (see
+`integration/agentfarm/README.md`): on every change to the experiment, a
+GitHub Actions runner re-runs the recorded command from the committed seed and
+fails unless every artifact is byte-identical. Because GitHub-hosted runners
+The successful workflow run on a GitHub-hosted x86-64 Linux runner confirms
+reproducibility in a different process/filesystem than the original run; the
+workflow does not establish an identical dependency set or BLAS.
+
+What remains undemonstrated: reproduction on **different hardware** (e.g.,
+Apple Silicon, AMD EPYC) or a **different BLAS** implementation. If the
+experiment relies on floating-point operations whose result depends on SIMD
+instruction sets or BLAS routing, bit-for-bit output is not guaranteed across
+architectures. Until such a receipt exists, scope the claim to
+"byte-identical on x86-64 Linux in a pinned environment."
