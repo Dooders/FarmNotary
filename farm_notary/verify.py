@@ -309,6 +309,8 @@ def _bitwise_status(
     ignored_files = list(receipt.get("ignored") or [])
     ignore_globs = [str(g) for g in (receipt.get("ignore") or []) if g]
     compared = len(matched) + len(mismatched) + len(missing)
+    if compared == 0:
+        return "missing"
     score = f"{len(matched)}/{compared}"
     ignored = ignore_globs or ignored_files
     if ignored:
