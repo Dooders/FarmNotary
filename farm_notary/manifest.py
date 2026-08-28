@@ -15,7 +15,7 @@ MANIFEST_NAME = "manifest.json"
 RECEIPT_NAME = "reproduction.json"
 
 # Notary metadata written next to the artifacts, never treated as artifacts.
-NOTARY_FILE_NAMES = frozenset({MANIFEST_NAME, RECEIPT_NAME})
+NOTARY_FILE_NAMES = frozenset({MANIFEST_NAME, RECEIPT_NAME, "precommit.json"})
 NOTARY_FILE_SUFFIXES = (".ots",)
 
 
@@ -132,6 +132,7 @@ class Manifest:
     artifacts: list = field(default_factory=list)
     artifact_hashes: dict = field(default_factory=dict)
     official_record: dict = field(default_factory=dict)
+    precommit_hash: Optional[str] = None
     cid: Optional[str] = None
     anchor: Optional[dict] = None
 
@@ -186,6 +187,7 @@ def build_manifest(
     environment: Optional[Mapping[str, Any]] = None,
     lockfile: Optional[Path] = None,
     official_record: Optional[Mapping[str, Any]] = None,
+    precommit_path: Optional[Path] = None,
 ) -> Manifest:
     run_dir = Path(run_dir)
     artifacts: list = []
@@ -210,6 +212,12 @@ def build_manifest(
         artifact_hashes=hashes,
         official_record=dict(official_record or {}),
     )
+    if precommit_path is not None:
+        from farm_notary.precommit import load_precommit
+        from farm_notary.precommit import precommit_hash as _pc_hash
+
+        pc = load_precommit(Path(precommit_path))
+        manifest.precommit_hash = _pc_hash(pc)
     manifest.validate()
     return manifest
 

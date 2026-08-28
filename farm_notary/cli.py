@@ -13,7 +13,7 @@ from farm_notary.manifest import (
     load_manifest,
     write_manifest,
 )
-from farm_notary.verify import verify_anchor, verify_receipt, verify_run_dir
+from farm_notary.verify import verify_anchor, verify_precommit, verify_receipt, verify_run_dir
 
 
 def _load_json_arg(path: Optional[str]) -> Optional[dict]:
@@ -49,6 +49,39 @@ def _build_parser() -> argparse.ArgumentParser:
     p_man.add_argument(
         "--official-record",
         help="Path to a JSON file with aggregate results (never per-agent choices)",
+    )
+    p_man.add_argument(
+        "--precommit",
+        help="Path to a precommit.json produced by `farm-notary precommit`; "
+        "binds the manifest to the pre-run specification",
+    )
+
+    p_pre = sub.add_parser(
+        "precommit",
+        help="Anchor config + command + code hash before the run",
+    )
+    p_pre.add_argument("--config", help="Path to the run configuration JSON file")
+    p_pre.add_argument("--command", help="Exact command (with {run_dir} placeholder) for the run")
+    p_pre.add_argument("--git-sha", help="Code identity; auto-detected from cwd if omitted")
+    p_pre.add_argument(
+        "--lockfile",
+        help="Dependency lockfile to hash into the precommit",
+    )
+    p_pre.add_argument(
+        "--out",
+        default=".",
+        help="Directory (or file path) where precommit.json is written (default: current directory)",
+    )
+    p_pre.add_argument(
+        "--backend",
+        choices=("dry-run", "ots"),
+        default="dry-run",
+        help="dry-run prints the payload; ots anchors via OpenTimestamps",
+    )
+    p_pre.add_argument(
+        "--calendar",
+        action="append",
+        help="OpenTimestamps calendar URL; repeatable",
     )
 
     p_anc = sub.add_parser("anchor", help="Pin (optional) and anchor an existing manifest")
@@ -125,6 +158,7 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
         lockfile=Path(args.lockfile) if args.lockfile else None,
         config=_load_json_arg(args.config),
         official_record=_load_json_arg(args.official_record),
+        precommit_path=Path(args.precommit) if args.precommit else None,
     )
     if manifest.git_dirty:
         print(
@@ -198,6 +232,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     problems = verify_run_dir(manifest, run_dir)
     problems += verify_anchor(manifest, run_dir)
     problems += verify_receipt(manifest, run_dir)
+    problems += verify_precommit(manifest, run_dir)
 
     if problems:
         for problem in problems:
@@ -205,12 +240,29 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         return 1
 
     print("OK", manifest.content_hash())
+    if manifest.precommit_hash is not None:
+        from farm_notary.precommit import PRECOMMIT_NAME, PRECOMMIT_PROOF_NAME, load_precommit
+        from farm_notary.ots import PROOF_NAME, proof_status
+
+        pc_path = run_dir / PRECOMMIT_NAME
+        if pc_path.is_file():
+            try:
+                pc = load_precommit(pc_path)
+                print(f"pre-specified design: precommit created {pc.get('created_utc')} (T1)")
+            except (ValueError, OSError):
+                pass
+        pc_proof_path = run_dir / PRECOMMIT_PROOF_NAME
+        if pc_proof_path.is_file():
+            for line in proof_status(pc_proof_path.read_bytes()).summary():
+                print(f"  precommit proof: {line}")
     if manifest.anchor and manifest.anchor.get("backend") == "opentimestamps":
         from farm_notary.ots import PROOF_NAME, proof_status
 
         proof_path = run_dir / manifest.anchor.get("detail", {}).get("proof", PROOF_NAME)
         for line in proof_status(proof_path.read_bytes()).summary():
             print(line)
+    if manifest.precommit_hash is not None and manifest.anchor is not None:
+        print("claim: specified before T1, produced before T2")
     from farm_notary.manifest import RECEIPT_NAME
 
     receipt_path = run_dir / RECEIPT_NAME
@@ -222,6 +274,51 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             f"reproduction receipt: {len(receipt.get('matched', []))} artifact(s) "
             f"bitwise-reproduced on {receipt.get('created_utc')}"
         )
+    return 0
+
+
+def _cmd_precommit(args: argparse.Namespace) -> int:
+    from farm_notary.precommit import (
+        PRECOMMIT_NAME,
+        PRECOMMIT_PROOF_NAME,
+        build_precommit,
+        precommit_hash,
+        write_precommit,
+    )
+
+    out = Path(args.out)
+    if out.is_dir():
+        dest = out / PRECOMMIT_NAME
+    else:
+        dest = out
+
+    pc = build_precommit(
+        config=_load_json_arg(args.config),
+        command=args.command,
+        git_sha=args.git_sha,
+        lockfile=Path(args.lockfile) if args.lockfile else None,
+    )
+    if pc.get("git_dirty"):
+        print(
+            "warning: git tree is dirty; the recorded sha does not identify the code that will run",
+            file=sys.stderr,
+        )
+    write_precommit(pc, dest)
+    print(f"precommit written to {dest}")
+    pc_hash = precommit_hash(pc)
+    print("precommit_hash", pc_hash)
+
+    if args.backend == "ots":
+        from farm_notary.ots import stamp_digest
+
+        proof_dest = dest.parent / PRECOMMIT_PROOF_NAME
+        proof, accepted = stamp_digest(
+            bytes.fromhex(pc_hash), calendars=args.calendar
+        )
+        proof_dest.write_bytes(proof)
+        print(f"precommit anchored via {len(accepted)} calendar(s); proof at {proof_dest}")
+    else:
+        print("backend dry-run: precommit not anchored (use --backend ots to anchor)")
     return 0
 
 
@@ -304,6 +401,7 @@ def main(argv: Optional[list] = None) -> int:
         "verify": _cmd_verify,
         "upgrade": _cmd_upgrade,
         "reproduce": _cmd_reproduce,
+        "precommit": _cmd_precommit,
         "register-schema": _cmd_register_schema,
     }
     return handlers[args.cmd](args)
