@@ -48,11 +48,12 @@ def test_render_index_has_required_columns_and_no_scores():
     assert "Claim" in md
     assert "Date" in md
     assert "bafyabc" in md
-    assert "leaderboard" in md.lower() or "not" in md.lower()
-    assert "score" not in md.lower() or "scoreboard" in md.lower()
-    # The disclaimer may mention "score" as something we are not.
+    assert "not** a leaderboard" in md.lower() or "not a leaderboard" in md.lower()
+    # Disclaimer may mention scores as out of scope; the table must not rank.
     assert "| Score |" not in md
-    assert "rank" not in md.lower() or "ranking" in md.lower()
+    assert "| Rank |" not in md
+    header = [line for line in md.splitlines() if line.startswith("| Experiment")][0]
+    assert header.count("|") == 6  # five columns plus fences
 
 
 def test_forbidden_score_keys_rejected(tmp_path):
