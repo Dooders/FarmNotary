@@ -17,6 +17,13 @@ not correctness; a manifest can perfectly notarize a wrong result. Re-run the
 committed seed, interrogate the model, replicate with an independent
 implementation.
 
+> **Note on anchoring backends:** The commands above use `--backend ots`
+> (OpenTimestamps), which is the recommended default — no key, no gas, and
+> Bitcoin-backed.  The `--backend eas` option is **experimental**: it requires
+> a funded attester key, costs gas, and ties verification to an attester
+> address that verifiers must know in advance.  See [EAS.md](EAS.md) for
+> details and a tradeoff table.
+
 ## Scoping the reproducibility claim
 
 `reproduce` compares every artifact the manifest lists. Artifacts that are
