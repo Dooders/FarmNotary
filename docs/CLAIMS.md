@@ -127,14 +127,19 @@ A passing receipt from any other machine still reports `N/M`, then:
 
 A failed receipt reports `fail — N/M` and does not emit the sentence.
 
-`.github/workflows/reproduce-consensus-matrix.yml` has two layers. Same-job
-produce+reproduce on one `ubuntu-latest` VM is the demonstrated cell — that
-is what AgentFarm's own GHA receipt already showed. A second `ubuntu-latest`
-VM, Linux ARM, and macOS ARM re-run the recorded command and store receipts;
-those rows are evidence, not a claim. Two ubuntu-latest machines are already
-a different CPU/BLAS pool. The smoke cell is 12 trials × 50 voters, seed 0,
-not the 100×300 scientific cell. A mismatch outside the same VM does not
-widen or shrink the published sentence.
+`.github/workflows/reproduce-consensus-matrix.yml` ran the 12×50 smoke cell
+(seed 0) on 2026-08-28 (`f6053d0`). Same-job produce+reproduce on one
+`ubuntu-latest` VM is the demonstrated cell: **10/10**, and the tool emitted
+the sentence above. Cross-machine rows are evidence, not a claim:
+
+| Machine | Score | What differed |
+|---|---|---|
+| Another `ubuntu-latest` VM | 10/10 | — |
+| Linux ARM (`ubuntu-24.04-arm`) | 6/10 | `trials.csv`, `summary.csv`, `allocation_means.csv`, `contrasts.csv` (unclassified — not path/timestamp/float-print/encoder) |
+| macOS ARM (`macos-14`) | 2/10 | those CSVs plus all four PNGs (unclassified) |
+
+ARM receipts are not `ok`. `DEMONSTRATED_SCOPES` stays `{x86-64 Linux}`.
+The 100×300 scientific cell was not re-run here.
 
 AgentFarm's `.github/workflows/reproduce-consensus.yml` is same-arch x86-64
 Linux CI on a different process/filesystem. It does not establish an

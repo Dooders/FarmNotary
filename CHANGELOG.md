@@ -42,11 +42,11 @@ do not emit the sentence. Manifests and receipts now record `system` and
 `machine` so the card does not have to parse `platform.platform()`.
 
 `.github/workflows/reproduce-consensus-matrix.yml` produces+reproduces on
-one x86-64 Linux VM (the demonstrated cell) and then re-runs on another
-x86 VM, Linux ARM, and macOS ARM as evidence. Until those ARM receipts
-are `ok` and the demonstrated set is expanded, the claim stays that one
-sentence. The recorded command is portable (`python run_experiment.py`
-plus `--cwd`); AgentFarm is a reviewed SHA pin, not a job-output checkout.
+one x86-64 Linux VM (the demonstrated cell: 10/10 on 2026-08-28) and then
+re-runs on another x86 VM (also 10/10), Linux ARM (6/10), and macOS ARM
+(2/10). ARM receipts are not `ok`; the claim stays that one sentence.
+The recorded command is portable (`python run_experiment.py` plus `--cwd`);
+AgentFarm is a reviewed SHA pin, not a job-output checkout.
 
 #### Experiment-type publish profiles
 
