@@ -114,7 +114,7 @@ ipfs pin remote service add pinata https://api.pinata.cloud/psa <jwt-token>
 farm-notary anchor --run-dir path/to/run --pin --pin-remote pinata --backend ots
 ```
 
-`--pin-remote` implies `--pin`; if you have already pinned locally and just want to replicate to a service, pass `--pin-remote` alongside `--cid`.
+`--pin-remote` implies `--pin`; the run directory is always uploaded before the remote pin is requested.
 
 To skip the gateway check (e.g. in CI where the CID will propagate later), pass `--no-check-gateway`.
 

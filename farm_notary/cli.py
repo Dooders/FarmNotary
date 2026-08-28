@@ -236,12 +236,15 @@ def _cmd_anchor(args: argparse.Namespace) -> int:
         client = IpfsClient(api_url=args.ipfs_api)
         cid = client.add_run_dir(run_dir, list(manifest.artifacts) + [MANIFEST_NAME])
         manifest.cid = cid
+        manifest.cid_reachable = None
+        manifest.cid_reachable_checked_utc = None
 
         if pin_remote_service:
             try:
                 client.pin_remote(cid, pin_remote_service)
             except Exception as exc:
-                print(f"warning: remote pin to '{pin_remote_service}' failed: {exc}", file=sys.stderr)
+                print(f"error: remote pin to '{pin_remote_service}' failed: {exc}", file=sys.stderr)
+                return 1
 
         # Check that the CID is resolvable through a public gateway.
         if not getattr(args, "no_check_gateway", False):

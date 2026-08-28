@@ -193,6 +193,7 @@ def test_anchor_pin_gateway_reachable_recorded(tmp_path: Path, monkeypatch, caps
     """--pin with reachable gateway records cid_reachable=True in manifest."""
     run_dir = make_run_dir(tmp_path)
     assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc", "--publish", "*.csv"]) == 0
+    pre_anchor_hash = load_manifest(run_dir).content_hash()
 
     ipfs = StubServer()
     gateway = StubServer()
@@ -211,7 +212,7 @@ def test_anchor_pin_gateway_reachable_recorded(tmp_path: Path, monkeypatch, caps
         assert manifest.cid == "bafyreach"
         assert manifest.cid_reachable is True
         assert manifest.cid_reachable_checked_utc is not None
-        # content_hash must be unchanged (gateway fields excluded)
+        assert manifest.content_hash() == pre_anchor_hash
     finally:
         ipfs.close()
         gateway.close()
