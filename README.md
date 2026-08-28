@@ -34,14 +34,15 @@ Files whose paths contain `ballot`, `vote`, `voter`, `individual_choice`, or `pr
 ## Install
 
 ```bash
-pip install -e .
+pip install -e .            # manifest + verify, no chain deps
+pip install -e ".[chain]"   # adds web3 for the EAS backend
 ```
 
 Extras:
 
+- `farm-notary[chain]` — adds `web3`, needed for the EAS backend.
 - `farm-notary[ots]` — adds the `opentimestamps` library, needed to anchor and to check proofs. Manifest building and local verification are stdlib-only.
 - IPFS upload needs no extra, just a reachable Kubo daemon.
-
 ## Quick start
 
 ```bash
@@ -65,6 +66,43 @@ farm-notary verify --run-dir path/to/run
 ```
 
 `--backend ots` submits the manifest content hash to public OpenTimestamps calendars (override with `--calendar` or `FARM_NOTARY_CALENDARS`) and writes the proof to `manifest.ots`. `--pin` uploads the run directory (manifest included) to the Kubo API at `FARM_NOTARY_IPFS_API` (default `http://127.0.0.1:5001`) and stores the root CID in the manifest. `upgrade` completes the pending proof with a Bitcoin attestation; `verify` then reports the block height.
+
+## Anchoring with EAS
+
+The `eas` backend attests `(manifest_hash, cid)` on [EAS](https://attest.org), which is a predeploy on Base and Base Sepolia (contract `0x4200...0021` on both).
+
+Schema (non-revocable, no resolver):
+
+```text
+bytes32 manifestHash,string cid
+```
+
+Its UID is derived deterministically and is the same on every chain:
+
+```text
+0xc3d61e7073e9dcc59f65fe1a8a4bfd0b3e2c5fd2e32ad1c1d6c473fb1274ac08
+```
+
+Configuration is via environment variables:
+
+| Variable | Meaning | Default |
+| --- | --- | --- |
+| `FARM_NOTARY_CHAIN` | `base` or `base-sepolia` | `base-sepolia` |
+| `FARM_NOTARY_PRIVATE_KEY` | Attester key (funded with a little ETH for gas) | required |
+| `FARM_NOTARY_RPC_URL` | JSON-RPC endpoint | public RPC for the chain |
+| `FARM_NOTARY_EAS_SCHEMA_UID` | Schema UID to attest against | the UID above |
+| `FARM_NOTARY_EAS_ADDRESS` | EAS contract | OP-stack predeploy |
+
+One-time per chain, register the schema, then anchor runs:
+
+```bash
+python -m farm_notary.cli register-schema
+python -m farm_notary.cli anchor --run-dir path/to/run --backend eas --cid <cid>
+```
+
+A successful anchor writes the receipt (tx hash, attestation UID, chain id) back into `manifest.json` and prints an [EASScan](https://base-sepolia.easscan.org) link.
+
+The attester address is the trust anchor: attestations only mean something to verifiers who know which address is yours. Publish your attester address (and the schema UID) wherever you publish results, and keep attesting from that address. Verifiers then check: look up the attestation on EASScan, confirm the attester, fetch the CID, rehash with `farm-notary verify`, and compare to the attested `manifestHash`.
 
 ## AgentFarm inheritance
 
@@ -117,4 +155,4 @@ python3 -m venv .venv
 
 ## Status
 
-MVP. Manifest, hashing, IPFS pinning, OpenTimestamps anchoring (dry-run default), proof upgrade, and verification are implemented and tested. The anchoring layer is deliberately outsourced — earlier revisions carried a custom `SimulationRegistry` contract, which was removed in favor of existing public infrastructure. Possible later addition: an EAS attestation backend for EVM-native consumers.
+MVP. Manifest, hashing, IPFS pinning, OpenTimestamps anchoring (dry-run default), proof upgrade, verification, and EAS attestation on Base/Base Sepolia are implemented and tested. The anchoring layer is deliberately outsourced — earlier revisions carried a custom `SimulationRegistry` contract, which was removed in favor of existing public infrastructure.

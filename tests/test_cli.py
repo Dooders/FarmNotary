@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from farm_notary import cli
+from farm_notary.anchor import AnchorReceipt
 from farm_notary.cli import main
 from farm_notary.manifest import load_manifest
 from farm_notary.ots import PROOF_NAME
@@ -87,6 +89,41 @@ def test_upgrade_requires_proof(tmp_path: Path, capsys):
     run_dir = make_run_dir(tmp_path)
     assert main(["upgrade", "--run-dir", str(run_dir)]) == 2
     assert "anchor" in capsys.readouterr().err
+
+
+class FakeEASBackend:
+    def submit(self, manifest, *, cid=None):
+        return AnchorReceipt(
+            backend="eas",
+            manifest_hash=manifest.content_hash(),
+            cid=cid,
+            dry_run=False,
+            attestation_uid="0x" + "22" * 32,
+            chain_id=84532,
+        )
+
+
+def test_anchor_eas_backend_writes_receipt(tmp_path: Path, capsys, monkeypatch):
+    run_dir = make_run_dir(tmp_path)
+    assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc"]) == 0
+    monkeypatch.setattr(cli, "get_backend", lambda name, **_kw: FakeEASBackend())
+    assert main(["anchor", "--run-dir", str(run_dir), "--backend", "eas", "--cid", "bafytest"]) == 0
+    capsys.readouterr()
+    manifest = load_manifest(run_dir)
+    assert manifest.cid == "bafytest"
+    assert manifest.anchor["attestation_uid"] == "0x" + "22" * 32
+    assert manifest.anchor["dry_run"] is False
+    # The anchored hash matches what verify recomputes from the written manifest.
+    assert main(["verify", "--run-dir", str(run_dir)]) == 0
+
+
+def test_anchor_no_write(tmp_path: Path, capsys, monkeypatch):
+    run_dir = make_run_dir(tmp_path)
+    assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc"]) == 0
+    before = (run_dir / "manifest.json").read_text(encoding="utf-8")
+    monkeypatch.setattr(cli, "get_backend", lambda name, **_kw: FakeEASBackend())
+    assert main(["anchor", "--run-dir", str(run_dir), "--backend", "eas", "--no-write"]) == 0
+    assert (run_dir / "manifest.json").read_text(encoding="utf-8") == before
 
 
 def test_full_pin_anchor_upgrade_verify_flow(tmp_path: Path, monkeypatch, capsys):

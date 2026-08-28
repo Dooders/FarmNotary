@@ -55,9 +55,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p_anc.add_argument("--run-dir", required=True)
     p_anc.add_argument(
         "--backend",
-        choices=("dry-run", "ots"),
+        choices=("dry-run", "ots", "eas"),
         default="dry-run",
-        help="dry-run prints the payload; ots anchors via OpenTimestamps calendars (needs farm-notary[ots])",
+        help="dry-run prints the payload; ots anchors via OpenTimestamps; eas anchors on Base (needs farm-notary[chain])",
     )
     p_anc.add_argument("--pin", action="store_true", help="Upload the run directory to IPFS first")
     p_anc.add_argument("--ipfs-api", help="Kubo API URL (default: FARM_NOTARY_IPFS_API or http://127.0.0.1:5001)")
@@ -65,6 +65,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--calendar",
         action="append",
         help="OpenTimestamps calendar URL; repeatable (default: FARM_NOTARY_CALENDARS or the public pools)",
+    )
+    p_anc.add_argument("--cid", help="CID of the pinned run directory, stored alongside the hash")
+    p_anc.add_argument(
+        "--no-write",
+        action="store_true",
+        help="Do not write the anchor receipt back into manifest.json",
     )
 
     p_ver = sub.add_parser("verify", help="Rehash artifacts and check the anchor proof")
@@ -97,6 +103,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Anchor the reproduction receipt via OpenTimestamps",
     )
     p_rep.add_argument("--calendar", action="append", help="Calendar URL; repeatable")
+
+    sub.add_parser(
+        "register-schema",
+        help="Register the FarmNotary schema with the EAS SchemaRegistry (one-time per chain)",
+    )
 
     return parser
 
@@ -142,18 +153,27 @@ def _cmd_anchor(args: argparse.Namespace) -> int:
         print(f"error: could not load manifest: {exc}", file=sys.stderr)
         return 2
 
-    cid = None
-    if args.pin:
+    cid = getattr(args, "cid", None)
+    if getattr(args, "pin", False):
         from farm_notary.ipfs import IpfsClient
 
         client = IpfsClient(api_url=args.ipfs_api)
         cid = client.add_run_dir(run_dir, list(manifest.artifacts) + [MANIFEST_NAME])
 
-    backend = get_backend(args.backend, calendars=args.calendar)
+    backend = get_backend(args.backend, calendars=getattr(args, "calendar", None))
     receipt = anchor_run(manifest, cid=cid, backend=backend)
     proof_path = write_proof(receipt, run_dir)
-    write_manifest(manifest, run_dir)
-    print(json.dumps(receipt.to_dict(), indent=2))
+
+    no_write = getattr(args, "no_write", False)
+    if not no_write:
+        write_manifest(manifest, run_dir)
+
+    out = receipt.to_dict()
+    if receipt.attestation_uid and args.backend == "eas":
+        from farm_notary.eas import EASConfig, attestation_url
+
+        out["easscan_url"] = attestation_url(EASConfig.from_env(), receipt.attestation_uid)
+    print(json.dumps(out, indent=2))
     if proof_path:
         print(f"proof written to {proof_path}")
     return 0
@@ -268,6 +288,14 @@ def _cmd_upgrade(args: argparse.Namespace) -> int:
     return 0 if status.confirmed else 1
 
 
+def _cmd_register_schema(_args: argparse.Namespace) -> int:
+    from farm_notary.eas import FARM_NOTARY_SCHEMA, register_schema
+
+    uid = register_schema()
+    print(json.dumps({"schema": FARM_NOTARY_SCHEMA, "schema_uid": uid}, indent=2))
+    return 0
+
+
 def main(argv: Optional[list] = None) -> int:
     args = _build_parser().parse_args(argv)
     handlers = {
@@ -276,6 +304,7 @@ def main(argv: Optional[list] = None) -> int:
         "verify": _cmd_verify,
         "upgrade": _cmd_upgrade,
         "reproduce": _cmd_reproduce,
+        "register-schema": _cmd_register_schema,
     }
     return handlers[args.cmd](args)
 

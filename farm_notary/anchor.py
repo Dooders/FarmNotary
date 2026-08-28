@@ -2,9 +2,9 @@
 
 The anchoring layer is outsourced to existing public infrastructure; FarmNotary
 only decides *what* gets anchored (the manifest content hash). Default is
-dry-run: return the payload that *would* be submitted. The real backend is
+dry-run: return the payload that *would* be submitted. The real backends are
 OpenTimestamps (farm_notary.ots), which anchors into Bitcoin via free public
-calendar servers.
+calendar servers, and EAS (farm_notary.eas), which anchors on Base / Base Sepolia.
 """
 
 from __future__ import annotations
@@ -27,6 +27,9 @@ class AnchorReceipt:
     manifest_hash: str
     cid: Optional[str]
     dry_run: bool = True
+    attestation_uid: str | None = None
+    chain_id: int | None = None
+    tx_hash: str | None = None
     detail: dict = field(default_factory=dict)
     # Serialized proof to persist next to the manifest (e.g. manifest.ots).
     # Not part of to_dict: proofs are files, not manifest metadata.
@@ -38,6 +41,9 @@ class AnchorReceipt:
             "manifest_hash": self.manifest_hash,
             "cid": self.cid,
             "dry_run": self.dry_run,
+            "attestation_uid": self.attestation_uid,
+            "chain_id": self.chain_id,
+            "tx_hash": self.tx_hash,
             "detail": self.detail,
         }
 
@@ -64,7 +70,11 @@ def get_backend(name: str, *, calendars=None) -> AnchorBackend:
         from farm_notary.ots import OpenTimestampsBackend
 
         return OpenTimestampsBackend(calendars=calendars)
-    raise ValueError(f"unknown anchor backend {name!r} (expected dry-run or ots)")
+    if name == "eas":
+        from farm_notary.eas import EASBackend
+
+        return EASBackend()
+    raise ValueError(f"unknown anchor backend {name!r} (expected dry-run, ots, or eas)")
 
 
 def write_proof(receipt: AnchorReceipt, run_dir: Path) -> Optional[Path]:
@@ -86,6 +96,7 @@ def anchor_run(
 ) -> AnchorReceipt:
     """Submit the manifest hash (and optional CID) and stamp the manifest."""
     backend = backend or DryRunBackend()
+    cid = cid or manifest.cid
     receipt = backend.submit(manifest, cid=cid)
     if cid is not None:
         manifest.cid = cid

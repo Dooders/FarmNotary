@@ -119,8 +119,8 @@ perturb the anchored content hash.
 ## Backends
 
 1. Dry-run (default; returns the payload that would be submitted)
-2. `ots` — OpenTimestamps calendars into Bitcoin (implemented)
-3. EAS attestation for EVM-native consumers (possible later; also outsourced infrastructure)
+2. `ots` — OpenTimestamps calendars into Bitcoin (implemented, `farm_notary/ots.py`)
+3. `eas` — EAS attestation on Base / Base Sepolia (implemented, `farm_notary/eas.py`). EAS is an OP-stack predeploy (`0x4200...0021`; SchemaRegistry `0x4200...0020`), so the addresses are identical on Base and Base Sepolia. Schema: `bytes32 manifestHash,string cid`, non-revocable. `web3` is a lazy import behind the `[chain]` extra. `anchor_run` writes the receipt (backend, tx hash, attestation UID, chain id) into `manifest.anchor`. `content_hash` excludes `cid` and `anchor`, so the attested hash is stable across stamping.
 
 ## Consensus experiment note
 
