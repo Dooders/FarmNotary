@@ -13,7 +13,7 @@ from farm_notary.manifest import (
     load_manifest,
     write_manifest,
 )
-from farm_notary.verify import verify_anchor, verify_precommit, verify_receipt, verify_run_dir
+from farm_notary.verify import evaluate_claims
 
 
 def _load_json_arg(path: Optional[str]) -> Optional[dict]:
@@ -131,7 +131,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Do not write the anchor receipt back into manifest.json",
     )
 
-    p_ver = sub.add_parser("verify", help="Rehash artifacts and check the anchor proof")
+    p_ver = sub.add_parser(
+        "verify",
+        help="Print a CLAIMS.md claim card for a run (rehash, timestamp, precommit, receipt)",
+    )
     p_ver.add_argument("--run-dir", help="Run directory containing manifest.json")
     p_ver.add_argument("--manifest", help=f"Path to a {MANIFEST_NAME} (artifacts checked next to it)")
 
@@ -302,84 +305,16 @@ def _cmd_verify(args: argparse.Namespace) -> int:
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        problems = verify_run_dir(manifest, run_dir)
+        card = evaluate_claims(manifest, run_dir)
     for w in caught:
         print(f"warning: {w.message}", file=sys.stderr)
-    problems += verify_anchor(manifest, run_dir)
-    problems += verify_receipt(manifest, run_dir)
-    problems += verify_precommit(manifest, run_dir)
 
-    if problems:
-        for problem in problems:
+    print(card.render(), end="")
+    if card.problems:
+        print()
+        for problem in card.problems:
             print("FAIL", problem)
         return 1
-
-    print("OK", manifest.content_hash())
-    _precommit_ots_confirmed = False
-    if manifest.precommit_hash is not None:
-        from farm_notary.precommit import PRECOMMIT_NAME, PRECOMMIT_PROOF_NAME, load_precommit
-        from farm_notary.ots import PROOF_NAME, proof_status
-
-        pc_path = run_dir / PRECOMMIT_NAME
-        pc_proof_path = run_dir / PRECOMMIT_PROOF_NAME
-        # Only report the "pre-specified design" claim when an OTS proof for
-        # the precommit exists; otherwise present created_utc as untrusted
-        # self-declared metadata only.
-        if pc_proof_path.is_file() and pc_path.is_file():
-            try:
-                pc = load_precommit(pc_path)
-                pc_status = proof_status(pc_proof_path.read_bytes())
-                _precommit_ots_confirmed = pc_status.confirmed
-                print(
-                    f"pre-specified design: precommit anchored via OTS"
-                    f" (self-declared created_utc: {pc.get('created_utc')})"
-                )
-                for line in pc_status.summary():
-                    print(f"  precommit proof: {line}")
-            except (ValueError, OSError):
-                pass
-        elif pc_path.is_file():
-            try:
-                pc = load_precommit(pc_path)
-                print(
-                    f"  precommit present (no OTS proof); self-declared"
-                    f" created_utc: {pc.get('created_utc')} (untrusted)"
-                )
-            except (ValueError, OSError):
-                pass
-    _anchor_ots_confirmed = False
-    if manifest.anchor and manifest.anchor.get("backend") == "opentimestamps":
-        from farm_notary.ots import PROOF_NAME, proof_status
-
-        proof_path = run_dir / manifest.anchor.get("detail", {}).get("proof", PROOF_NAME)
-        if proof_path.is_file():
-            anc_status = proof_status(proof_path.read_bytes())
-            _anchor_ots_confirmed = anc_status.confirmed
-            for line in anc_status.summary():
-                print(line)
-    # Emit the two-phase claim only when both proofs are real (not dry-run)
-    # and at least submitted to a calendar (confirmed or pending).
-    _precommit_proof_present = (
-        manifest.precommit_hash is not None
-        and (run_dir / "precommit.ots").is_file()
-    )
-    _anchor_proof_present = (
-        manifest.anchor is not None
-        and manifest.anchor.get("backend") != "dry-run"
-    )
-    if _precommit_proof_present and _anchor_proof_present:
-        print("claim: specified before T1, produced before T2")
-    from farm_notary.manifest import RECEIPT_NAME
-
-    receipt_path = run_dir / RECEIPT_NAME
-    if receipt_path.is_file():
-        from farm_notary.reproduce import load_receipt
-
-        receipt = load_receipt(run_dir)
-        print(
-            f"reproduction receipt: {len(receipt.get('matched', []))} artifact(s) "
-            f"bitwise-reproduced on {receipt.get('created_utc')}"
-        )
     return 0
 
 

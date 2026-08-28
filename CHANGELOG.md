@@ -9,6 +9,27 @@ FarmNotary uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased] — breaking changes
 
+### Changed
+
+#### `verify` prints a CLAIMS.md claim card
+
+`farm-notary verify` no longer leads with `OK <hash>` or requires reviewers
+to translate an exit code. It always prints a claim card:
+
+```
+claim card
+•  tamper-evident record           — pass
+•  existed by time T               — pending | Bitcoin height N | missing | fail
+•  pre-specified design            — precommit bound | missing | fail
+•  bitwise reproducible (scoped)   — N/M[, ignored: globs] | missing | fail
+•  not claimed: scientific correctness
+```
+
+Missing is not failure: a run with no timestamp, no precommit, and no
+reproduction receipt still exits 0 if the artifacts rehash. Failed checks
+still print `FAIL <detail>` under the card and exit 1. Reproduction
+receipts now record the `--ignore` globs so the scoped claim can list them.
+
 ### Breaking
 
 #### Privacy filter replaced with an explicit allowlist (`security`, `breaking-change`)

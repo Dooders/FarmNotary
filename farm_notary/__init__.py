@@ -19,15 +19,23 @@ from farm_notary.manifest import (
     write_manifest,
 )
 from farm_notary.reproduce import ReproductionResult, reproduce_run
-from farm_notary.verify import verify_anchor, verify_receipt, verify_run_dir
+from farm_notary.verify import (
+    ClaimCard,
+    evaluate_claims,
+    verify_anchor,
+    verify_receipt,
+    verify_run_dir,
+)
 
 __all__ = [
     "AnchorReceipt",
+    "ClaimCard",
     "Manifest",
     "ReproductionResult",
     "anchor_run",
     "build_manifest",
     "capture_environment",
+    "evaluate_claims",
     "get_backend",
     "hash_file",
     "hash_json",

@@ -66,7 +66,10 @@ def test_reproduce_ignore_globs_scope_the_claim(tmp_path: Path):
     result = reproduce_run(manifest, fresh_dir=tmp_path / "fresh", ignore=["*.mp4"])
     assert result.ok
     assert result.ignored == ["media.mp4"]
+    assert result.ignore == ["*.mp4"]
     assert result.matched == ["summary.csv"]
+    receipt = build_receipt(manifest, result)
+    assert receipt["ignore"] == ["*.mp4"]
 
 
 def test_reproduce_detects_missing_artifact(tmp_path: Path):
@@ -105,6 +108,7 @@ def test_receipt_round_trip_and_verify(tmp_path: Path):
     assert load_receipt(run_dir) == receipt
     assert receipt["ok"] is True
     assert receipt["original_manifest_hash"] == manifest.content_hash()
+    assert receipt["ignore"] == []
     assert verify_receipt(manifest, run_dir) == []
 
 
@@ -172,9 +176,11 @@ def test_cli_reproduce_flow(tmp_path: Path, capsys):
     assert "receipt written to" in out
     assert (run_dir / RECEIPT_NAME).is_file()
 
-    # verify reports the receipt.
+    # verify reports the receipt as a scoped reproducibility claim.
     assert main(["verify", "--run-dir", str(run_dir)]) == 0
-    assert "reproduction receipt: 2 artifact(s) bitwise-reproduced" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "bitwise reproducible (scoped)" in out
+    assert "2/2" in out
 
     # A nondeterministic artifact fails unless ignored.
     data = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
@@ -186,4 +192,9 @@ def test_cli_reproduce_flow(tmp_path: Path, capsys):
     assert main(["reproduce", "--run-dir", str(run_dir)]) == 1
     capsys.readouterr()
     assert main(["reproduce", "--run-dir", str(run_dir), "--ignore", "*.mp4"]) == 0
-    assert "ignored (excluded from the claim): media.mp4" in capsys.readouterr().out
+    assert "ignored globs (excluded from the claim): *.mp4" in capsys.readouterr().out
+
+    assert main(["verify", "--run-dir", str(run_dir)]) == 0
+    out = capsys.readouterr().out
+    assert "bitwise reproducible (scoped)" in out
+    assert "1/1, ignored: *.mp4" in out

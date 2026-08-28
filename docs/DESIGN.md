@@ -85,8 +85,10 @@ The pinned tree includes `manifest.json`. Because `content_hash` excludes `cid`/
    for the completed path to a Bitcoin block header attestation and rewrites
    the proof. Exit code 1 means still pending; run it again later.
 3. **Verify** (`verify`): rehash artifacts, recompute the content hash, check
-   the proof commits to it, and report attestation status (pending calendars
-   or Bitcoin block heights). Checking the Bitcoin merkle path against a local
+   the proof commits to it, and print a CLAIMS.md claim card — tamper-evident
+   record, existed by time T (pending or Bitcoin height), pre-specified
+   design, bitwise reproducible (scoped), and an explicit non-claim of
+   scientific correctness. Checking the Bitcoin merkle path against a local
    node is left to the standard `ots verify` tooling — FarmNotary validates
    commitment integrity, not block headers.
 

@@ -86,7 +86,7 @@ Breaking changes (new required fields, renamed keys, removed fields) are reserve
 # 1. Hash the run directory into manifest.json
 farm-notary manifest --run-dir path/to/run --config config.json
 
-# 2. Verify: rehash and compare
+# 2. Verify: print a CLAIMS.md claim card
 farm-notary verify --run-dir path/to/run
 
 # 3. Anchor to OpenTimestamps calendars and write proof to manifest.ots
@@ -102,7 +102,7 @@ farm-notary upgrade --run-dir path/to/run
 farm-notary verify --run-dir path/to/run
 ```
 
-`--backend ots` submits the manifest content hash to public OpenTimestamps calendars (override with `--calendar` or `FARM_NOTARY_CALENDARS`) and writes the proof to `manifest.ots`. `--pin` uploads the run directory (manifest included) to the Kubo API at `FARM_NOTARY_IPFS_API` (default `http://127.0.0.1:5001`) and stores the root CID in the manifest. `upgrade` completes the pending proof with a Bitcoin attestation; `verify` then reports the block height.
+`--backend ots` submits the manifest content hash to public OpenTimestamps calendars (override with `--calendar` or `FARM_NOTARY_CALENDARS`) and writes the proof to `manifest.ots`. `--pin` uploads the run directory (manifest included) to the Kubo API at `FARM_NOTARY_IPFS_API` (default `http://127.0.0.1:5001`) and stores the root CID in the manifest. `upgrade` completes the pending proof with a Bitcoin attestation; `verify` then reports **existed by time T** as a Bitcoin height.
 
 ## IPFS persistence
 
@@ -174,7 +174,8 @@ farm-notary reproduce --run-dir path/to/run --ignore '*.mp4' --anchor
 artifact's bytes against the manifest, and writes a `reproduction.json`
 receipt (rerunner's environment, per-file results). `--anchor` timestamps the
 receipt itself via OpenTimestamps, so "independently reproduced" comes with a
-proof. `verify` checks the receipt against the manifest and its proof.
+proof. `verify` reports the receipt as **bitwise reproducible (scoped)** — `N/M`
+of compared artifacts, with any `--ignore` globs listed.
 
 See [docs/CLAIMS.md](docs/CLAIMS.md) for exactly which claim each check earns.
 
@@ -182,9 +183,13 @@ See [docs/CLAIMS.md](docs/CLAIMS.md) for exactly which claim each check earns.
 
 1. Fetch the CID (`ipfs get <cid>`), or obtain the run directory some other way. If `ipfs get` hangs, the CID may not be pinned on any reachable node — check the manifest's `cid_reachable` field and `cid_reachable_checked_utc` timestamp, and try the public gateway: `https://ipfs.io/ipfs/<cid>`.
 2. `farm-notary verify --run-dir <dir>`
-3. Exit code 0 means: these exact bytes hash to a manifest whose content hash the OpenTimestamps proof commits to, and the proof is attested (or pending) in Bitcoin. It does not mean the science is right — re-run from the committed seed for that.
+3. Read the claim card. Each line is a CLAIMS.md claim (`pass` / `fail` /
+   `pending` / Bitcoin height / `precommit bound` / `N/M` / `missing`).
+   **Missing is not failure.** Exit code 0 means no attempted check failed;
+   it does not mean the science is right, and it does not mean every claim
+   was earned. The card always ends with `not claimed: scientific correctness`.
 
-`verify` distinguishes two failure modes:
+`verify` distinguishes two artifact-check failure modes (printed after the card):
 
 - **`artifact unreachable: <name>`** — the file is absent from the local directory; if the manifest records a CID, the hint `(fetch with: ipfs get <cid>)` is appended.
 - **`artifact hash mismatch: <name>`** — the file is present but its content differs from what was hashed at notarization time.

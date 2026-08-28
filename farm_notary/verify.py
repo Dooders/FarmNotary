@@ -1,11 +1,14 @@
 """Verification: rehash local artifacts, then check the anchor proof.
 
-Both checks return a list of human-readable problems; empty means verified.
+Low-level checks return a list of human-readable problems; empty means that
+check passed. ``evaluate_claims`` turns those checks into a CLAIMS.md claim
+card so a reviewer reads earned claims, not exit codes.
 """
 
 from __future__ import annotations
 
 import warnings
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List
 
@@ -196,4 +199,143 @@ def verify_precommit(manifest: Manifest, run_dir: Path) -> List[str]:
         ]
 
     return problems
+
+
+# ---------------------------------------------------------------------------
+# Claim card — the human interface of `farm-notary verify`
+# ---------------------------------------------------------------------------
+
+_CLAIM_NAMES = (
+    "tamper-evident record",
+    "existed by time T",
+    "pre-specified design",
+    "bitwise reproducible (scoped)",
+)
+
+
+@dataclass
+class ClaimCard:
+    """One status per CLAIMS.md claim, plus the diagnostic problem list.
+
+    Missing is not failure: it means the claim was not earned. ``problems``
+    is empty only when every check that *was* attempted passed.
+    """
+
+    tamper_evident: str
+    existed_by: str
+    pre_specified: str
+    bitwise_reproducible: str
+    problems: List[str] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not self.problems
+
+    def lines(self) -> List[str]:
+        width = max(len(name) for name in _CLAIM_NAMES)
+        rows = (
+            ("tamper-evident record", self.tamper_evident),
+            ("existed by time T", self.existed_by),
+            ("pre-specified design", self.pre_specified),
+            ("bitwise reproducible (scoped)", self.bitwise_reproducible),
+        )
+        out = ["claim card"]
+        for name, status in rows:
+            out.append(f"•  {name:<{width}} — {status}")
+        out.append("•  not claimed: scientific correctness")
+        return out
+
+    def render(self) -> str:
+        return "\n".join(self.lines()) + "\n"
+
+
+def _existed_by_status(
+    manifest: Manifest, run_dir: Path, anchor_problems: List[str]
+) -> str:
+    """CLAIMS.md 'existed by time T': pending, Bitcoin height, missing, or fail."""
+    if manifest.anchor is None or manifest.anchor.get("backend") != "opentimestamps":
+        return "missing"
+    if anchor_problems:
+        return "fail"
+    from farm_notary.ots import PROOF_NAME, proof_status
+
+    proof_path = Path(run_dir) / manifest.anchor.get("detail", {}).get(
+        "proof", PROOF_NAME
+    )
+    if not proof_path.is_file():
+        return "fail"
+    try:
+        status = proof_status(proof_path.read_bytes())
+    except Exception:
+        return "fail"
+    if status.bitcoin_heights:
+        return f"Bitcoin height {min(status.bitcoin_heights)}"
+    if status.pending_calendars:
+        return "pending"
+    return "fail"
+
+
+def _pre_specified_status(manifest: Manifest, precommit_problems: List[str]) -> str:
+    """CLAIMS.md 'pre-specified design': precommit bound, missing, or fail."""
+    if manifest.precommit_hash is None:
+        return "missing"
+    if precommit_problems:
+        return "fail"
+    return "precommit bound"
+
+
+def _bitwise_status(
+    manifest: Manifest, run_dir: Path, receipt_problems: List[str]
+) -> str:
+    """CLAIMS.md 'bitwise reproducible (scoped)': N/M plus ignored globs."""
+    from farm_notary.manifest import RECEIPT_NAME
+    from farm_notary.reproduce import load_receipt
+
+    receipt_path = Path(run_dir) / RECEIPT_NAME
+    if not receipt_path.is_file():
+        return "missing"
+    try:
+        receipt = load_receipt(run_dir)
+    except (ValueError, OSError):
+        return "fail"
+    if receipt.get("original_manifest_hash") != manifest.content_hash():
+        return "fail"
+
+    matched = list(receipt.get("matched") or [])
+    mismatched = list(receipt.get("mismatched") or [])
+    missing = list(receipt.get("missing") or [])
+    ignored_files = list(receipt.get("ignored") or [])
+    ignore_globs = [str(g) for g in (receipt.get("ignore") or []) if g]
+    compared = len(matched) + len(mismatched) + len(missing)
+    score = f"{len(matched)}/{compared}"
+    ignored = ignore_globs or ignored_files
+    if ignored:
+        score = f"{score}, ignored: {', '.join(ignored)}"
+    if receipt_problems or not receipt.get("ok"):
+        return f"fail — {score}"
+    return score
+
+
+def evaluate_claims(manifest: Manifest, run_dir: Path) -> ClaimCard:
+    """Run every verify check and return a CLAIMS.md claim card.
+
+    The card is always complete: a missing precommit or receipt is reported
+    as ``missing``, not as a problem. Problems are reserved for checks that
+    were attempted and failed.
+    """
+    run_dir = Path(run_dir)
+    tamper_problems = verify_run_dir(manifest, run_dir)
+    anchor_problems = verify_anchor(manifest, run_dir)
+    receipt_problems = verify_receipt(manifest, run_dir)
+    precommit_problems = verify_precommit(manifest, run_dir)
+    return ClaimCard(
+        tamper_evident="pass" if not tamper_problems else "fail",
+        existed_by=_existed_by_status(manifest, run_dir, anchor_problems),
+        pre_specified=_pre_specified_status(manifest, precommit_problems),
+        bitwise_reproducible=_bitwise_status(manifest, run_dir, receipt_problems),
+        problems=tamper_problems
+        + anchor_problems
+        + receipt_problems
+        + precommit_problems,
+    )
 

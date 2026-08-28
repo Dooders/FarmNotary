@@ -45,6 +45,7 @@ class ReproductionResult:
     missing: List[str] = field(default_factory=list)
     ignored: List[str] = field(default_factory=list)
     extra: List[str] = field(default_factory=list)
+    ignore: List[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -59,7 +60,9 @@ class ReproductionResult:
             lines.append(f"mismatch: {name}")
         for name in self.missing:
             lines.append(f"missing from re-run: {name}")
-        if self.ignored:
+        if self.ignore:
+            lines.append(f"ignored globs (excluded from the claim): {', '.join(self.ignore)}")
+        elif self.ignored:
             lines.append(f"ignored (excluded from the claim): {', '.join(self.ignored)}")
         if self.extra:
             lines.append(f"extra files in re-run (not compared): {', '.join(self.extra)}")
@@ -99,7 +102,9 @@ def reproduce_run(
     command = manifest.command.replace(RUN_DIR_PLACEHOLDER, str(fresh_dir))
 
     proc = subprocess.run(command, shell=True, timeout=timeout)
-    result = ReproductionResult(command=command, returncode=proc.returncode)
+    result = ReproductionResult(
+        command=command, returncode=proc.returncode, ignore=list(ignore)
+    )
 
     for name in sorted(manifest.artifact_hashes):
         if _is_ignored(name, ignore):
@@ -139,6 +144,7 @@ def build_receipt(manifest: Manifest, result: ReproductionResult) -> dict:
         "mismatched": result.mismatched,
         "missing": result.missing,
         "ignored": result.ignored,
+        "ignore": list(result.ignore),
     }
 
 

@@ -81,11 +81,18 @@ def test_verify_ok_and_tamper(tmp_path: Path, capsys):
     run_dir = make_run_dir(tmp_path)
     assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc", "--publish", "*.csv"]) == 0
     assert main(["verify", "--run-dir", str(run_dir)]) == 0
-    assert capsys.readouterr().out.count("OK") >= 1
+    out = capsys.readouterr().out
+    assert "claim card" in out
+    assert "tamper-evident record" in out
+    assert "pass" in out
+    assert "not claimed: scientific correctness" in out
 
     (run_dir / "summary.csv").write_text("tampered\n", encoding="utf-8")
     assert main(["verify", "--run-dir", str(run_dir)]) == 1
-    assert "hash mismatch" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "tamper-evident record" in out
+    assert "fail" in out
+    assert "hash mismatch" in out
 
 
 def test_verify_via_manifest_path(tmp_path: Path):
@@ -186,7 +193,9 @@ def test_full_pin_anchor_upgrade_verify_flow(tmp_path: Path, monkeypatch, capsys
         assert b"votes_ballot" not in ipfs.requests[0]["body"]
 
         assert main(["verify", "--run-dir", str(run_dir)]) == 0
-        assert "pending at calendar" in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert "existed by time T" in out
+        assert "pending" in out
 
         # Still pending: calendar has no Bitcoin attestation yet.
         assert main(["upgrade", "--run-dir", str(run_dir)]) == 1
@@ -199,7 +208,9 @@ def test_full_pin_anchor_upgrade_verify_flow(tmp_path: Path, monkeypatch, capsys
         assert "Bitcoin block 800000" in capsys.readouterr().out
 
         assert main(["verify", "--run-dir", str(run_dir)]) == 0
-        assert "anchored in Bitcoin block 800000" in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert "existed by time T" in out
+        assert "Bitcoin height 800000" in out
     finally:
         ipfs.close()
         calendar.close()

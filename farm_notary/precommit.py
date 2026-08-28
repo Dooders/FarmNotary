@@ -13,7 +13,8 @@ Typical flow
 2. After the run, ``farm-notary manifest`` (or ``notarize_run``) receives
    ``--precommit precommit.json``; the manifest gains a ``precommit_hash``
    field that binds the two phases together.
-3. ``farm-notary verify`` reports both timestamps and flags any
+3. ``farm-notary verify`` reports **pre-specified design** as
+   ``precommit bound`` (or ``fail`` / ``missing``) and flags any
    config/command divergence.
 """
 

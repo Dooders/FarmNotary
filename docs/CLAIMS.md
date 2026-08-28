@@ -3,12 +3,28 @@
 Each claim below is earned by a specific, runnable check. Do not make a claim
 whose backing command you have not run.
 
+`farm-notary verify` prints these claims as a card. Reviewers read the card,
+not the exit code. **Missing is not failure** — it means that claim was not
+earned. Exit code 0 means no attempted check failed; it does not mean every
+row is earned. Exit codes stay for scripts.
+
+```
+claim card
+•  tamper-evident record           — pass
+•  existed by time T               — pending
+•  pre-specified design            — missing
+•  bitwise reproducible (scoped)   — 6/6, ignored: *.mp4
+•  not claimed: scientific correctness
+```
+
+That is the difference between a hash tool and a research notary.
+
 | Claim | Backed by | Command |
 |---|---|---|
-| Tamper-evident record | Artifact rehash against the manifest | `farm-notary verify` |
+| Tamper-evident record | Artifact rehash against the manifest | `farm-notary verify` (claim card: pass/fail) |
 | Existed by time T | OpenTimestamps proof, Bitcoin attestation | `farm-notary upgrade`, then `ots verify` for full independence |
 | Verifiable provenance | Manifest records command, config, seed, git SHA + dirty flag, environment (packages/lockfile hash); a stranger can re-derive everything | `farm-notary manifest --command ... --lockfile ...` |
-| Pre-specified design | Precommit proof (config, command, git SHA anchored before the run); manifest's `precommit_hash` binds the two phases | `farm-notary precommit --config ... --command ... --backend ots`, then `farm-notary manifest --precommit precommit.json`; `farm-notary verify` reports both timestamps |
+| Pre-specified design | Precommit proof (config, command, git SHA anchored before the run); manifest's `precommit_hash` binds the two phases | `farm-notary precommit --config ... --command ... --backend ots`, then `farm-notary manifest --precommit precommit.json`; `farm-notary verify` reports `precommit bound` |
 | Bitwise reproducible (scoped) | A reproduction receipt produced by re-running the recorded command and comparing every listed artifact; what was excluded is noted in the receipt | `farm-notary reproduce`; with `--ignore` globs for legitimately nondeterministic artifacts |
 | Independently reproduced | A reproduction receipt produced on another machine, optionally timestamped | `farm-notary reproduce --anchor` |
 
