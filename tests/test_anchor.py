@@ -65,7 +65,9 @@ def test_notarize_run_with_pin(monkeypatch, stub_server, tmp_path: Path):
         json.dumps({"Name": "", "Hash": "bafypinned"}) + "\n"
     ).encode()
 
-    manifest, receipt = notarize_run(tmp_path, publish_patterns=["*.csv"], pin=True)
+    manifest, receipt = notarize_run(
+        tmp_path, publish_patterns=["*.csv"], pin=True, git_dirty=False
+    )
 
     assert receipt.cid == "bafypinned"
     assert load_manifest(tmp_path).cid == "bafypinned"
@@ -98,6 +100,8 @@ def test_notarize_run_with_ots_backend_writes_proof(stub_server, tmp_path: Path)
 
 def test_write_proof_noop_without_proof(tmp_path: Path):
     make_run_dir(tmp_path)
-    manifest = build_manifest(tmp_path, publish_patterns=["*.csv"])
+    manifest = build_manifest(
+        tmp_path, publish_patterns=["*.csv"], git_sha="abc", git_dirty=False
+    )
     receipt = anchor_run(manifest)
     assert write_proof(receipt, tmp_path) is None

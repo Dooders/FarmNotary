@@ -17,6 +17,7 @@ from farm_notary.manifest import (
     MANIFEST_NAME,
     Manifest,
     build_manifest,
+    require_clean_identity,
     write_manifest,
 )
 
@@ -93,8 +94,15 @@ def anchor_run(
     *,
     cid: Optional[str] = None,
     backend: Optional[AnchorBackend] = None,
+    allow_dirty: bool = False,
 ) -> AnchorReceipt:
-    """Submit the manifest hash (and optional CID) and stamp the manifest."""
+    """Submit the manifest hash (and optional CID) and stamp the manifest.
+
+    Refuses a dirty tree by default: ``git_dirty`` means the SHA does not
+    identify the code, so anchoring it is not a code-identity claim.
+    Pass ``allow_dirty=True`` to record an explicit exception.
+    """
+    require_clean_identity(manifest.git_dirty, allow_dirty=allow_dirty)
     backend = backend or DryRunBackend()
     cid = cid or manifest.cid
     receipt = backend.submit(manifest, cid=cid)
@@ -118,6 +126,8 @@ def notarize_run(
     backend: Optional[AnchorBackend] = None,
     pin: bool = False,
     ipfs_api: Optional[str] = None,
+    git_dirty: Optional[bool] = None,
+    allow_dirty: bool = False,
 ) -> Tuple[Manifest, AnchorReceipt]:
     """One-call hook for AgentFarm: manifest, optional pin, anchor, stamp.
 
@@ -130,6 +140,9 @@ def notarize_run(
     ``farm-notary precommit``, its content hash is recorded in the manifest's
     ``precommit_hash`` field, binding the post-run proof to the pre-run
     specification.
+
+    A dirty tree is refused unless *allow_dirty* is true: the SHA would not
+    identify the code, so the anchor would not be a code-identity claim.
     """
     run_dir = Path(run_dir)
     manifest = build_manifest(
@@ -137,12 +150,14 @@ def notarize_run(
         publish_patterns=publish_patterns,
         config=config,
         git_sha=git_sha,
+        git_dirty=git_dirty,
         runner=runner,
         command=command,
         lockfile=lockfile,
         official_record=official_record,
         precommit_path=precommit_path,
     )
+    require_clean_identity(manifest.git_dirty, allow_dirty=allow_dirty)
     write_manifest(manifest, run_dir)
 
     cid = None
@@ -152,7 +167,7 @@ def notarize_run(
         client = IpfsClient(api_url=ipfs_api)
         cid = client.add_run_dir(run_dir, list(manifest.artifacts) + [MANIFEST_NAME])
 
-    receipt = anchor_run(manifest, cid=cid, backend=backend)
+    receipt = anchor_run(manifest, cid=cid, backend=backend, allow_dirty=allow_dirty)
     write_proof(receipt, run_dir)
     write_manifest(manifest, run_dir)
     return manifest, receipt

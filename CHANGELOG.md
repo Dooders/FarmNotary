@@ -32,6 +32,15 @@ receipts now record the `--ignore` globs so the scoped claim can list them.
 
 ### Breaking
 
+#### Dirty trees cannot be precommitted or anchored (`breaking-change`)
+
+`git_dirty` is still recorded, but recording a flag is not a code-identity
+claim. `farm-notary precommit`, `farm-notary anchor`, `build_precommit()`,
+`anchor_run()`, and `notarize_run()` now fail if the tree is dirty unless
+`--allow-dirty` / `allow_dirty=True` is passed. The CLI records the working
+tree's dirty flag even when `--git-sha` is supplied, so passing a SHA cannot
+bypass the check.
+
 #### Privacy filter replaced with an explicit allowlist (`security`, `breaking-change`)
 
 Previously, `farm-notary manifest` admitted every file in the run directory

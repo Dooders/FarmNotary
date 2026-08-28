@@ -9,8 +9,11 @@ from typing import Optional
 from farm_notary.anchor import anchor_run, get_backend, write_proof
 from farm_notary.manifest import (
     MANIFEST_NAME,
+    DirtyTreeError,
     build_manifest,
+    detect_git_status,
     load_manifest,
+    require_clean_identity,
     write_manifest,
 )
 from farm_notary.verify import evaluate_claims
@@ -94,6 +97,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="append",
         help="OpenTimestamps calendar URL; repeatable",
     )
+    p_pre.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="Allow a dirty git tree (the recorded sha will not identify the code)",
+    )
 
     p_anc = sub.add_parser("anchor", help="Pin (optional) and anchor an existing manifest")
     p_anc.add_argument("--run-dir", required=True)
@@ -129,6 +137,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--no-write",
         action="store_true",
         help="Do not write the anchor receipt back into manifest.json",
+    )
+    p_anc.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="Allow anchoring a manifest whose git tree was dirty (the sha does not identify the code)",
     )
 
     p_ver = sub.add_parser(
@@ -181,6 +194,7 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
     config = _load_json_arg(args.config)
     import warnings
 
+    _, detected_dirty = detect_git_status()
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         try:
@@ -188,6 +202,7 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
                 run_dir,
                 publish_patterns=args.publish or [],
                 git_sha=args.git_sha,
+                git_dirty=detected_dirty,
                 runner=args.runner,
                 command=args.command,
                 lockfile=Path(args.lockfile) if args.lockfile else None,
@@ -226,6 +241,11 @@ def _cmd_anchor(args: argparse.Namespace) -> int:
         manifest = load_manifest(manifest_path)
     except (ValueError, OSError) as exc:
         print(f"error: could not load manifest: {exc}", file=sys.stderr)
+        return 2
+    try:
+        require_clean_identity(manifest.git_dirty, allow_dirty=args.allow_dirty)
+    except DirtyTreeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
         return 2
 
     cid = getattr(args, "cid", None)
@@ -267,7 +287,9 @@ def _cmd_anchor(args: argparse.Namespace) -> int:
                 )
 
     backend = get_backend(args.backend, calendars=getattr(args, "calendar", None))
-    receipt = anchor_run(manifest, cid=cid, backend=backend)
+    receipt = anchor_run(
+        manifest, cid=cid, backend=backend, allow_dirty=args.allow_dirty
+    )
     proof_path = write_proof(receipt, run_dir)
 
     no_write = getattr(args, "no_write", False)
@@ -334,12 +356,19 @@ def _cmd_precommit(args: argparse.Namespace) -> int:
     out.mkdir(parents=True, exist_ok=True)
     dest = out / PRECOMMIT_NAME
 
-    pc = build_precommit(
-        config=_load_json_arg(args.config),
-        command=args.command,
-        git_sha=args.git_sha,
-        lockfile=Path(args.lockfile) if args.lockfile else None,
-    )
+    _, detected_dirty = detect_git_status()
+    try:
+        pc = build_precommit(
+            config=_load_json_arg(args.config),
+            command=args.command,
+            git_sha=args.git_sha,
+            git_dirty=detected_dirty,
+            lockfile=Path(args.lockfile) if args.lockfile else None,
+            allow_dirty=args.allow_dirty,
+        )
+    except DirtyTreeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     if pc.get("git_dirty"):
         print(
             "warning: git tree is dirty; the recorded sha does not identify the code that will run",

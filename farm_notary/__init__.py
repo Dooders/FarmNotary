@@ -10,6 +10,7 @@ from farm_notary.anchor import (
     write_proof,
 )
 from farm_notary.manifest import (
+    DirtyTreeError,
     Manifest,
     build_manifest,
     capture_environment,
@@ -30,6 +31,7 @@ from farm_notary.verify import (
 __all__ = [
     "AnchorReceipt",
     "ClaimCard",
+    "DirtyTreeError",
     "Manifest",
     "ReproductionResult",
     "anchor_run",

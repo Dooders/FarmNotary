@@ -100,11 +100,35 @@ def _git(args, cwd: Optional[Path] = None) -> Optional[str]:
     return result.stdout
 
 
+class DirtyTreeError(ValueError):
+    """The git SHA does not identify the code; refuse to make a public claim."""
+
+
+DIRTY_TREE_MESSAGE = (
+    "git tree is dirty; the recorded sha does not identify the code. "
+    "Commit first, or pass --allow-dirty to make an explicit exception."
+)
+
+
+def require_clean_identity(
+    git_dirty: Optional[bool], *, allow_dirty: bool = False
+) -> None:
+    """Refuse a dirty tree unless the caller opted out of the code-identity claim.
+
+    ``git_dirty is True`` means the SHA does not identify the code. Recording
+    that flag is not enough — anchoring it would still let someone walk the
+    science back. ``allow_dirty`` is the explicit exception.
+    """
+    if git_dirty and not allow_dirty:
+        raise DirtyTreeError(DIRTY_TREE_MESSAGE)
+
+
 def detect_git_status(cwd: Optional[Path] = None) -> Tuple[Optional[str], Optional[bool]]:
     """Return (HEAD sha, dirty flag), or (None, None) outside a repo.
 
     A dirty tree means the sha does not identify the code that actually ran,
-    so it is recorded rather than hidden.
+    so it is recorded rather than hidden — and cannot be precommitted or
+    anchored unless the caller passes ``allow_dirty``.
     """
     sha_out = _git(["rev-parse", "HEAD"], cwd=cwd)
     sha = sha_out.strip() if sha_out else None

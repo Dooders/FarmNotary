@@ -16,6 +16,9 @@ Typical flow
 3. ``farm-notary verify`` reports **pre-specified design** as
    ``precommit bound`` (or ``fail`` / ``missing``) and flags any
    config/command divergence.
+
+A dirty working tree is refused unless ``--allow-dirty``: the SHA would not
+identify the code, so the precommit would not be a code-identity claim.
 """
 
 from __future__ import annotations
@@ -26,7 +29,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
-from farm_notary.manifest import detect_git_status, hash_file, hash_json
+from farm_notary.manifest import (
+    detect_git_status,
+    hash_file,
+    hash_json,
+    require_clean_identity,
+)
 
 PRECOMMIT_NAME = "precommit.json"
 PRECOMMIT_PROOF_NAME = "precommit.ots"
@@ -43,6 +51,7 @@ def build_precommit(
     git_sha: Optional[str] = None,
     git_dirty: Optional[bool] = None,
     lockfile: Optional[Path] = None,
+    allow_dirty: bool = False,
 ) -> dict:
     """Build a pre-run manifest dict (no artifacts).
 
@@ -62,6 +71,9 @@ def build_precommit(
         when omitted.
     lockfile:
         Dependency lockfile whose SHA-256 is recorded for environment pinning.
+    allow_dirty:
+        If false (the default), raise ``DirtyTreeError`` when the working tree
+        is dirty so a precommit cannot claim a code identity it does not have.
     """
     if git_sha is None:
         git_sha, detected_dirty = detect_git_status()
@@ -79,6 +91,7 @@ def build_precommit(
     if lockfile is not None:
         pc["lockfile"] = Path(lockfile).name
         pc["lockfile_sha256"] = hash_file(Path(lockfile))
+    require_clean_identity(pc.get("git_dirty"), allow_dirty=allow_dirty)
     return pc
 
 

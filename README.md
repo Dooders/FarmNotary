@@ -104,6 +104,11 @@ farm-notary verify --run-dir path/to/run
 
 `--backend ots` submits the manifest content hash to public OpenTimestamps calendars (override with `--calendar` or `FARM_NOTARY_CALENDARS`) and writes the proof to `manifest.ots`. `--pin` uploads the run directory (manifest included) to the Kubo API at `FARM_NOTARY_IPFS_API` (default `http://127.0.0.1:5001`) and stores the root CID in the manifest. `upgrade` completes the pending proof with a Bitcoin attestation; `verify` then reports **existed by time T** as a Bitcoin height.
 
+`precommit` and `anchor` refuse a dirty git tree by default: the recorded SHA
+does not identify the code, so it is not a code-identity claim. `git_dirty` is
+still recorded on the manifest. Pass `--allow-dirty` (or `allow_dirty=True`)
+to make an explicit exception.
+
 ## IPFS persistence
 
 **Pinning to a local Kubo daemon is not archival.**

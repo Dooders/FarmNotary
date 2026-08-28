@@ -61,7 +61,7 @@ def test_manifest_command_rejects_missing_dir(tmp_path: Path):
 def test_anchor_dry_run_updates_manifest(tmp_path: Path, capsys):
     run_dir = make_run_dir(tmp_path)
     assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc", "--publish", "*.csv"]) == 0
-    assert main(["anchor", "--run-dir", str(run_dir)]) == 0
+    assert main(["anchor", "--run-dir", str(run_dir), "--allow-dirty"]) == 0
 
     manifest = load_manifest(run_dir)
     assert manifest.anchor["backend"] == "dry-run"
@@ -139,7 +139,7 @@ def test_anchor_eas_backend_writes_receipt(tmp_path: Path, capsys, monkeypatch):
     run_dir = make_run_dir(tmp_path)
     assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc", "--publish", "*.csv"]) == 0
     monkeypatch.setattr(cli, "get_backend", lambda name, **_kw: FakeEASBackend())
-    assert main(["anchor", "--run-dir", str(run_dir), "--backend", "eas", "--cid", "bafytest"]) == 0
+    assert main(["anchor", "--run-dir", str(run_dir), "--backend", "eas", "--cid", "bafytest", "--allow-dirty"]) == 0
     capsys.readouterr()
     manifest = load_manifest(run_dir)
     assert manifest.cid == "bafytest"
@@ -154,7 +154,7 @@ def test_anchor_no_write(tmp_path: Path, capsys, monkeypatch):
     assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc", "--publish", "*.csv"]) == 0
     before = (run_dir / "manifest.json").read_text(encoding="utf-8")
     monkeypatch.setattr(cli, "get_backend", lambda name, **_kw: FakeEASBackend())
-    assert main(["anchor", "--run-dir", str(run_dir), "--backend", "eas", "--no-write"]) == 0
+    assert main(["anchor", "--run-dir", str(run_dir), "--backend", "eas", "--no-write", "--allow-dirty"]) == 0
     assert (run_dir / "manifest.json").read_text(encoding="utf-8") == before
 
 
@@ -181,6 +181,7 @@ def test_full_pin_anchor_upgrade_verify_flow(tmp_path: Path, monkeypatch, capsys
                 "--no-check-gateway",
                 "--backend", "ots",
                 "--calendar", calendar.url,
+                "--allow-dirty",
             ]
         ) == 0
         capsys.readouterr()
@@ -233,7 +234,7 @@ def test_anchor_pin_gateway_reachable_recorded(tmp_path: Path, monkeypatch, caps
         import farm_notary.ipfs as _ipfs_mod
         monkeypatch.setattr(_ipfs_mod, "DEFAULT_GATEWAY_URL", gateway.url)
 
-        assert main(["anchor", "--run-dir", str(run_dir), "--pin"]) == 0
+        assert main(["anchor", "--run-dir", str(run_dir), "--pin", "--allow-dirty"]) == 0
 
         manifest = load_manifest(run_dir)
         assert manifest.cid == "bafyreach"
@@ -260,7 +261,7 @@ def test_anchor_pin_gateway_unreachable_warns(tmp_path: Path, monkeypatch, capsy
         import farm_notary.ipfs as _ipfs_mod
         monkeypatch.setattr(_ipfs_mod, "DEFAULT_GATEWAY_URL", gateway.url)
 
-        assert main(["anchor", "--run-dir", str(run_dir), "--pin"]) == 0
+        assert main(["anchor", "--run-dir", str(run_dir), "--pin", "--allow-dirty"]) == 0
 
         manifest = load_manifest(run_dir)
         assert manifest.cid_reachable is False
@@ -295,7 +296,7 @@ def test_anchor_pin_remote_delegates_to_kubo(tmp_path: Path, monkeypatch, capsys
 
         monkeypatch.setattr(IpfsClient, "pin_remote", fake_pin_remote)
 
-        assert main(["anchor", "--run-dir", str(run_dir), "--pin-remote", "pinata"]) == 0
+        assert main(["anchor", "--run-dir", str(run_dir), "--pin-remote", "pinata", "--allow-dirty"]) == 0
 
         manifest = load_manifest(run_dir)
         assert manifest.cid == "bafyremote"
@@ -315,7 +316,7 @@ def test_anchor_no_check_gateway_skips_reachability(tmp_path: Path, monkeypatch)
         ipfs.response_body = (json.dumps({"Name": "", "Hash": "bafyskip"}) + "\n").encode()
         monkeypatch.setenv("FARM_NOTARY_IPFS_API", ipfs.url)
 
-        assert main(["anchor", "--run-dir", str(run_dir), "--pin", "--no-check-gateway"]) == 0
+        assert main(["anchor", "--run-dir", str(run_dir), "--pin", "--no-check-gateway", "--allow-dirty"]) == 0
 
         manifest = load_manifest(run_dir)
         assert manifest.cid == "bafyskip"

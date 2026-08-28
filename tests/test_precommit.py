@@ -165,6 +165,7 @@ def test_precommit_cli_dry_run(tmp_path, capsys):
                 "--command", "python run.py {run_dir}",
                 "--git-sha", "deadbeef",
                 "--out", str(tmp_path),
+                "--allow-dirty",
             ]
         )
         == 0
@@ -189,6 +190,7 @@ def test_precommit_cli_hash_written(tmp_path, capsys):
                 "precommit",
                 "--git-sha", "abc123",
                 "--out", str(tmp_path),
+                "--allow-dirty",
             ]
         )
         == 0
@@ -213,6 +215,7 @@ def test_manifest_with_precommit_records_hash(tmp_path, capsys):
                 "--command", "python run.py {run_dir}",
                 "--git-sha", "aaa",
                 "--out", str(run_dir),
+                "--allow-dirty",
             ]
         )
         == 0
@@ -252,6 +255,7 @@ def test_verify_with_precommit_ok(tmp_path, capsys):
             "--command", "python run.py {run_dir}",
             "--git-sha", "aaa",
             "--out", str(run_dir),
+            "--allow-dirty",
         ]
     )
     main(
@@ -285,6 +289,7 @@ def test_verify_reports_precommit_mismatch(tmp_path, capsys):
             "--command", "python run.py {run_dir}",
             "--git-sha", "aaa",
             "--out", str(run_dir),
+            "--allow-dirty",
         ]
     )
     main(

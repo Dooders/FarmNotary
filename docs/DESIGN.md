@@ -101,8 +101,10 @@ invalidates the proof.
 The manifest records everything a stranger needs to re-derive the run:
 `command` (with a `{run_dir}` placeholder), `config`, `git_sha` plus a
 `git_dirty` flag (a dirty tree means the sha does not identify the code that
-ran, so it is recorded, not hidden), and `environment` (python, platform, a
-hash of the installed package set, optional lockfile hash).
+ran, so it is recorded, not hidden — and `precommit` / `anchor` refuse it
+unless `--allow-dirty`, so code identity is a claim rather than a flag), and
+`environment` (python, platform, a hash of the installed package set, optional
+lockfile hash).
 
 `farm-notary reproduce` turns reproducibility from a claim into a procedure:
 re-run the recorded command into a fresh directory, rehash, byte-compare
