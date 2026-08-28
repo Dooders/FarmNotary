@@ -56,9 +56,10 @@ First release.
 
 #### Reproduction
 - `reproduce_run`: re-executes the recorded command (with `{run_dir}`
-  placeholder) into a fresh temp directory, byte-compares artifacts, writes
-  `reproduction.json` (rerunner environment, per-file results, original
-  manifest hash).
+  placeholder) into a fresh temp directory and returns per-file comparison
+  results.
+- The `reproduce` CLI writes `reproduction.json` with the rerunner environment,
+  per-file results, and original manifest hash.
 - `--anchor` timestamps the receipt itself via OpenTimestamps, making
   "independently reproduced" a timestamped, third-party-checkable statement.
 - `verify_receipt`: checks the receipt against the manifest content hash and
