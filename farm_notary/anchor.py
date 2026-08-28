@@ -17,6 +17,7 @@ from farm_notary.manifest import (
     MANIFEST_NAME,
     Manifest,
     build_manifest,
+    require_clean_identity,
     write_manifest,
 )
 
@@ -93,8 +94,17 @@ def anchor_run(
     *,
     cid: Optional[str] = None,
     backend: Optional[AnchorBackend] = None,
+    allow_dirty: bool = False,
 ) -> AnchorReceipt:
-    """Submit the manifest hash (and optional CID) and stamp the manifest."""
+    """Submit the manifest hash (and optional CID) and stamp the manifest.
+
+    Refuses a dirty tree by default: ``git_dirty`` means the SHA does not
+    identify the code, so anchoring it is not a code-identity claim.
+    Pass ``allow_dirty=True`` to record an explicit exception.
+    ``git_dirty is None`` is not a pass: ``require_clean_identity``
+    inspects the working tree so a supplied SHA cannot skip the check.
+    """
+    require_clean_identity(manifest.git_dirty, allow_dirty=allow_dirty)
     backend = backend or DryRunBackend()
     cid = cid or manifest.cid
     receipt = backend.submit(manifest, cid=cid)
@@ -108,6 +118,7 @@ def notarize_run(
     run_dir: Path,
     *,
     publish_patterns: Optional[Sequence[str]] = None,
+    publish_profile: Optional[str] = None,
     config: Optional[Mapping[str, Any]] = None,
     git_sha: Optional[str] = None,
     runner: Optional[str] = None,
@@ -117,14 +128,18 @@ def notarize_run(
     precommit_path: Optional[Path] = None,
     backend: Optional[AnchorBackend] = None,
     pin: bool = False,
+    pin_remote: Optional[str] = None,
     ipfs_api: Optional[str] = None,
+    git_dirty: Optional[bool] = None,
+    allow_dirty: bool = False,
 ) -> Tuple[Manifest, AnchorReceipt]:
     """One-call hook for AgentFarm: manifest, optional pin, anchor, stamp.
 
     Builds and writes manifest.json for run_dir, optionally uploads the run
-    directory to IPFS, anchors via the given backend (dry-run by default),
-    persists any proof file, and rewrites manifest.json with the cid and
-    anchor receipt.
+    directory to IPFS (``pin_remote`` is the published path; ``pin`` is a
+    local Kubo convenience), anchors via the given backend (dry-run by
+    default), persists any proof file, and rewrites manifest.json with the
+    cid and anchor receipt.
 
     When *precommit_path* points to a ``precommit.json`` produced by
     ``farm-notary precommit``, its content hash is recorded in the manifest's
@@ -133,29 +148,38 @@ def notarize_run(
 
     Derivation rules (``config.notary.derived_from``) are copied onto the
     manifest by ``build_manifest``.
+
+    A dirty tree is refused unless *allow_dirty* is true: the SHA would not
+    identify the code, so the anchor would not be a code-identity claim.
     """
     run_dir = Path(run_dir)
     manifest = build_manifest(
         run_dir,
         publish_patterns=publish_patterns,
+        publish_profile=publish_profile,
         config=config,
         git_sha=git_sha,
+        git_dirty=git_dirty,
         runner=runner,
         command=command,
         lockfile=lockfile,
         official_record=official_record,
         precommit_path=precommit_path,
     )
+    require_clean_identity(manifest.git_dirty, allow_dirty=allow_dirty)
     write_manifest(manifest, run_dir)
 
     cid = None
-    if pin:
+    if pin or pin_remote:
         from farm_notary.ipfs import IpfsClient
 
         client = IpfsClient(api_url=ipfs_api)
         cid = client.add_run_dir(run_dir, list(manifest.artifacts) + [MANIFEST_NAME])
+        manifest.pin_service = pin_remote or "local"
+        if pin_remote:
+            client.pin_remote(cid, pin_remote)
 
-    receipt = anchor_run(manifest, cid=cid, backend=backend)
+    receipt = anchor_run(manifest, cid=cid, backend=backend, allow_dirty=allow_dirty)
     write_proof(receipt, run_dir)
     write_manifest(manifest, run_dir)
     return manifest, receipt

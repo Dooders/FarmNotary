@@ -22,7 +22,9 @@ def make_run_dir(tmp_path: Path) -> Path:
 
 def test_dry_run_receipt_and_stamp(tmp_path: Path):
     make_run_dir(tmp_path)
-    manifest = build_manifest(tmp_path, publish_patterns=["*.csv"], git_sha="abc")
+    manifest = build_manifest(
+        tmp_path, publish_patterns=["*.csv"], git_sha="abc", git_dirty=False
+    )
     expected_hash = manifest.content_hash()
 
     receipt = anchor_run(manifest, cid="bafytest")
@@ -47,7 +49,13 @@ def test_get_backend_names():
 
 def test_notarize_run_writes_stamped_manifest(tmp_path: Path):
     make_run_dir(tmp_path)
-    manifest, receipt = notarize_run(tmp_path, publish_patterns=["*.csv"], git_sha="abc", runner="consensus")
+    manifest, receipt = notarize_run(
+        tmp_path,
+        publish_patterns=["*.csv"],
+        git_sha="abc",
+        git_dirty=False,
+        runner="consensus",
+    )
 
     on_disk = load_manifest(tmp_path)
     assert on_disk.anchor["backend"] == "dry-run"
@@ -65,10 +73,14 @@ def test_notarize_run_with_pin(monkeypatch, stub_server, tmp_path: Path):
         json.dumps({"Name": "", "Hash": "bafypinned"}) + "\n"
     ).encode()
 
-    manifest, receipt = notarize_run(tmp_path, publish_patterns=["*.csv"], pin=True)
+    manifest, receipt = notarize_run(
+        tmp_path, publish_patterns=["*.csv"], pin=True, git_dirty=False
+    )
 
     assert receipt.cid == "bafypinned"
-    assert load_manifest(tmp_path).cid == "bafypinned"
+    on_disk = load_manifest(tmp_path)
+    assert on_disk.cid == "bafypinned"
+    assert on_disk.pin_service == "local"
     # The pinned upload includes manifest.json alongside the artifacts.
     body = stub_server.requests[0]["body"]
     assert b'filename="manifest.json"' in body
@@ -86,7 +98,13 @@ def test_notarize_run_with_ots_backend_writes_proof(stub_server, tmp_path: Path)
     )
 
     backend = OpenTimestampsBackend(calendars=[stub_server.url])
-    manifest, receipt = notarize_run(tmp_path, publish_patterns=["*.csv"], git_sha="abc", backend=backend)
+    manifest, receipt = notarize_run(
+        tmp_path,
+        publish_patterns=["*.csv"],
+        git_sha="abc",
+        git_dirty=False,
+        backend=backend,
+    )
 
     expected_hash = receipt.manifest_hash
     assert manifest.content_hash() == expected_hash
@@ -98,6 +116,8 @@ def test_notarize_run_with_ots_backend_writes_proof(stub_server, tmp_path: Path)
 
 def test_write_proof_noop_without_proof(tmp_path: Path):
     make_run_dir(tmp_path)
-    manifest = build_manifest(tmp_path, publish_patterns=["*.csv"])
+    manifest = build_manifest(
+        tmp_path, publish_patterns=["*.csv"], git_sha="abc", git_dirty=False
+    )
     receipt = anchor_run(manifest)
     assert write_proof(receipt, tmp_path) is None

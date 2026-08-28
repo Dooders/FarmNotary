@@ -11,6 +11,7 @@ from farm_notary.anchor import (
 )
 from farm_notary.campaign import Campaign, build_campaign, load_campaign, write_campaign
 from farm_notary.manifest import (
+    DirtyTreeError,
     Manifest,
     build_manifest,
     capture_environment,
@@ -19,8 +20,12 @@ from farm_notary.manifest import (
     load_manifest,
     write_manifest,
 )
+from farm_notary.profiles import PUBLISH_PROFILES, PublishProfile, get_profile
+from farm_notary.diagnose import MismatchDiagnosis, diagnose_mismatch
 from farm_notary.reproduce import ReproductionResult, reproduce_run
 from farm_notary.verify import (
+    ClaimCard,
+    evaluate_claims,
     verify_anchor,
     verify_derived_artifacts,
     verify_identity_record,
@@ -31,13 +36,21 @@ from farm_notary.verify import (
 __all__ = [
     "AnchorReceipt",
     "Campaign",
+    "ClaimCard",
+    "DirtyTreeError",
     "Manifest",
+    "MismatchDiagnosis",
+    "PUBLISH_PROFILES",
+    "PublishProfile",
     "ReproductionResult",
     "anchor_run",
     "build_campaign",
     "build_manifest",
     "capture_environment",
+    "diagnose_mismatch",
+    "evaluate_claims",
     "get_backend",
+    "get_profile",
     "hash_file",
     "hash_json",
     "load_campaign",

@@ -30,6 +30,7 @@ _STAMP_KEYS = (
     "cid",
     "cid_reachable",
     "cid_reachable_checked_utc",
+    "pin_service",
     "anchor",
     "identity",
 )
@@ -114,11 +115,39 @@ def _git(args, cwd: Optional[Path] = None) -> Optional[str]:
     return result.stdout
 
 
+class DirtyTreeError(ValueError):
+    """The git SHA does not identify the code; refuse to make a public claim."""
+
+
+DIRTY_TREE_MESSAGE = (
+    "git tree is dirty; the recorded sha does not identify the code. "
+    "Commit first, or pass --allow-dirty to make an explicit exception."
+)
+
+
+def require_clean_identity(
+    git_dirty: Optional[bool], *, allow_dirty: bool = False, cwd: Optional[Path] = None
+) -> None:
+    """Refuse a dirty tree unless the caller opted out of the code-identity claim.
+
+    ``git_dirty is True`` means the SHA does not identify the code. Recording
+    that flag is not enough — anchoring it would still let someone walk the
+    science back. ``git_dirty is None`` is not a pass: detect the working
+    tree so a caller who supplied only a SHA cannot skip the check.
+    ``allow_dirty`` is the explicit exception.
+    """
+    if git_dirty is None:
+        _, git_dirty = detect_git_status(cwd=cwd)
+    if git_dirty and not allow_dirty:
+        raise DirtyTreeError(DIRTY_TREE_MESSAGE)
+
+
 def detect_git_status(cwd: Optional[Path] = None) -> Tuple[Optional[str], Optional[bool]]:
     """Return (HEAD sha, dirty flag), or (None, None) outside a repo.
 
     A dirty tree means the sha does not identify the code that actually ran,
-    so it is recorded rather than hidden.
+    so it is recorded rather than hidden — and cannot be precommitted or
+    anchored unless the caller passes ``allow_dirty``.
     """
     sha_out = _git(["rev-parse", "HEAD"], cwd=cwd)
     sha = sha_out.strip() if sha_out else None
@@ -131,6 +160,25 @@ def detect_git_status(cwd: Optional[Path] = None) -> Tuple[Optional[str], Option
 
 def detect_git_sha(cwd: Optional[Path] = None) -> Optional[str]:
     return detect_git_status(cwd)[0]
+
+
+def resolve_git_identity(
+    git_sha: Optional[str] = None,
+    git_dirty: Optional[bool] = None,
+    cwd: Optional[Path] = None,
+) -> Tuple[Optional[str], Optional[bool]]:
+    """Fill omitted sha / dirty from the working tree.
+
+    A supplied SHA is not a substitute for the dirty check. Callers that
+    pass ``git_sha`` without ``git_dirty`` still get a live detection.
+    """
+    if git_sha is None or git_dirty is None:
+        detected_sha, detected_dirty = detect_git_status(cwd=cwd)
+        if git_sha is None:
+            git_sha = detected_sha
+        if git_dirty is None:
+            git_dirty = detected_dirty
+    return git_sha, git_dirty
 
 
 def capture_environment(lockfile: Optional[Path] = None) -> dict:
@@ -154,6 +202,8 @@ def capture_environment(lockfile: Optional[Path] = None) -> dict:
     env = {
         **fingerprint_fields(),
         "platform": platform.platform(),
+        "system": platform.system(),
+        "machine": platform.machine(),
         "packages_hash": hashlib.sha256(
             "\n".join(sorted(dists)).encode("utf-8")
         ).hexdigest(),
@@ -186,6 +236,10 @@ class Manifest:
     # Allowlist patterns used to admit artifacts and the number of run-dir
     # files that matched nothing (visible omissions, not silent ones).
     publish_patterns: List[str] = field(default_factory=list)
+    # Named experiment-type profile that supplied the official-artifact
+    # allowlist (consensus, rl-sweep, evolution-run). Optional so older
+    # manifests that only recorded publish_patterns still load.
+    publish_profile: Optional[str] = None
     unmatched_count: int = 0
     official_record: dict = field(default_factory=dict)
     # Optional derivation rules copied from the experiment profile
@@ -196,6 +250,9 @@ class Manifest:
     cid: Optional[str] = None
     cid_reachable: Optional[bool] = None
     cid_reachable_checked_utc: Optional[str] = None
+    # "local" for a Kubo-only pin (lab convenience); a service name
+    # (pinata, web3.storage, …) when --pin-remote was used. Stamp field.
+    pin_service: Optional[str] = None
     anchor: Optional[dict] = None
     # Optional minisign / SSH signature of content_hash.  Excluded from
     # content_hash itself (same as cid/anchor) so it can be stamped after.
@@ -209,9 +266,11 @@ class Manifest:
         _OMIT_IF_NONE = {
             "farm_notary_version",
             "precommit_hash",
+            "publish_profile",
             "cid",
             "cid_reachable",
             "cid_reachable_checked_utc",
+            "pin_service",
             "anchor",
             "identity",
         }
@@ -265,6 +324,7 @@ def build_manifest(
     run_dir: Path,
     *,
     publish_patterns: Optional[Sequence[str]] = None,
+    publish_profile: Optional[str] = None,
     config: Optional[Mapping[str, Any]] = None,
     git_sha: Optional[str] = None,
     git_dirty: Optional[bool] = None,
@@ -281,33 +341,36 @@ def build_manifest(
     *publish_patterns* is an explicit allowlist of glob patterns that gate
     which files are hashed, listed, and eligible for upload.  Nothing is
     included unless it matches at least one pattern.  Patterns may come from
-    three places, merged in order (last write wins within a source; earlier
-    sources take precedence):
+    three places, merged in order (later entries append; duplicates drop):
 
-    1. The ``notary.publish`` key of the run config (``config`` argument).
-    2. The *publish_patterns* argument (e.g. from ``--publish`` CLI flags).
+    1. A named experiment-type profile (``publish_profile``, else
+       ``notary.profile`` in the run config): ``consensus``, ``rl-sweep``,
+       or ``evolution-run``.
+    2. The ``notary.publish`` key of the run config.
+    3. The *publish_patterns* argument (e.g. from ``--publish`` CLI flags).
 
-    If neither source supplies patterns, *build_manifest* raises
+    If no source supplies patterns, *build_manifest* raises
     :class:`ValueError` so the caller is forced to make an explicit decision
-    about what to publish.
+    about what to publish.  Prefer a profile so labs do not invent globs.
+    The resolved allowlist is recorded on the manifest as
+    ``publish_patterns`` (and ``publish_profile`` when a profile was used)
+    so the policy is part of the claim.
     """
+    from farm_notary.profiles import resolve_publish_policy
+
     run_dir = Path(run_dir)
 
-    # Collect publish patterns from config first, then CLI overrides.
-    effective_patterns: List[str] = []
-    if config:
-        notary_section = config.get("notary", {})
-        if isinstance(notary_section, dict):
-            cfg_publish = notary_section.get("publish", [])
-            if isinstance(cfg_publish, list):
-                effective_patterns.extend(cfg_publish)
-    if publish_patterns:
-        effective_patterns.extend(publish_patterns)
+    resolved_profile, effective_patterns = resolve_publish_policy(
+        profile=publish_profile,
+        publish_patterns=publish_patterns,
+        config=config,
+    )
 
     if not effective_patterns:
         raise ValueError(
-            "No publish patterns declared.  Pass --publish <glob> on the CLI or add "
-            '\'notary": {"publish": ["<glob>", ...]}\' to the run config.  '
+            "No publish patterns declared.  Pass --profile <name> "
+            "(consensus, rl-sweep, evolution-run), or --publish <glob>, "
+            "or add 'notary.profile' / 'notary.publish' to the run config.  "
             "Nothing is hashed or uploaded unless explicitly declared."
         )
 
@@ -335,15 +398,11 @@ def build_manifest(
     if unmatched > 0:
         warnings.warn(
             f"{unmatched} file(s) in {run_dir} matched no publish pattern and were excluded "
-            f"from the manifest.  Use --publish or 'notary.publish' in the config to include them.",
+            f"from the manifest.  Use --profile, --publish, or 'notary.publish' to include them.",
             stacklevel=2,
         )
 
-    if git_sha is None:
-        git_sha, detected_dirty = detect_git_status()
-        if git_dirty is None:
-            git_dirty = detected_dirty
-
+    git_sha, git_dirty = resolve_git_identity(git_sha, git_dirty)
     rules: list = []
     if derived_from:
         rules = [dict(rule) for rule in derived_from]
@@ -351,7 +410,6 @@ def build_manifest(
         from farm_notary.derive import extract_derived_from
 
         rules = extract_derived_from(config)
-
     manifest = Manifest(
         farm_notary_version=TOOL_VERSION,
         created_utc=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -364,6 +422,7 @@ def build_manifest(
         artifacts=artifacts,
         artifact_hashes=hashes,
         publish_patterns=list(effective_patterns),
+        publish_profile=resolved_profile,
         unmatched_count=unmatched,
         official_record=dict(official_record or {}),
         derived_from=rules,

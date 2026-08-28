@@ -40,20 +40,31 @@ If the experiment is a consensus / selection paradigm:
 
 ### Allowlist-first privacy model
 
-**Nothing is hashed, listed, or uploaded by default.**  A file is included in
-the manifest only when its path matches a declared *publish pattern*:
+**Nothing is hashed, listed, or uploaded by default.** Prefer a named
+experiment-type profile so labs do not invent globs (and forget `REPORT.md`
+or include a path they should not):
 
 ```bash
-farm-notary manifest --run-dir path/to/run \
-  --publish 'summary.csv' --publish 'allocation_means.csv' --publish '*.png'
+farm-notary manifest --run-dir path/to/run --profile consensus
 ```
 
-Or in the run config (so the policy is versioned with the experiment):
+Profiles (`consensus`, `rl-sweep`, `evolution-run`) are checked-in lists of
+official artifacts. The denylist still applies. The resolved allowlist is
+recorded on the manifest as `publish_patterns` (and `publish_profile`) so the
+policy is part of the claim.
+
+Or declare extra globs — appended to the profile, or used alone:
+
+```bash
+farm-notary manifest --run-dir path/to/run --profile consensus \
+  --publish 'notes.md'
+```
 
 ```json
 {
   "notary": {
-    "publish": ["summary.csv", "allocation_means.csv", "*.png", "REPORT.md"]
+    "profile": "consensus",
+    "publish": ["extra_table.csv"]
   }
 }
 ```
@@ -93,45 +104,51 @@ Breaking changes (new required fields, renamed keys, removed fields) are reserve
 # 1. Hash the run directory into manifest.json
 farm-notary manifest --run-dir path/to/run --config config.json
 
-# 2. Verify: rehash and compare
+# 2. Verify: print a CLAIMS.md claim card
 farm-notary verify --run-dir path/to/run
 
 # 3. Anchor to OpenTimestamps calendars and write proof to manifest.ots
 farm-notary anchor --run-dir path/to/run --backend ots
 ```
 
-Anchoring for real, with IPFS pinning:
+Anchoring for real, with a durable pin (the published path):
 
 ```bash
-farm-notary anchor --run-dir path/to/run --pin --backend ots
+# Register a pinning service once (Kubo stores the endpoint + token):
+ipfs pin remote service add pinata https://api.pinata.cloud/psa <jwt-token>
+
+farm-notary anchor --run-dir path/to/run --pin-remote pinata --backend ots
 # ... hours later, once a calendar has batched the digest into Bitcoin:
 farm-notary upgrade --run-dir path/to/run
 farm-notary verify --run-dir path/to/run
 ```
 
-`--backend ots` submits the manifest content hash to public OpenTimestamps calendars (override with `--calendar` or `FARM_NOTARY_CALENDARS`) and writes the proof to `manifest.ots`. `--pin` uploads the run directory (manifest included) to the Kubo API at `FARM_NOTARY_IPFS_API` (default `http://127.0.0.1:5001`) and stores the root CID in the manifest. `upgrade` completes the pending proof with a Bitcoin attestation; `verify` then reports the block height.
+`--backend ots` submits the manifest content hash to public OpenTimestamps calendars (override with `--calendar` or `FARM_NOTARY_CALENDARS`) and writes the proof to `manifest.ots`. `--pin-remote` uploads the run directory (manifest included) to local Kubo, then delegates the pin to a registered service (Pinata, web3.storage, or any [IPFS Pinning Service API](https://ipfs.github.io/pinning-services-api-spec/)). That durable pin is what you cite in a paper or academy writeup. `upgrade` completes the pending proof with a Bitcoin attestation; `verify` then reports **existed by time T** as a Bitcoin height.
+
+`precommit` and `anchor` refuse a dirty git tree by default: the recorded SHA
+does not identify the code, so it is not a code-identity claim. `git_dirty` is
+still recorded on the manifest. Supplying `--git-sha` without a dirty flag
+still inspects the working tree. Pass `--allow-dirty` (or `allow_dirty=True`)
+to make an explicit exception.
 
 ## IPFS persistence
 
-**Pinning to a local Kubo daemon is not archival.**
+**`--pin-remote` is the published path.** Local Kubo is a lab convenience.
 
-The CID is content-addressed and immutable, but the _content_ is only reachable as long as at least one node holding it is online and responsive. A local daemon on a laptop goes offline when the lid closes — the manifest will still record the CID, but `ipfs get <cid>` will hang with no diagnosis.
+The CID is content-addressed and immutable, but the _content_ is only reachable as long as at least one node holding it is online and responsive. A local daemon on a laptop goes offline when the lid closes — the manifest will still record the CID, but `ipfs get <cid>` will hang with no diagnosis. Do not cite a local-only pin in a paper or academy writeup.
 
-After each `--pin`, FarmNotary checks whether the CID is immediately resolvable through the public IPFS gateway (`https://ipfs.io/ipfs/<cid>`) and records the result in the manifest as `cid_reachable: true|false` with a timestamp. A warning is printed when the CID is not reachable.
-
-### Delegating to a persistent pinning service
-
-Use `--pin-remote <service>` to delegate to a remote pinning service (Pinata, web3.storage, or any service implementing the [IPFS Pinning Service API](https://ipfs.github.io/pinning-services-api-spec/)) via Kubo's built-in remote-pin API:
+`--pin-remote <service>` uploads via Kubo, then delegates to a remote pinning service (Pinata, web3.storage, or any [IPFS Pinning Service API](https://ipfs.github.io/pinning-services-api-spec/)). Register the service once:
 
 ```bash
-# Register the service once (Kubo stores the endpoint + token):
 ipfs pin remote service add pinata https://api.pinata.cloud/psa <jwt-token>
-
-# Then pin and delegate in one step:
-farm-notary anchor --run-dir path/to/run --pin --pin-remote pinata --backend ots
+farm-notary anchor --run-dir path/to/run --pin-remote pinata --backend ots
 ```
 
-`--pin-remote` implies `--pin`; the run directory is always uploaded before the remote pin is requested.
+`--pin-remote` implies `--pin`. The manifest records `pin_service` (`"local"` or the service name) so the pin path is part of the claim.
+
+`--pin` alone still uploads to local Kubo and warns. Use it at the bench; switch to `--pin-remote` before you publish.
+
+After each pin, FarmNotary checks whether the CID is immediately resolvable through the public IPFS gateway (`https://ipfs.io/ipfs/<cid>`) and records `cid_reachable` with a timestamp. A warning is printed when the CID is not reachable.
 
 To skip the gateway check (e.g. in CI where the CID will propagate later), pass `--no-check-gateway`.
 
@@ -162,7 +179,7 @@ manifest, receipt = notarize_run(
 )
 ```
 
-The example above uses `OpenTimestampsBackend()` (from `farm_notary.ots`); add `pin=True` to also upload the run directory to IPFS. Do not submodule unless the API is still thrashing.
+The example above uses `OpenTimestampsBackend()` (from `farm_notary.ots`); add `pin_remote="pinata"` for a durable pin (the published path), or `pin=True` for a local Kubo pin (lab convenience). Do not submodule unless the API is still thrashing.
 
 ## Reproducing a run
 
@@ -179,9 +196,15 @@ farm-notary reproduce --run-dir path/to/run --ignore '*.mp4' --anchor
 
 `reproduce` re-runs the command into a fresh directory, compares every listed
 artifact's bytes against the manifest, and writes a `reproduction.json`
-receipt (rerunner's environment, per-file results). `--anchor` timestamps the
-receipt itself via OpenTimestamps, so "independently reproduced" comes with a
-proof. `verify` checks the receipt against the manifest and its proof.
+receipt (rerunner's environment, per-file results, mismatch diagnostics).
+A byte-diff is classified (`embedded_absolute_path`, `timestamp`,
+`float_print_format`, `video_encoder`) and labeled **not a science failure**
+when that is what it is. `--anchor` timestamps the receipt itself via
+OpenTimestamps, so "independently reproduced" comes with a proof. `verify` reports the receipt as **bitwise reproducible (scoped)** —
+`N/M` of compared artifacts, any `--ignore` globs, and the only sentence the
+tool may emit today: *byte-identical on x86-64 Linux in a pinned
+environment*. A match on other hardware still reports `N/M` and refuses a
+cross-hardware claim. See [docs/CLAIMS.md](docs/CLAIMS.md).
 
 See [docs/CLAIMS.md](docs/CLAIMS.md) for exactly which claim each check earns.
 
@@ -252,11 +275,15 @@ fails. Full contract: [docs/ACTION.md](docs/ACTION.md).
 
 ## Verifying someone else's claim
 
-1. Fetch the CID (`ipfs get <cid>`), or obtain the run directory some other way. If `ipfs get` hangs, the CID may not be pinned on any reachable node — check the manifest's `cid_reachable` field and `cid_reachable_checked_utc` timestamp, and try the public gateway: `https://ipfs.io/ipfs/<cid>`.
+1. Fetch the CID (`ipfs get <cid>`), or obtain the run directory some other way. If `ipfs get` hangs, the CID may not be pinned on any reachable node — check `pin_service` (a local-only pin is not archival), `cid_reachable`, and `cid_reachable_checked_utc`, and try the public gateway: `https://ipfs.io/ipfs/<cid>`.
 2. `farm-notary verify --run-dir <dir>`
-3. Exit code 0 means: these exact bytes hash to a manifest whose content hash the OpenTimestamps proof commits to, and the proof is attested (or pending) in Bitcoin. It does not mean the science is right — re-run from the committed seed for that.
+3. Read the claim card. Each line is a CLAIMS.md claim (`pass` / `fail` /
+   `pending` / Bitcoin height / `precommit bound` / `N/M` / `missing`).
+   **Missing is not failure.** Exit code 0 means no attempted check failed;
+   it does not mean the science is right, and it does not mean every claim
+   was earned. The card always ends with `not claimed: scientific correctness`.
 
-`verify` distinguishes two failure modes:
+`verify` distinguishes two artifact-check failure modes (printed after the card):
 
 - **`artifact unreachable: <name>`** — the file is absent from the local directory; if the manifest records a CID, the hint `(fetch with: ipfs get <cid>)` is appended.
 - **`artifact hash mismatch: <name>`** — the file is present but its content differs from what was hashed at notarization time.

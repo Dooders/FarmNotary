@@ -20,7 +20,8 @@ REQUIRED_KEYS = (
     "unmatched_count",
 )
 
-# Belt-and-braces denylist applied *after* the allowlist.
+# Belt-and-braces denylist applied *after* the allowlist (including every
+# named experiment-type profile in farm_notary.profiles).
 # Files matching these fragments are never hashed, listed, or uploaded even
 # if a publish pattern would otherwise admit them.
 PRIVATE_NAME_FRAGMENTS = (

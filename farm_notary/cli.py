@@ -9,11 +9,15 @@ from typing import Optional
 from farm_notary.anchor import anchor_run, get_backend, write_proof
 from farm_notary.manifest import (
     MANIFEST_NAME,
+    DirtyTreeError,
     build_manifest,
+    detect_git_status,
     load_manifest,
+    require_clean_identity,
     write_manifest,
 )
 from farm_notary.verify import (
+    evaluate_claims,
     verify_anchor,
     verify_derived_artifacts,
     verify_identity_record,
@@ -54,14 +58,24 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Dependency lockfile to hash into the environment record",
     )
     p_man.add_argument(
+        "--profile",
+        choices=("consensus", "rl-sweep", "evolution-run"),
+        help=(
+            "Named publish profile of official artifacts. Prefer this over "
+            "inventing globs. The denylist still applies. Combine with "
+            "--publish to add extra files."
+        ),
+    )
+    p_man.add_argument(
         "--publish",
         action="append",
         dest="publish",
         metavar="GLOB",
         help=(
             "Glob pattern for files to include in the manifest; repeatable. "
-            "Nothing is hashed or uploaded unless declared here or via "
-            "'notary.publish' in the run config."
+            "Nothing is hashed or uploaded unless declared here, via "
+            "--profile, or via 'notary.profile' / 'notary.publish' in the "
+            "run config."
         ),
     )
     p_man.add_argument(
@@ -101,6 +115,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="append",
         help="OpenTimestamps calendar URL; repeatable",
     )
+    p_pre.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="Allow a dirty git tree (the recorded sha will not identify the code)",
+    )
 
     p_anc = sub.add_parser("anchor", help="Pin (optional) and anchor an existing manifest")
     p_anc.add_argument("--run-dir", required=True)
@@ -110,15 +129,23 @@ def _build_parser() -> argparse.ArgumentParser:
         default="dry-run",
         help="dry-run prints the payload; ots anchors via OpenTimestamps (recommended); eas anchors on Base (experimental — requires a funded key and costs gas; needs farm-notary[chain])",
     )
-    p_anc.add_argument("--pin", action="store_true", help="Upload the run directory to IPFS first")
+    p_anc.add_argument(
+        "--pin",
+        action="store_true",
+        help=(
+            "Upload the run directory to local Kubo (lab convenience; not "
+            "archival). For a paper or academy citation use --pin-remote."
+        ),
+    )
     p_anc.add_argument("--ipfs-api", help="Kubo API URL (default: FARM_NOTARY_IPFS_API or http://127.0.0.1:5001)")
     p_anc.add_argument(
         "--pin-remote",
         metavar="SERVICE",
         help=(
-            "After pinning, delegate to the named remote pinning service via "
-            "Kubo's /api/v0/pin/remote/add (the service must be registered with "
-            "`ipfs pin remote service add`). Implies --pin."
+            "Durable pin via a registered pinning service (Pinata, "
+            "web3.storage, or any IPFS Pinning Service API). This is the "
+            "published path for anything you cite. Implies --pin. Register "
+            "the service with `ipfs pin remote service add`."
         ),
     )
     p_anc.add_argument(
@@ -137,8 +164,16 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Do not write the anchor receipt back into manifest.json",
     )
+    p_anc.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="Allow anchoring a manifest whose git tree was dirty (the sha does not identify the code)",
+    )
 
-    p_ver = sub.add_parser("verify", help="Rehash artifacts and check the anchor proof")
+    p_ver = sub.add_parser(
+        "verify",
+        help="Print a CLAIMS.md claim card for a run (rehash, timestamp, precommit, receipt)",
+    )
     p_ver.add_argument("--run-dir", help="Run directory containing manifest.json")
     p_ver.add_argument("--manifest", help=f"Path to a {MANIFEST_NAME} (artifacts checked next to it)")
 
@@ -161,6 +196,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p_rep.add_argument(
         "--fresh-dir",
         help="Directory for the re-run (default: a new temporary directory)",
+    )
+    p_rep.add_argument(
+        "--cwd",
+        help="Working directory for the recorded command (the experiment repo)",
     )
     p_rep.add_argument(
         "--anchor",
@@ -266,13 +305,16 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
     config = _load_json_arg(args.config)
     import warnings
 
+    _, detected_dirty = detect_git_status()
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         try:
             manifest = build_manifest(
                 run_dir,
                 publish_patterns=args.publish or [],
+                publish_profile=args.profile,
                 git_sha=args.git_sha,
+                git_dirty=detected_dirty,
                 runner=args.runner,
                 command=args.command,
                 lockfile=Path(args.lockfile) if args.lockfile else None,
@@ -292,6 +334,8 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
         )
     path = write_manifest(manifest, run_dir)
     print(path)
+    if manifest.publish_profile:
+        print("profile", manifest.publish_profile)
     print("artifacts", len(manifest.artifacts))
     print("unmatched", manifest.unmatched_count)
     print("content_hash", manifest.content_hash())
@@ -324,6 +368,11 @@ def _cmd_anchor(args: argparse.Namespace) -> int:
             print(f"error: could not load campaign: {exc}", file=sys.stderr)
             return 2
         writer = write_campaign
+    try:
+        require_clean_identity(getattr(manifest, "git_dirty", None), allow_dirty=args.allow_dirty)
+    except DirtyTreeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
 
     cid = getattr(args, "cid", None)
     pin_remote_service = getattr(args, "pin_remote", None)
@@ -341,6 +390,7 @@ def _cmd_anchor(args: argparse.Namespace) -> int:
         manifest.cid = cid
         manifest.cid_reachable = None
         manifest.cid_reachable_checked_utc = None
+        manifest.pin_service = pin_remote_service or "local"
 
         if pin_remote_service:
             try:
@@ -348,6 +398,13 @@ def _cmd_anchor(args: argparse.Namespace) -> int:
             except Exception as exc:
                 print(f"error: remote pin to '{pin_remote_service}' failed: {exc}", file=sys.stderr)
                 return 1
+        else:
+            print(
+                "warning: pinned to local Kubo only — not archival. "
+                "For a paper or academy citation use --pin-remote "
+                "(Pinata / web3.storage / pinning-service API).",
+                file=sys.stderr,
+            )
 
         # Check that the CID is resolvable through a public gateway.
         if not getattr(args, "no_check_gateway", False):
@@ -360,14 +417,15 @@ def _cmd_anchor(args: argparse.Namespace) -> int:
             if not reachable:
                 print(
                     f"warning: CID {cid} is not yet reachable via the public gateway. "
-                    "Pinning to a local Kubo daemon is not archival — the content will "
-                    "become unreachable when the daemon is offline. "
-                    "Use --pin-remote to delegate to a persistent pinning service.",
+                    "A local pin is not archival — the content will become "
+                    "unreachable when the daemon is offline.",
                     file=sys.stderr,
                 )
 
     backend = get_backend(args.backend, calendars=getattr(args, "calendar", None))
-    receipt = anchor_run(manifest, cid=cid, backend=backend)
+    receipt = anchor_run(
+        manifest, cid=cid, backend=backend, allow_dirty=args.allow_dirty
+    )
     proof_path = write_proof(receipt, run_dir)
 
     no_write = getattr(args, "no_write", False)
@@ -411,86 +469,31 @@ def _cmd_verify(args: argparse.Namespace) -> int:
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        problems = verify_run_dir(manifest, run_dir)
+        card = evaluate_claims(manifest, run_dir)
     for w in caught:
         print(f"warning: {w.message}", file=sys.stderr)
+    problems = []
     problems += verify_anchor(manifest, run_dir)
     problems += verify_receipt(manifest, run_dir)
     problems += verify_precommit(manifest, run_dir)
     problems += verify_derived_artifacts(manifest, run_dir)
     problems += verify_identity_record(manifest, run_dir)
 
-    if problems:
-        for problem in problems:
+    print(card.render(), end="")
+    if card.notes:
+        print()
+        for note in card.notes:
+            print(note)
+    all_problems = list(card.problems)
+    for problem in problems:
+        if problem not in all_problems:
+            all_problems.append(problem)
+    if all_problems:
+        print()
+        for problem in all_problems:
             print("FAIL", problem)
         return 1
-
     print("OK", manifest.content_hash())
-    _precommit_ots_confirmed = False
-    if manifest.precommit_hash is not None:
-        from farm_notary.precommit import PRECOMMIT_NAME, PRECOMMIT_PROOF_NAME, load_precommit
-        from farm_notary.ots import PROOF_NAME, proof_status
-
-        pc_path = run_dir / PRECOMMIT_NAME
-        pc_proof_path = run_dir / PRECOMMIT_PROOF_NAME
-        # Only report the "pre-specified design" claim when an OTS proof for
-        # the precommit exists; otherwise present created_utc as untrusted
-        # self-declared metadata only.
-        if pc_proof_path.is_file() and pc_path.is_file():
-            try:
-                pc = load_precommit(pc_path)
-                pc_status = proof_status(pc_proof_path.read_bytes())
-                _precommit_ots_confirmed = pc_status.confirmed
-                print(
-                    f"pre-specified design: precommit anchored via OTS"
-                    f" (self-declared created_utc: {pc.get('created_utc')})"
-                )
-                for line in pc_status.summary():
-                    print(f"  precommit proof: {line}")
-            except (ValueError, OSError):
-                pass
-        elif pc_path.is_file():
-            try:
-                pc = load_precommit(pc_path)
-                print(
-                    f"  precommit present (no OTS proof); self-declared"
-                    f" created_utc: {pc.get('created_utc')} (untrusted)"
-                )
-            except (ValueError, OSError):
-                pass
-    _anchor_ots_confirmed = False
-    if manifest.anchor and manifest.anchor.get("backend") == "opentimestamps":
-        from farm_notary.ots import PROOF_NAME, proof_status
-
-        proof_path = run_dir / manifest.anchor.get("detail", {}).get("proof", PROOF_NAME)
-        if proof_path.is_file():
-            anc_status = proof_status(proof_path.read_bytes())
-            _anchor_ots_confirmed = anc_status.confirmed
-            for line in anc_status.summary():
-                print(line)
-    # Emit the two-phase claim only when both proofs are real (not dry-run)
-    # and at least submitted to a calendar (confirmed or pending).
-    _precommit_proof_present = (
-        manifest.precommit_hash is not None
-        and (run_dir / "precommit.ots").is_file()
-    )
-    _anchor_proof_present = (
-        manifest.anchor is not None
-        and manifest.anchor.get("backend") != "dry-run"
-    )
-    if _precommit_proof_present and _anchor_proof_present:
-        print("claim: specified before T1, produced before T2")
-    from farm_notary.manifest import RECEIPT_NAME
-
-    receipt_path = run_dir / RECEIPT_NAME
-    if receipt_path.is_file():
-        from farm_notary.reproduce import load_receipt
-
-        receipt = load_receipt(run_dir)
-        print(
-            f"reproduction receipt: {len(receipt.get('matched', []))} artifact(s) "
-            f"bitwise-reproduced on {receipt.get('created_utc')}"
-        )
     if getattr(manifest, "derived_from", None):
         print("claim: statistics recompute exactly from recorded sources")
     if getattr(manifest, "identity", None):
@@ -516,12 +519,19 @@ def _cmd_precommit(args: argparse.Namespace) -> int:
     out.mkdir(parents=True, exist_ok=True)
     dest = out / PRECOMMIT_NAME
 
-    pc = build_precommit(
-        config=_load_json_arg(args.config),
-        command=args.command,
-        git_sha=args.git_sha,
-        lockfile=Path(args.lockfile) if args.lockfile else None,
-    )
+    _, detected_dirty = detect_git_status()
+    try:
+        pc = build_precommit(
+            config=_load_json_arg(args.config),
+            command=args.command,
+            git_sha=args.git_sha,
+            git_dirty=detected_dirty,
+            lockfile=Path(args.lockfile) if args.lockfile else None,
+            allow_dirty=args.allow_dirty,
+        )
+    except DirtyTreeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     if pc.get("git_dirty"):
         print(
             "warning: git tree is dirty; the recorded sha does not identify the code that will run",
@@ -566,6 +576,8 @@ def _cmd_reproduce(args: argparse.Namespace) -> int:
             manifest,
             fresh_dir=Path(args.fresh_dir) if args.fresh_dir else None,
             ignore=args.ignore,
+            original_dir=run_dir,
+            cwd=Path(args.cwd) if args.cwd else None,
         )
     except ReproduceError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -577,6 +589,19 @@ def _cmd_reproduce(args: argparse.Namespace) -> int:
     receipt_path = write_receipt(receipt, run_dir)
     print(f"receipt written to {receipt_path}")
     print("receipt_hash", receipt_hash(receipt))
+
+    from farm_notary.scope import format_bitwise_status
+
+    compared = len(result.matched) + len(result.mismatched) + len(result.missing)
+    score = f"{len(result.matched)}/{compared}"
+    if result.ignore:
+        score = f"{score}, ignored: {', '.join(result.ignore)}"
+    elif result.ignored:
+        score = f"{score}, ignored: {', '.join(result.ignored)}"
+    print(
+        "bitwise reproducible (scoped) —",
+        format_bitwise_status(score, receipt.get("environment") or {}, ok=result.ok),
+    )
 
     if args.anchor:
         from farm_notary.ots import stamp_digest

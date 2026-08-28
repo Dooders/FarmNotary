@@ -1,0 +1,289 @@
+name: Consensus hardware matrix
+
+# Same-job x86-64 Linux produce+reproduce is the demonstrated CLAIMS.md
+# scope (same env, same GHA VM). Two ubuntu-latest VMs are already another
+# machine; ARM/macOS are the documented hardware/BLAS gap.
+#
+# Cross-machine jobs record receipts and never fail the workflow.
+# farm_notary.scope.DEMONSTRATED_SCOPES stays {x86-64 Linux}.
+#
+# AgentFarm is pinned in this file (not a job output) so checkout is a
+# reviewed ref. persist-credentials is off: we only read that repo.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  CELL: "--trials 12 --voters 50 --candidates 8 --population two_cluster --seed 0 --no-persist-ballots"
+  PORTABLE_COMMAND: "python run_experiment.py --trials 12 --voters 50 --candidates 8 --population two_cluster --seed 0 --no-persist-ballots --out {run_dir}"
+  OMP_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
+  NUMEXPR_NUM_THREADS: "1"
+
+jobs:
+  same_arch:
+    name: Same-job x86-64 Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout FarmNotary
+        uses: actions/checkout@v4
+
+      - name: Checkout AgentFarm
+        uses: actions/checkout@v4
+        with:
+          repository: Dooders/AgentFarm
+          # Literal pin — CodeQL treats env/output refs as untrusted.
+          ref: c98a476eaf1f9d3100383787fa34ec352e896dff
+          path: agentfarm
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install FarmNotary and AgentFarm consensus deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install -r agentfarm/requirements-ci-lock.txt
+          pip install -e ./agentfarm --no-deps
+
+      - name: Run consensus smoke cell
+        working-directory: agentfarm
+        run: python run_experiment.py ${{ env.CELL }} --out "$RUNNER_TEMP/consensus-run"
+
+      - name: Notarize with portable command
+        env:
+          RUN: ${{ runner.temp }}/consensus-run
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          from farm_notary.manifest import build_manifest, write_manifest
+
+          run = Path(os.environ["RUN"])
+          rc = json.loads((run / "run_config.json").read_text())
+          manifest = build_manifest(
+              run,
+              publish_profile="consensus",
+              git_sha="c98a476eaf1f9d3100383787fa34ec352e896dff",
+              git_dirty=False,
+              runner="farm-notary-consensus-matrix",
+              command=os.environ["PORTABLE_COMMAND"],
+              config=rc.get("config") or {},
+              lockfile=Path("agentfarm/requirements-ci-lock.txt"),
+          )
+          write_manifest(manifest, run)
+          print("command", manifest.command)
+          print("artifacts", manifest.artifacts)
+          print("content_hash", manifest.content_hash())
+          PY
+
+      - name: Reproduce in the same VM
+        env:
+          RUN: ${{ runner.temp }}/consensus-run
+          FRESH: ${{ runner.temp }}/consensus-fresh
+        run: farm-notary reproduce --run-dir "$RUN" --fresh-dir "$FRESH" --cwd agentfarm
+
+      - name: Verify claim card
+        env:
+          RUN: ${{ runner.temp }}/consensus-run
+        run: farm-notary verify --run-dir "$RUN"
+
+      - name: Upload produced run
+        uses: actions/upload-artifact@v4
+        with:
+          name: consensus-produced
+          path: ${{ runner.temp }}/consensus-run
+          if-no-files-found: error
+
+  cross_machine:
+    name: Cross-machine ${{ matrix.label }}
+    needs: same_arch
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: x86-64-linux
+          - os: ubuntu-24.04-arm
+            label: arm64-linux
+          - os: macos-14
+            label: arm64-macos
+    steps:
+      - name: Checkout FarmNotary
+        uses: actions/checkout@v4
+
+      - name: Checkout AgentFarm
+        uses: actions/checkout@v4
+        with:
+          repository: Dooders/AgentFarm
+          ref: c98a476eaf1f9d3100383787fa34ec352e896dff
+          path: agentfarm
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install FarmNotary and AgentFarm consensus deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install -r agentfarm/requirements-ci-lock.txt
+          pip install -e ./agentfarm --no-deps
+
+      - name: Download produced run
+        uses: actions/download-artifact@v4
+        with:
+          name: consensus-produced
+          path: ${{ runner.temp }}/consensus-run
+
+      - name: Reproduce recorded command
+        continue-on-error: true
+        env:
+          RUN: ${{ runner.temp }}/consensus-run
+          FRESH: ${{ runner.temp }}/consensus-fresh
+        run: farm-notary reproduce --run-dir "$RUN" --fresh-dir "$FRESH" --cwd agentfarm
+
+      - name: Write matrix receipt summary
+        if: always()
+        env:
+          RUN: ${{ runner.temp }}/consensus-run
+          LABEL: ${{ matrix.label }}
+          OS: ${{ matrix.os }}
+        run: |
+          python - <<'PY'
+          import json, os, platform
+          from pathlib import Path
+
+          from farm_notary.scope import (
+              ALLOWED_SENTENCE,
+              DEMONSTRATED_SCOPES,
+              environment_machine,
+              format_bitwise_status,
+          )
+
+          run = Path(os.environ["RUN"])
+          receipt_path = run / "reproduction.json"
+          receipt = json.loads(receipt_path.read_text()) if receipt_path.is_file() else {}
+          env = receipt.get("environment") or {}
+          matched = list(receipt.get("matched") or [])
+          mismatched = list(receipt.get("mismatched") or [])
+          missing = list(receipt.get("missing") or [])
+          compared = len(matched) + len(mismatched) + len(missing)
+          score = f"{len(matched)}/{compared}" if compared else "missing"
+          ok = bool(receipt.get("ok"))
+          summary = {
+              "job_label": os.environ["LABEL"],
+              "runs_on": os.environ["OS"],
+              "required": False,
+              "ok": ok,
+              "score": score,
+              "matched": matched,
+              "mismatched": mismatched,
+              "missing": missing,
+              "diagnostics": receipt.get("diagnostics") or [],
+              "machine": environment_machine(env) if env else "unknown",
+              "system": env.get("system") or platform.system(),
+              "arch": env.get("machine") or platform.machine(),
+              "python": env.get("python"),
+              "status": format_bitwise_status(score, env, ok=ok) if compared else "missing",
+              "allowed_sentence": ALLOWED_SENTENCE,
+              "demonstrated_scopes": sorted(DEMONSTRATED_SCOPES),
+          }
+          out = Path(os.environ["RUNNER_TEMP"]) / "matrix-result.json"
+          out.write_text(json.dumps(summary, indent=2) + "\n")
+          print(json.dumps(summary, indent=2))
+          PY
+
+      - name: Upload receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: consensus-receipt-${{ matrix.label }}
+          path: |
+            ${{ runner.temp }}/consensus-run/reproduction.json
+            ${{ runner.temp }}/matrix-result.json
+          if-no-files-found: warn
+
+  summarize:
+    name: Scoped sentence
+    needs: [same_arch, cross_machine]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout FarmNotary
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install FarmNotary
+        run: pip install -e .
+
+      - name: Download receipts
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: consensus-receipt-*
+          path: ${{ runner.temp }}/receipts
+          merge-multiple: false
+
+      - name: Emit the sentence the tool is allowed to print
+        run: |
+          python - <<'PY'
+          import json, sys
+          from pathlib import Path
+
+          from farm_notary.scope import ALLOWED_SENTENCE, DEMONSTRATED_SCOPES
+
+          root = Path("${{ runner.temp }}") / "receipts"
+          rows = []
+          if root.is_dir():
+              for path in sorted(root.rglob("matrix-result.json")):
+                  rows.append(json.loads(path.read_text()))
+
+          print("demonstrated scopes:", ", ".join(sorted(DEMONSTRATED_SCOPES)))
+          print("allowed sentence:", ALLOWED_SENTENCE)
+          print()
+          print("same-job x86-64 Linux is the demonstrated cell.")
+          print("rows below are cross-machine (another VM / ISA); not a claim.")
+          print()
+          print(f"{'job':<16} {'machine':<14} {'score':<8} {'ok':<6} status")
+          for row in rows:
+              print(
+                  f"{row['job_label']:<16} {row['machine']:<14} "
+                  f"{row['score']:<8} {str(row['ok']):<6} {row['status']}"
+              )
+              extra = []
+              if row.get("mismatched"):
+                  extra.append("mismatched=" + ",".join(row["mismatched"]))
+              if row.get("missing"):
+                  extra.append("missing=" + ",".join(row["missing"]))
+              for diag in row.get("diagnostics") or []:
+                  extra.append(
+                      f"{diag.get('artifact')}: {', '.join(diag.get('kinds') or [])}"
+                  )
+              if extra:
+                  print("   ", "; ".join(extra))
+
+          print()
+          print(
+              "Until ARM64 Linux and ARM64 macOS receipts are ok and "
+              "DEMONSTRATED_SCOPES is expanded, the tool will not emit a "
+              "wider sentence."
+          )
+          PY
