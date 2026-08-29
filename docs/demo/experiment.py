@@ -13,6 +13,7 @@ import argparse
 import csv
 import json
 import random
+import shlex
 import sys
 from collections import Counter
 from pathlib import Path
@@ -38,7 +39,11 @@ def run_config(seed: int) -> dict:
                 {
                     "outputs": ["summary.csv", "allocation_means.csv"],
                     "sources": ["run_config.json"],
-                    "command": f"{sys.executable} {Path(__file__).resolve()} verify --out {{run_dir}}",
+                    "command": (
+                        f"{shlex.quote(sys.executable)} "
+                        f"{shlex.quote(str(Path(__file__).resolve()))} "
+                        "verify --out '{run_dir}'"
+                    ),
                     "mode": "verify",
                 }
             ],
@@ -119,7 +124,11 @@ def run(out: Path, seed: int, *, embed_path: bool = False) -> None:
 
 
 def verify(out: Path) -> None:
-    """Recompute summary + allocation_means from trials.csv; exit 1 on mismatch."""
+    """Recompute summary + allocation_means from the seed in run_config.json.
+
+    trials.csv is only checked so the recorded winner matches that seed.
+    Exit 1 on mismatch.
+    """
     seed = json.loads((out / "run_config.json").read_text(encoding="utf-8"))["seed"]
     ballots = allocate(int(seed))
     summary, means, _contrasts, recomputed_winner = aggregates(ballots)

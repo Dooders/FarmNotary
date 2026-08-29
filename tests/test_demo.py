@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from farm_notary.scope import ALLOWED_SENTENCE
+from farm_notary.scope import ALLOWED_SENTENCE, CROSS_HARDWARE_NOT_A_CLAIM
 
 ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK = ROOT / "docs" / "demo" / "farmnotary_live_demo.ipynb"
@@ -47,9 +47,8 @@ def test_experiment_writes_official_and_private_files(tmp_path: Path):
         "private/ballots.csv",
     ):
         assert (out / name).is_file(), name
-    assert "ballot" in (out / "private" / "ballots.csv").read_text(encoding="utf-8").splitlines()[0] or (
-        out / "private" / "ballots.csv"
-    ).read_text(encoding="utf-8")
+    header = (out / "private" / "ballots.csv").read_text(encoding="utf-8").splitlines()[0]
+    assert header == "voter,choice"
     subprocess.run(
         [sys.executable, str(EXPERIMENT), "verify", "--out", str(out)],
         check=True,
@@ -74,8 +73,10 @@ def test_live_demo_notebook_executes():
     assert card.ok
     assert card.tamper_evident == "pass"
     assert card.pre_specified == "precommit bound"
-    assert card.bitwise_reproducible != "missing"
-    assert ALLOWED_SENTENCE in card.bitwise_reproducible or "x86-64" in card.bitwise_reproducible or "/" in card.bitwise_reproducible
+    status = card.bitwise_reproducible
+    assert status != "missing"
+    assert not status.startswith("fail")
+    assert ALLOWED_SENTENCE in status or CROSS_HARDWARE_NOT_A_CLAIM in status
     assert "not claimed: scientific correctness" in card.render()
 
     manifest = ns["manifest"]

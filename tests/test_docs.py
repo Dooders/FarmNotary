@@ -109,9 +109,11 @@ def test_live_demo_notebook_stays_inside_the_claim_card():
     assert ALLOWED_SENTENCE in DEMO_NOTEBOOK
     assert "dry-run" in DEMO_NOTEBOOK
     assert "not a science failure" in DEMO_NOTEBOOK.lower()
-    assert "independently reproduced" in DEMO_NOTEBOOK.lower()
-    assert "cross-hardware" in DEMO_NOTEBOOK.lower()
-    assert "verified result" in DEMO_NOTEBOOK.lower()
+    lower = DEMO_NOTEBOOK.lower()
+    assert "will not claim independently reproduced" in lower
+    assert "may **not** take" in lower or "may not take" in lower
+    assert "verified result" in lower
+    assert "cross-hardware" in lower
 
 
 def test_action_docs_match_action_yml_defaults():
