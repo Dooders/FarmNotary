@@ -141,6 +141,35 @@ def derive_seeds(
     ]
 
 
+def derive_seed_single(
+    seed_plan: Mapping[str, Any],
+    config: Optional[Mapping[str, Any]],
+    randomness: bytes,
+    index: int,
+    *,
+    round: Optional[int] = None,
+) -> int:
+    """Derive a single integer seed for ``index`` without materialising all seeds."""
+    derivation = seed_plan.get("derivation")
+    if derivation != DERIVATION_SHA256_V1:
+        raise BeaconError(
+            f"unsupported seed derivation {derivation!r}, expected {DERIVATION_SHA256_V1!r}"
+        )
+    count = int(seed_plan["count"])
+    if count < 1:
+        raise BeaconError(f"seed_plan.count must be >= 1, got {count}")
+    used_round = int(round if round is not None else seed_plan["min_round"])
+    chain_hash = str(seed_plan["chain_hash"])
+    cfg_hash = config_hash_excluding_seed(config)
+    return derive_seed_v1(
+        chain_hash=chain_hash,
+        round=used_round,
+        index=index,
+        config_hash=cfg_hash,
+        randomness=randomness,
+    )
+
+
 def config_has_seed(config: Optional[Mapping[str, Any]]) -> bool:
     if not config:
         return False
@@ -314,16 +343,28 @@ def bind_run_seed(
             f"beacon round {fetched.round} does not equal min_round "
             f"{seed_plan['min_round']}"
         )
-    seeds = derive_seeds(seed_plan, config, randomness, round=fetched.round)
-    derived = seeds[seed_index]
+    derived = derive_seed_single(seed_plan, config, randomness, seed_index, round=fetched.round)
     bound = dict(config or {})
-    seed_key = config_seed_key(bound)
-    existing = bound[seed_key] if seed_key else None
-    if existing is not None and int(existing) != int(derived):
+    present_aliases = [k for k in SEED_KEYS if k in bound]
+    if len(present_aliases) > 1:
         raise BeaconError(
-            f"config seed {existing!r} does not match derived seed {derived} "
-            f"at index {seed_index}"
+            f"config contains multiple seed aliases {present_aliases!r}; "
+            "only one seed key is permitted"
         )
+    seed_key = present_aliases[0] if present_aliases else None
+    existing = bound[seed_key] if seed_key else None
+    if existing is not None:
+        try:
+            existing_int = int(existing)
+        except (TypeError, ValueError):
+            raise BeaconError(
+                f"config seed {existing!r} is not an integer"
+            )
+        if existing_int != int(derived):
+            raise BeaconError(
+                f"config seed {existing!r} does not match derived seed {derived} "
+                f"at index {seed_index}"
+            )
     bound[seed_key or "seed"] = derived
     beacon = {
         "chain_hash": seed_plan["chain_hash"],
@@ -483,9 +524,10 @@ def verify_beacon_binding(
         return check
 
     try:
-        expected = derive_seeds(
-            seed_plan, getattr(manifest, "config", None), randomness, round=used_round
-        )[seed_index]
+        expected = derive_seed_single(
+            seed_plan, getattr(manifest, "config", None), randomness, seed_index,
+            round=used_round,
+        )
     except BeaconError as exc:
         _problem(check, str(exc))
         return check
@@ -496,12 +538,26 @@ def verify_beacon_binding(
             f"derived_seed {recorded_seed} does not recompute to {expected}",
         )
     config = getattr(manifest, "config", None) or {}
-    seed_key = config_seed_key(config)
-    config_seed = config[seed_key] if seed_key else None
-    if config_seed is None or int(config_seed) != expected:
+    for alias in SEED_KEYS:
+        if alias not in config:
+            continue
+        try:
+            config_seed_val = int(config[alias])
+        except (TypeError, ValueError):
+            _problem(
+                check,
+                f"manifest seed key {alias!r} is not an integer: {config[alias]!r}",
+            )
+            continue
+        if config_seed_val != expected:
+            _problem(
+                check,
+                f"manifest seed {alias}={config[alias]!r} does not match derived seed {expected}",
+            )
+    if not any(alias in config for alias in SEED_KEYS):
         _problem(
             check,
-            f"manifest seed {config_seed!r} does not match derived seed {expected}",
+            f"manifest config has no seed key; derived seed {expected} is not bound",
         )
 
     if client is not None:

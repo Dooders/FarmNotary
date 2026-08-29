@@ -388,13 +388,20 @@ def evaluate_claims(
     pre_specified = _pre_specified_status(manifest, precommit_problems)
     proof_present = (run_dir / PRECOMMIT_PROOF_NAME).is_file()
     proof_failed = any(p.startswith("precommit proof:") for p in precommit_problems)
+    if precommit is not None:
+        # Override supplied: let verify_beacon_binding check hash and proof independently
+        _proof_ok: Optional[bool] = None
+        _precommit_bound: Optional[bool] = None
+    else:
+        _proof_ok = True if proof_present and not proof_failed else False if proof_failed else None
+        _precommit_bound = True if pre_specified == "precommit bound" else None
     beacon_check: BeaconCheck = verify_beacon_binding(
         manifest,
         run_dir,
         client=beacon_client,
         precommit=pc,
-        proof_ok=(True if proof_present and not proof_failed else False if proof_failed else None),
-        precommit_bound=pre_specified == "precommit bound",
+        proof_ok=_proof_ok,
+        precommit_bound=_precommit_bound,
     )
     notes: List[str] = []
     from farm_notary.diagnose import diagnostics_from_receipt, format_diagnostics

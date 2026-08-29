@@ -437,6 +437,7 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         try:
+            from farm_notary.beacon import BeaconError as _BeaconError
             seed_index = getattr(args, "seed_index", None)
             chain_hash = _seed_plan_chain_hash(getattr(args, "precommit", None))
             beacon_client = (
@@ -460,7 +461,7 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
                 beacon_client=beacon_client,
                 seeds_path=Path(args.seeds) if getattr(args, "seeds", None) else None,
             )
-        except ValueError as exc:
+        except (ValueError, _BeaconError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
     for w in caught:

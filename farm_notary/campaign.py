@@ -272,6 +272,27 @@ def verify_campaign(
 
     campaign_dir = Path(campaign_dir)
     parent_hash = campaign.config_hash
+
+    # Cross-check campaign.seed_plan against the precommit it claims to commit.
+    canonical_plan: Optional[dict] = None
+    if campaign.precommit_hash and isinstance(campaign.seed_plan, Mapping):
+        run_dirs = [
+            Path(r["path"])
+            for r in campaign.runs
+            if isinstance(r, Mapping) and r.get("path")
+        ]
+        canonical_plan = _shared_seed_plan(
+            [campaign_dir / p for p in run_dirs], campaign.precommit_hash
+        )
+        if canonical_plan is not None:
+            campaign_count = (campaign.seed_plan or {}).get("count")
+            committed_count = canonical_plan.get("count")
+            if str(campaign_count) != str(committed_count):
+                problems.append(
+                    f"campaign seed_plan.count {campaign_count!r} does not match "
+                    f"precommit seed_plan.count {committed_count!r}"
+                )
+
     for i, run in enumerate(campaign.runs):
         child_hash = run.get("config_hash")
         if parent_hash and child_hash and child_hash != parent_hash:
@@ -306,6 +327,24 @@ def verify_campaign(
             problems.append(
                 f"runs[{i}] cid mismatch: campaign records {run['cid']}, child is {manifest.cid}"
             )
+
+        # Verify that the campaign-recorded seed_index matches the child manifest's beacon record.
+        campaign_seed_index = run.get("seed_index")
+        if campaign_seed_index is not None:
+            child_beacon = getattr(manifest, "beacon", None) or {}
+            child_seed_index = child_beacon.get("seed_index") if isinstance(child_beacon, Mapping) else None
+            if child_seed_index is not None:
+                try:
+                    if int(campaign_seed_index) != int(child_seed_index):
+                        problems.append(
+                            f"runs[{i}] seed_index {campaign_seed_index!r} does not match "
+                            f"child manifest beacon seed_index {child_seed_index!r}"
+                        )
+                except (TypeError, ValueError):
+                    problems.append(
+                        f"runs[{i}] seed_index {campaign_seed_index!r} is not a valid integer"
+                    )
+
         # Rehash every artifact in the child run directory so that tampering
         # with artifacts (without rewriting the child manifest) is caught.
         from farm_notary.verify import verify_run_dir
