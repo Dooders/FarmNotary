@@ -366,26 +366,63 @@ def _build_parser() -> argparse.ArgumentParser:
 def _add_beacon_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--beacon-url",
-        help="drand HTTP base URL (default: https://api.drand.sh)",
+        help="drand HTTP base URL (implies a live fetch; default https://api.drand.sh)",
     )
     parser.add_argument(
         "--beacon-fixture",
         help="Fixed-beacon JSON for tests / offline use (or FARM_NOTARY_BEACON_FIXTURE)",
     )
+    parser.add_argument(
+        "--live-beacon",
+        action="store_true",
+        help="Fetch the recorded drand chain over HTTP (TLS; signatures not checked)",
+    )
 
 
-def _beacon_client_from_args(args: argparse.Namespace):
+def _beacon_client_from_args(
+    args: argparse.Namespace,
+    *,
+    chain_hash: Optional[str] = None,
+    require: bool = False,
+):
     from farm_notary.beacon import BeaconError, resolve_beacon_client
 
     fixture = getattr(args, "beacon_fixture", None)
     url = getattr(args, "beacon_url", None)
+    live = bool(getattr(args, "live_beacon", False) or url or (require and not fixture))
     try:
-        return resolve_beacon_client(
+        client = resolve_beacon_client(
             url=url,
             fixture=Path(fixture) if fixture else None,
+            chain_hash=chain_hash,
+            live=live,
         )
     except (BeaconError, OSError, ValueError) as exc:
         raise SystemExit(f"error: {exc}") from exc
+    if require and client is None:
+        raise SystemExit(
+            "error: pass --beacon-fixture or --live-beacon / --beacon-url"
+        )
+    return client
+
+
+def _seed_plan_chain_hash(precommit_path: Optional[str]) -> Optional[str]:
+    if not precommit_path:
+        return None
+    from farm_notary.precommit import PRECOMMIT_NAME, load_precommit
+
+    raw = Path(precommit_path)
+    path = raw / PRECOMMIT_NAME if raw.is_dir() else raw
+    if not path.is_file():
+        return None
+    try:
+        pc = load_precommit(path)
+    except (ValueError, OSError):
+        return None
+    plan = pc.get("seed_plan")
+    if isinstance(plan, dict) and plan.get("chain_hash"):
+        return str(plan["chain_hash"])
+    return None
 
 
 def _cmd_manifest(args: argparse.Namespace) -> int:
@@ -401,8 +438,9 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
         warnings.simplefilter("always")
         try:
             seed_index = getattr(args, "seed_index", None)
+            chain_hash = _seed_plan_chain_hash(getattr(args, "precommit", None))
             beacon_client = (
-                _beacon_client_from_args(args)
+                _beacon_client_from_args(args, chain_hash=chain_hash)
                 if seed_index is not None or getattr(args, "beacon_fixture", None)
                 else None
             )
@@ -561,6 +599,19 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     else:
         print("error: pass --run-dir, --manifest, or --campaign", file=sys.stderr)
         return 2
+    from farm_notary.precommit import PRECOMMIT_NAME, load_precommit
+
+    pc = None
+    pc_path = run_dir / PRECOMMIT_NAME
+    chain_hash = None
+    if pc_path.is_file():
+        try:
+            pc = load_precommit(pc_path)
+            plan = pc.get("seed_plan")
+            if isinstance(plan, dict) and plan.get("chain_hash"):
+                chain_hash = str(plan["chain_hash"])
+        except (ValueError, OSError):
+            pc = None
     try:
         manifest = load_manifest(manifest_path, validate=False)
     except (ValueError, OSError) as exc:
@@ -570,7 +621,10 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         card = evaluate_claims(
-            manifest, run_dir, beacon_client=_beacon_client_from_args(args)
+            manifest,
+            run_dir,
+            beacon_client=_beacon_client_from_args(args, chain_hash=chain_hash),
+            precommit=pc,
         )
     for w in caught:
         print(f"warning: {w.message}", file=sys.stderr)
@@ -637,7 +691,7 @@ def _cmd_precommit(args: argparse.Namespace) -> int:
             return 2
         beacon_client = None
         if seed_count is not None:
-            beacon_client = _beacon_client_from_args(args)
+            beacon_client = _beacon_client_from_args(args, require=True)
         pc = build_precommit(
             config=_load_json_arg(args.config),
             command=args.command,
@@ -691,7 +745,11 @@ def _cmd_derive_seeds(args: argparse.Namespace) -> int:
         seeds_record,
         write_seeds,
     )
-    from farm_notary.precommit import PRECOMMIT_NAME, load_precommit
+    from farm_notary.precommit import (
+        PRECOMMIT_NAME,
+        load_precommit,
+        require_precommit_proof,
+    )
 
     raw = Path(args.precommit)
     pc_path = raw / PRECOMMIT_NAME if raw.is_dir() else raw
@@ -704,7 +762,14 @@ def _cmd_derive_seeds(args: argparse.Namespace) -> int:
     if not plan:
         print("error: precommit has no seed_plan (pass --seed-count)", file=sys.stderr)
         return 2
-    client = _beacon_client_from_args(args)
+    try:
+        require_precommit_proof(pc, pc_path)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    client = _beacon_client_from_args(
+        args, chain_hash=str(plan.get("chain_hash") or "") or None, require=True
+    )
     try:
         fetched = fetch_plan_round(plan, client, wait=bool(args.wait))
         seeds = derive_seeds(plan, pc.get("config"), fetched.randomness, round=fetched.round)

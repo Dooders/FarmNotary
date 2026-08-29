@@ -112,8 +112,9 @@ def evaluate_ladder(
     not earn L0. FarmNotary does not check Bitcoin headers; L0 is a
     commitment-plus-attestation-type check. L1 requires a recorded command,
     git SHA, and environment fingerprint; it does not mean the command ran.
-    L2 requires a passing beacon binding (seed plan, precommit proof,
-    exact ``min_round``, recomputed seed, authenticated randomness).
+    L2 requires a passing beacon binding (seed plan, bound precommit proof,
+    plan not dated after the round, exact ``min_round``, recomputed seed,
+    HTTP or fixture randomness match).
     L3 is reserved and never returned as ``level``.
     """
     if getattr(card, "tamper_evident", None) != "pass":

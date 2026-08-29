@@ -64,8 +64,12 @@ code identity before artifacts exist. Only a bound precommit earns
 not that claim. L2 additionally binds run seeds to a public beacon
 round committed on that plan (`seed = H(plan || drand_round)`). That
 makes an **unbound seed search** after seeing outcomes visible as a
-gap (wrong seed, wrong round, or unpublished members of the committed
-set). A public ledger of every local directory is still out of scope.
+gap (wrong seed, wrong round, unpublished members of the committed
+set, a plan dated after the round, or randomness that was not compared
+to the configured HTTP beacon). A public ledger of every local
+directory is still out of scope. Live verify compares hex to
+`api.drand.sh` (or `--beacon-url`) over TLS; drand threshold signatures
+are not checked.
 
 The cost: a dishonest author still publishes the favorable run. The tool
 will stamp it. L2 does not mean the science is correct.

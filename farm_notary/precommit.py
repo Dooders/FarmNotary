@@ -153,3 +153,18 @@ def load_precommit(path: Path) -> dict:
             f"expected {PRECOMMIT_VERSION!r}"
         )
     return data
+
+
+def require_precommit_proof(pc: dict, pc_path: Path) -> None:
+    """Refuse derive-seeds until the plan has a proof that commits to it."""
+    from farm_notary.ots import verify_proof
+
+    proof_path = Path(pc_path).parent / PRECOMMIT_PROOF_NAME
+    if not proof_path.is_file():
+        raise ValueError(
+            f"{PRECOMMIT_PROOF_NAME} is required before derive-seeds; "
+            "stamp the plan with `precommit --backend ots`"
+        )
+    problems = verify_proof(proof_path.read_bytes(), precommit_hash(pc))
+    if problems:
+        raise ValueError("; ".join(problems))

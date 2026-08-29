@@ -8,10 +8,10 @@ plan is stamped, ``derive-seeds`` fetches that exact round and computes
         chain_hash, round, index, config_hash
     }) || randomness)[:8])
 
-``verify`` recomputes the same function and authenticates the recorded
-randomness through a :class:`BeaconClient`. Tests use :class:`FixedBeacon`;
-live verify uses :class:`DrandHttpClient`. A fetch failure leaves L2
-unearned (missing), not a hard verify failure.
+``verify`` recomputes the same function. Live verify compares recorded
+randomness to the configured drand HTTP endpoint (TLS; threshold
+signatures are not checked). Tests use :class:`FixedBeacon`. A fetch
+failure leaves L2 unearned (missing), not a hard verify failure.
 """
 
 from __future__ import annotations
@@ -23,10 +23,12 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Protocol, Sequence
 
-from farm_notary.manifest import SEED_KEYS, config_hash_excluding_seed
+from farm_notary.manifest import SEED_KEYS, config_hash_excluding_seed, hash_json
+from farm_notary.ots import OtsError, verify_proof
 
 DERIVATION_SHA256_V1 = "sha256-v1"
 SEEDS_NAME = "seeds.json"
@@ -41,6 +43,13 @@ BEACON_FIXTURE_ENV = "FARM_NOTARY_BEACON_FIXTURE"
 
 class BeaconError(Exception):
     """Beacon fetch, fixture, or derivation failed."""
+
+
+class BeaconRoundUnavailable(BeaconError):
+    """The requested round is not published yet (safe to poll)."""
+
+
+INCLUSION_PRESETS = frozenset({"all_in_campaign", "primary_endpoint"})
 
 
 @dataclass(frozen=True)
@@ -142,6 +151,35 @@ def strip_seed_keys(config: Optional[Mapping[str, Any]]) -> dict:
     return {k: v for k, v in dict(config or {}).items() if k not in SEED_KEYS}
 
 
+def config_seed_key(config: Optional[Mapping[str, Any]]) -> Optional[str]:
+    for key in SEED_KEYS:
+        if config and key in config:
+            return key
+    return None
+
+
+def validate_inclusion(inclusion: str) -> str:
+    text = str(inclusion).strip()
+    if text in INCLUSION_PRESETS or text.startswith("other:"):
+        return text
+    raise ValueError(
+        "--inclusion must be all_in_campaign, primary_endpoint, or other:<label>"
+    )
+
+
+def parse_created_utc(value: Any) -> Optional[int]:
+    if not value or not str(value).strip():
+        return None
+    text = str(value).strip()
+    try:
+        parsed = datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )
+    except ValueError:
+        return None
+    return int(parsed.timestamp())
+
+
 def build_seed_plan(
     *,
     count: int,
@@ -154,8 +192,7 @@ def build_seed_plan(
         raise ValueError(f"--seed-count must be >= 1, got {count}")
     if delay_rounds < 1:
         raise ValueError(f"--delay-rounds must be >= 1, got {delay_rounds}")
-    if not inclusion or not str(inclusion).strip():
-        raise ValueError("--inclusion is required when --seed-count is set")
+    inclusion = validate_inclusion(inclusion)
     info = client.chain_info()
     latest = client.latest()
     return {
@@ -247,7 +284,7 @@ def wait_for_round(
     while True:
         try:
             return client.get_round(round_id)
-        except BeaconError:
+        except BeaconRoundUnavailable:
             if time.monotonic() >= deadline:
                 raise BeaconError(
                     f"beacon round {round_id} not available within {timeout}s"
@@ -280,17 +317,14 @@ def bind_run_seed(
     seeds = derive_seeds(seed_plan, config, randomness, round=fetched.round)
     derived = seeds[seed_index]
     bound = dict(config or {})
-    existing = None
-    for key in SEED_KEYS:
-        if key in bound:
-            existing = bound[key]
-            break
+    seed_key = config_seed_key(bound)
+    existing = bound[seed_key] if seed_key else None
     if existing is not None and int(existing) != int(derived):
         raise BeaconError(
             f"config seed {existing!r} does not match derived seed {derived} "
             f"at index {seed_index}"
         )
-    bound["seed"] = derived
+    bound[seed_key or "seed"] = derived
     beacon = {
         "chain_hash": seed_plan["chain_hash"],
         "round": fetched.round,
@@ -372,36 +406,52 @@ def _problem(check: BeaconCheck, message: str) -> None:
     _gap(check, message)
 
 
+def _read_precommit_json(run_dir: Path) -> Optional[dict]:
+    path = Path(run_dir) / "precommit.json"
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def verify_beacon_binding(
     manifest: Any,
     run_dir: Path,
     *,
     client: Optional[BeaconClient] = None,
     precommit: Optional[Mapping[str, Any]] = None,
+    proof_ok: Optional[bool] = None,
+    precommit_bound: Optional[bool] = None,
 ) -> BeaconCheck:
-    """Recompute the seed binding and authenticate recorded randomness."""
-    # Late import: farm_notary.precommit imports this module at load time.
-    from farm_notary.precommit import PRECOMMIT_NAME, PRECOMMIT_PROOF_NAME, load_precommit
-
+    """Recompute the seed binding and check plan proof / round ordering."""
     check = BeaconCheck()
     run_dir = Path(run_dir)
-    pc = dict(precommit) if precommit is not None else None
-    if pc is None:
-        pc_path = run_dir / PRECOMMIT_NAME
-        if pc_path.is_file():
-            try:
-                pc = load_precommit(pc_path)
-            except (ValueError, OSError) as exc:
-                _gap(check, f"could not load precommit: {exc}")
-                return check
+    pc = dict(precommit) if precommit is not None else _read_precommit_json(run_dir)
     seed_plan = (pc or {}).get("seed_plan") if pc else None
     beacon = getattr(manifest, "beacon", None)
-    if not seed_plan:
+    if not seed_plan or pc is None:
         _gap(check, "missing: seed_plan")
         return check
-    proof_path = run_dir / PRECOMMIT_PROOF_NAME
+    if precommit_bound is False:
+        _gap(check, "precommit not bound")
+    elif precommit_bound is None:
+        recorded = getattr(manifest, "precommit_hash", None)
+        if recorded != hash_json(pc):
+            _gap(check, "precommit not bound")
+    proof_path = run_dir / "precommit.ots"
     if not proof_path.is_file():
         _gap(check, "missing: precommit proof")
+    elif proof_ok is False:
+        _gap(check, "precommit proof failed")
+    elif proof_ok is not True:
+        try:
+            for problem in verify_proof(proof_path.read_bytes(), hash_json(pc)):
+                _problem(check, f"precommit proof: {problem}")
+        except OtsError as exc:
+            _problem(check, f"precommit proof: {exc}")
     if not isinstance(beacon, Mapping) or not beacon:
         _gap(check, "missing: beacon binding")
         return check
@@ -445,12 +495,9 @@ def verify_beacon_binding(
             check,
             f"derived_seed {recorded_seed} does not recompute to {expected}",
         )
-    config_seed = None
     config = getattr(manifest, "config", None) or {}
-    for key in SEED_KEYS:
-        if key in config:
-            config_seed = config[key]
-            break
+    seed_key = config_seed_key(config)
+    config_seed = config[seed_key] if seed_key else None
     if config_seed is None or int(config_seed) != expected:
         _problem(
             check,
@@ -476,6 +523,20 @@ def verify_beacon_binding(
                 )
     else:
         _gap(check, "unauthenticated randomness")
+
+    declared = parse_created_utc(pc.get("created_utc"))
+    try:
+        round_time = round_unix_time(
+            int(seed_plan["genesis_time"]),
+            int(seed_plan["period"]),
+            used_round,
+        )
+    except (KeyError, TypeError, ValueError, BeaconError):
+        round_time = None
+    if declared is None:
+        _gap(check, "missing: plan created_utc")
+    elif round_time is not None and declared > round_time:
+        _gap(check, "plan created after the beacon round")
 
     if count > 1:
         check.notes.append(
@@ -536,7 +597,7 @@ class FixedBeacon:
     def get_round(self, round_id: int) -> BeaconRound:
         round_id = int(round_id)
         if round_id not in self._rounds:
-            raise BeaconError(f"fixed beacon has no round {round_id}")
+            raise BeaconRoundUnavailable(f"fixed beacon has no round {round_id}")
         randomness = self._rounds[round_id]
         return BeaconRound(
             chain_hash=self._chain.chain_hash,
@@ -614,6 +675,12 @@ class DrandHttpClient:
         try:
             with self._opener(url, timeout=self.timeout) as resp:
                 raw = resp.read()
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                raise BeaconRoundUnavailable(
+                    f"drand round not found: {url}"
+                ) from exc
+            raise BeaconError(f"drand fetch failed: {url}: {exc}") from exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             raise BeaconError(f"drand fetch failed: {url}: {exc}") from exc
         try:
@@ -661,13 +728,23 @@ class DrandHttpClient:
         )
 
 
+def _http_chain_hash(chain_hash: Optional[str]) -> str:
+    text = str(chain_hash or DRAND_QUICKNET_HASH).strip().lower()
+    if len(text) != 64 or any(c not in "0123456789abcdef" for c in text):
+        raise BeaconError(
+            f"invalid drand chain_hash {chain_hash!r}; expected 64 hex characters"
+        )
+    return text
+
+
 def resolve_beacon_client(
     *,
     url: Optional[str] = None,
     fixture: Optional[Path] = None,
     chain_hash: Optional[str] = None,
-) -> BeaconClient:
-    """Return a fixture client when one is configured, otherwise HTTP drand."""
+    live: bool = False,
+) -> Optional[BeaconClient]:
+    """Fixture client, live HTTP drand, or ``None`` (offline)."""
     path = fixture
     if path is None:
         env = os.environ.get(BEACON_FIXTURE_ENV)
@@ -675,7 +752,9 @@ def resolve_beacon_client(
             path = Path(env)
     if path is not None:
         return load_fixed_beacon(Path(path))
+    if not live and not url:
+        return None
     return DrandHttpClient(
         base_url=url or DEFAULT_DRAND_URL,
-        chain_hash=chain_hash or DRAND_QUICKNET_HASH,
+        chain_hash=_http_chain_hash(chain_hash),
     )

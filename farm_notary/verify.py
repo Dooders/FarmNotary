@@ -16,6 +16,7 @@ from typing import Any, List, Optional
 from farm_notary.beacon import BeaconCheck, verify_beacon_binding
 from farm_notary.ladder import LadderResult, evaluate_ladder
 from farm_notary.manifest import RECEIPT_NAME, Manifest, hash_file
+from farm_notary.precommit import PRECOMMIT_NAME, PRECOMMIT_PROOF_NAME, load_precommit
 from farm_notary.schema import MANIFEST_VERSION
 
 
@@ -167,8 +168,6 @@ def verify_precommit(manifest: Manifest, run_dir: Path) -> List[str]:
     from farm_notary.beacon import config_has_seed, strip_seed_keys
     from farm_notary.precommit import (
         BOUND_FIELDS,
-        PRECOMMIT_NAME,
-        PRECOMMIT_PROOF_NAME,
         load_precommit,
         precommit_hash,
     )
@@ -364,21 +363,38 @@ def evaluate_claims(
     run_dir: Path,
     *,
     beacon_client: Optional[Any] = None,
+    precommit: Optional[Any] = None,
 ) -> ClaimCard:
     """Run every verify check and return a CLAIMS.md claim card.
 
     The card is always complete: a missing precommit or receipt is reported
     as ``missing``, not as a problem. Problems are reserved for checks that
     were attempted and failed. A beacon fetch failure leaves L2 unearned
-    without failing verify.
+    without failing verify. Live HTTP comparison is opt-in (``beacon_client``).
     """
     run_dir = Path(run_dir)
     tamper_problems = verify_run_dir(manifest, run_dir)
     anchor_problems = verify_anchor(manifest, run_dir)
     receipt_problems = verify_receipt(manifest, run_dir)
     precommit_problems = verify_precommit(manifest, run_dir)
+    pc = dict(precommit) if precommit is not None else None
+    if pc is None:
+        pc_path = run_dir / PRECOMMIT_NAME
+        if pc_path.is_file():
+            try:
+                pc = load_precommit(pc_path)
+            except (ValueError, OSError):
+                pc = None
+    pre_specified = _pre_specified_status(manifest, precommit_problems)
+    proof_present = (run_dir / PRECOMMIT_PROOF_NAME).is_file()
+    proof_failed = any(p.startswith("precommit proof:") for p in precommit_problems)
     beacon_check: BeaconCheck = verify_beacon_binding(
-        manifest, run_dir, client=beacon_client
+        manifest,
+        run_dir,
+        client=beacon_client,
+        precommit=pc,
+        proof_ok=(True if proof_present and not proof_failed else False if proof_failed else None),
+        precommit_bound=pre_specified == "precommit bound",
     )
     notes: List[str] = []
     from farm_notary.diagnose import diagnostics_from_receipt, format_diagnostics
@@ -392,7 +408,6 @@ def evaluate_claims(
     notes.extend(beacon_check.notes)
     tamper_evident = "pass" if not tamper_problems else "fail"
     existed_by = _existed_by_status(manifest, run_dir, anchor_problems)
-    pre_specified = _pre_specified_status(manifest, precommit_problems)
     bitwise_reproducible = _bitwise_status(manifest, run_dir, receipt_problems)
     ladder = evaluate_ladder(
         SimpleNamespace(tamper_evident=tamper_evident, existed_by=existed_by),

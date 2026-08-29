@@ -107,8 +107,9 @@ artifacts. It does not invent a precommit after the fact.
 
 Beacon `seed_plan` / `derive-seeds` / `--seed-index` are CLI steps around
 the Action's `precommit` and `notarize` phases. The Action does not fetch
-drand or pass `--seed-count`. Run those locally (or add a job step) if
-the campaign should earn L2.
+drand, pass `--seed-count`, or `--live-beacon`. The default Action job
+does not earn L2. Run those locally (or add a job step) if the campaign
+should earn L2.
 
 Pinning needs a reachable Kubo daemon (`FARM_NOTARY_IPFS_API`) with the remote
 service already registered. OpenTimestamps needs outbound HTTPS to the public

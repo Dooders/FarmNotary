@@ -109,16 +109,17 @@ farm-notary verify --run-dir path/to/run
 
 `precommit` and `anchor` refuse a dirty git tree: the recorded SHA does not identify the code. `git_dirty` is still recorded. A supplied `--git-sha` is not a bypass — the working tree is inspected. Pass `--allow-dirty` (or `allow_dirty=True`) for an explicit exception.
 
-Beacon-derived seeds (L2): commit how many seeds and a `min_round` on the plan, stamp it, then derive. The used round must be exactly `min_round` (no later-round shopping). A 3s drand chain plus a delayed stamp is a race; the strong path is stamp, optionally `upgrade` the plan, then `derive-seeds`. L2 is not scientific correctness.
+Beacon-derived seeds (L2): commit how many seeds and a `min_round` on the plan, stamp it (`--backend ots`), then `derive-seeds`. The used round must be exactly `min_round`. A 3s drand chain plus a delayed stamp is a race; stamp immediately after `precommit`, then derive. Default `verify` does not fetch drand; pass `--live-beacon` (or `--beacon-fixture` in tests) so L2 can compare randomness over TLS. Threshold signatures are not checked. L2 is not scientific correctness.
 
 ```bash
 farm-notary precommit --config plan.json --command "python run.py --seed {seed} --out {run_dir}" \
   --seed-count 8 --inclusion all_in_campaign --backend ots
-farm-notary derive-seeds --precommit precommit.json --wait
+farm-notary derive-seeds --precommit precommit.json --wait --live-beacon
 farm-notary manifest --run-dir runs/i-0 --precommit precommit.json --seed-index 0 --profile consensus
+farm-notary verify --run-dir runs/i-0 --live-beacon
 ```
 
-`--beacon-fixture` (or `FARM_NOTARY_BEACON_FIXTURE`) is for tests and offline verify. Live verify fetches the recorded drand chain. A fetch failure leaves L2 unearned; it does not fail verify.
+`--beacon-fixture` (or `FARM_NOTARY_BEACON_FIXTURE`) is for tests and offline checks. A fetch failure leaves L2 unearned; it does not fail verify.
 
 ## Commands
 

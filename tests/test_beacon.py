@@ -2,20 +2,25 @@
 
 import hashlib
 import json
+from email.message import Message
 from pathlib import Path
 from types import SimpleNamespace
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 import pytest
 
 from farm_notary.beacon import (
     BeaconError,
+    BeaconRoundUnavailable,
     DrandHttpClient,
     FixedBeacon,
+    bind_run_seed,
     derive_seed_v1,
     derive_seeds,
+    resolve_beacon_client,
     subset_note,
     verify_beacon_binding,
+    wait_for_round,
     write_fixed_beacon_fixture,
 )
 from farm_notary.campaign import build_campaign, campaign_seed_coverage_note
@@ -24,6 +29,7 @@ from farm_notary.ladder import L3_NEXT_MEANING, evaluate_ladder
 from farm_notary.manifest import (
     build_manifest,
     config_hash_excluding_seed,
+    load_manifest,
     write_manifest,
 )
 from farm_notary.ots import serialize_proof
@@ -31,6 +37,7 @@ from farm_notary.precommit import (
     PRECOMMIT_NAME,
     PRECOMMIT_PROOF_NAME,
     build_precommit,
+    load_precommit,
     precommit_hash,
     write_precommit,
 )
@@ -39,7 +46,7 @@ from tests.test_ladder import attach_bitcoin
 from tests.test_ots import pending_timestamp
 
 CHAIN = "test-chain"
-GENESIS = 1_700_000_000
+GENESIS = 2_000_000_000
 PERIOD = 3
 LATEST = 50
 MIN_ROUND = 51
@@ -421,6 +428,8 @@ def test_cli_precommit_derive_and_manifest(tmp_path, capsys):
         == 0
     )
     capsys.readouterr()
+    pc = load_precommit(tmp_path / PRECOMMIT_NAME)
+    _attach_precommit_proof(tmp_path, pc)
     assert (
         main(
             [
@@ -462,9 +471,6 @@ def test_cli_precommit_derive_and_manifest(tmp_path, capsys):
         )
         == 0
     )
-    from farm_notary.manifest import load_manifest
-    from farm_notary.precommit import load_precommit
-
     manifest = load_manifest(run)
     assert manifest.beacon["seed_index"] == 0
     assert manifest.beacon["round"] == MIN_ROUND
@@ -533,3 +539,215 @@ def test_config_hash_used_in_derivation():
         chain_hash=CHAIN, round=1, index=0, config_hash=b, randomness=RANDOM_51
     )
     assert s0 == s1
+
+
+def test_invalid_precommit_proof_does_not_earn_l2(tmp_path):
+    client = _client()
+    run = _run_dir(tmp_path)
+    env = {"os": "Linux", "arch": "x86_64", "python": "3.12.0"}
+    pc = build_precommit(
+        config={"trials": 3},
+        command="python run.py {run_dir}",
+        git_sha="abc",
+        git_dirty=False,
+        seed_count=2,
+        inclusion="all_in_campaign",
+        beacon_client=client,
+    )
+    write_precommit(pc, run / PRECOMMIT_NAME)
+    _attach_precommit_proof(run, pc)
+    (run / PRECOMMIT_PROOF_NAME).write_bytes(b"not-an-ots-proof")
+    manifest = build_manifest(
+        run,
+        publish_patterns=["*.csv"],
+        git_sha="abc",
+        git_dirty=False,
+        command="python run.py {run_dir}",
+        environment=env,
+        config={"trials": 3},
+        precommit_path=run / PRECOMMIT_NAME,
+        seed_index=0,
+        beacon_client=client,
+    )
+    attach_bitcoin(manifest, run)
+    card = evaluate_claims(manifest, run, beacon_client=client)
+    assert card.ladder.level == "L1"
+    assert any("precommit proof" in g for g in card.ladder.next_gaps)
+    assert any("precommit proof" in p for p in card.problems)
+
+
+def test_plan_created_after_round_is_l2_gap(tmp_path):
+    client = _client()
+    run = _run_dir(tmp_path)
+    env = {"os": "Linux", "arch": "x86_64", "python": "3.12.0"}
+    pc = build_precommit(
+        config={"trials": 3},
+        command="python run.py {run_dir}",
+        git_sha="abc",
+        git_dirty=False,
+        seed_count=2,
+        inclusion="all_in_campaign",
+        beacon_client=client,
+    )
+    pc["created_utc"] = "2099-01-01T00:00:00Z"
+    write_precommit(pc, run / PRECOMMIT_NAME)
+    _attach_precommit_proof(run, pc)
+    manifest = build_manifest(
+        run,
+        publish_patterns=["*.csv"],
+        git_sha="abc",
+        git_dirty=False,
+        command="python run.py {run_dir}",
+        environment=env,
+        config={"trials": 3},
+        precommit_path=run / PRECOMMIT_NAME,
+        seed_index=0,
+        beacon_client=client,
+    )
+    attach_bitcoin(manifest, run)
+    card = evaluate_claims(manifest, run, beacon_client=client)
+    assert card.ladder.level == "L1"
+    assert any("created after the beacon round" in g for g in card.ladder.next_gaps)
+
+
+def test_evaluate_claims_without_client_does_not_earn_l2(tmp_path):
+    client = _client()
+    run = _run_dir(tmp_path)
+    env = {"os": "Linux", "arch": "x86_64", "python": "3.12.0"}
+    pc = build_precommit(
+        config={"trials": 3},
+        command="python run.py {run_dir}",
+        git_sha="abc",
+        git_dirty=False,
+        seed_count=2,
+        inclusion="all_in_campaign",
+        beacon_client=client,
+    )
+    write_precommit(pc, run / PRECOMMIT_NAME)
+    _attach_precommit_proof(run, pc)
+    manifest = build_manifest(
+        run,
+        publish_patterns=["*.csv"],
+        git_sha="abc",
+        git_dirty=False,
+        command="python run.py {run_dir}",
+        environment=env,
+        config={"trials": 3},
+        precommit_path=run / PRECOMMIT_NAME,
+        seed_index=0,
+        beacon_client=client,
+    )
+    attach_bitcoin(manifest, run)
+    card = evaluate_claims(manifest, run)
+    assert card.ladder.level == "L1"
+    assert "unauthenticated randomness" in card.ladder.next_gaps
+    assert card.problems == [] or not any("randomness" in p for p in card.problems)
+
+
+def test_bind_keeps_rng_seed_key():
+    client = _client()
+    plan = _plan(client)
+    derived = derive_seeds(plan, {"trials": 100}, RANDOM_51)[0]
+    bound, _beacon = bind_run_seed(
+        config={"trials": 100, "rng_seed": derived},
+        seed_plan=plan,
+        seed_index=0,
+        client=client,
+    )
+    assert bound["rng_seed"] == derived
+    assert "seed" not in bound
+
+
+def test_inclusion_rejects_unknown_label():
+    client = _client()
+    with pytest.raises(ValueError, match="inclusion"):
+        build_precommit(
+            config={"trials": 1},
+            git_sha="abc",
+            git_dirty=False,
+            seed_count=2,
+            inclusion="file_drawer",
+            beacon_client=client,
+        )
+
+
+def test_cli_derive_seeds_requires_proof(tmp_path, capsys):
+    fixture = tmp_path / "beacon.json"
+    write_fixed_beacon_fixture(
+        fixture,
+        chain_hash=CHAIN,
+        genesis_time=GENESIS,
+        period=PERIOD,
+        latest=LATEST,
+        rounds={LATEST: RANDOM_50, MIN_ROUND: RANDOM_51},
+    )
+    config = tmp_path / "config.json"
+    config.write_text('{"trials": 2}', encoding="utf-8")
+    assert (
+        main(
+            [
+                "precommit",
+                "--config",
+                str(config),
+                "--command",
+                "python run.py {run_dir}",
+                "--git-sha",
+                "abc",
+                "--out",
+                str(tmp_path),
+                "--allow-dirty",
+                "--seed-count",
+                "2",
+                "--inclusion",
+                "other:pilot",
+                "--beacon-fixture",
+                str(fixture),
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    assert (
+        main(
+            [
+                "derive-seeds",
+                "--precommit",
+                str(tmp_path / PRECOMMIT_NAME),
+                "--beacon-fixture",
+                str(fixture),
+            ]
+        )
+        == 2
+    )
+    err = capsys.readouterr().err
+    assert PRECOMMIT_PROOF_NAME in err
+
+
+def test_resolve_beacon_client_offline_is_none():
+    assert resolve_beacon_client() is None
+    assert resolve_beacon_client(live=False) is None
+
+
+def test_wait_for_round_does_not_retry_hard_errors():
+    class Boom(FixedBeacon):
+        def get_round(self, round_id: int):
+            raise BeaconError("malformed payload")
+
+    client = Boom(
+        chain_hash=CHAIN,
+        genesis_time=GENESIS,
+        period=PERIOD,
+        rounds={LATEST: RANDOM_50},
+        latest_round=LATEST,
+    )
+    with pytest.raises(BeaconError, match="malformed"):
+        wait_for_round(client, MIN_ROUND, timeout=2, interval=0.01)
+
+
+def test_drand_http_404_is_unavailable():
+    def opener(url, timeout=10.0):
+        raise HTTPError(url, 404, "not found", hdrs=Message(), fp=None)
+
+    client = DrandHttpClient(opener=opener, chain_hash="ab" * 32)
+    with pytest.raises(BeaconRoundUnavailable):
+        client.get_round(1)

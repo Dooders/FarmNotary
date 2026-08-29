@@ -13,20 +13,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List, Mapping, Optional, Sequence
 
+from farm_notary.beacon import subset_note
 from farm_notary.manifest import (
     MANIFEST_NAME,
     Manifest,
+    SEED_KEYS,
     capture_environment,
     config_hash_excluding_seed,
     extract_seed,
     hash_json,
     load_manifest,
 )
+from farm_notary.precommit import PRECOMMIT_NAME, load_precommit, precommit_hash as hash_precommit
 from farm_notary.schema import CAMPAIGN_VERSION, TOOL_VERSION
 
 CAMPAIGN_NAME = "campaign.json"
-
-SEED_KEYS = ("seed", "rng_seed", "random_seed")
 
 
 @dataclass
@@ -321,7 +322,6 @@ def _shared_seed_plan(
     """Copy seed_plan from a child precommit when children share that hash."""
     if not precommit_hash:
         return None
-    from farm_notary.precommit import PRECOMMIT_NAME, load_precommit, precommit_hash as _pc_hash
 
     for raw in run_dirs:
         pc_path = Path(raw) / PRECOMMIT_NAME
@@ -331,7 +331,7 @@ def _shared_seed_plan(
             pc = load_precommit(pc_path)
         except (ValueError, OSError):
             continue
-        if _pc_hash(pc) != precommit_hash:
+        if hash_precommit(pc) != precommit_hash:
             continue
         plan = pc.get("seed_plan")
         if isinstance(plan, Mapping):
@@ -355,9 +355,8 @@ def campaign_seed_coverage_note(campaign: Campaign) -> Optional[str]:
     ]
     if not published:
         return None
-    from farm_notary.beacon import subset_note
-
     return subset_note(count, published)
+
 
 
 def _resolve_child_dir(run: Mapping[str, Any], campaign_dir: Path) -> Optional[Path]:
