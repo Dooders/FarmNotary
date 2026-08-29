@@ -2,7 +2,9 @@
 
 A short talk for solo researchers and labs: what a research notary is, what FarmNotary will and will not claim, and how to hash one run this afternoon.
 
-Open [`index.html`](index.html) in a browser. The file is self-contained (no webfonts) so it presents offline.
+Open [`index.html`](index.html) in a browser. Typefaces are vendored under `fonts/` (Fraunces, Source Serif 4, IBM Plex Mono — SIL OFL via Google Fonts) so the talk presents offline.
+
+The talk is four acts: **Why**, **Record**, **Evidence**, **Start**.
 
 | Key | Action |
 |---|---|

@@ -44,8 +44,9 @@ The last tagged / PyPI release is **0.1.0**. This tree is **0.2.0**.
 - README: a "Why FarmNotary" section — official record vs laptop folder,
   hash tool vs research notary, and why the domain work is allowlists,
   privacy, and honest claims (anchoring is outsourced).
-- Intro slide deck for researchers and labs (`docs/slides/`): claim card,
-  scoped consensus showcase, solo/lab paths. Locked to CLAIMS.md by
+- Intro slide deck for researchers and labs (`docs/slides/`): four-act
+  talk (Why / Record / Evidence / Start), claim card, scoped consensus
+  showcase, solo/lab paths. Locked to CLAIMS.md by
   `test_intro_deck_stays_inside_the_claim_card`.
 - Tests for claim levels (`infer_claim_level`, paper sentences), docs-to-CLI
   lock, paper-pack `--verify-derived`, campaign `--require-local` / artifact
