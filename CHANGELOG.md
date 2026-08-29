@@ -27,6 +27,8 @@ The last tagged / PyPI release is **0.1.0**. This tree is **0.2.0**.
 
 ### Added
 
+- README: a "Why FarmNotary" section — official record vs laptop folder,
+  hash tool vs research notary, and why anchoring is outsourced.
 - Tests for claim levels (`infer_claim_level`, paper sentences), docs-to-CLI
   lock, paper-pack `--verify-derived`, campaign `--require-local` / artifact
   rehash, derivation rule validation, and a tighter Action contract.

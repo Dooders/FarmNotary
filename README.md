@@ -10,6 +10,14 @@ Immutability is not correctness. Re-run from the committed seed to check the sci
 
 **This repo is 0.2.0.** PyPI still serves `0.1.0`. Install from git for the current line (see [Install](#install)).
 
+## Why FarmNotary
+
+Published runs need a record that does not depend on the author's laptop. Reviewers should be able to fetch the official artifacts, rehash them, and see when that exact file was published — without trusting a zip, a Drive folder, or a local IPFS pin.
+
+That is a narrower job than "put the simulation on a chain" and a broader one than `sha256sum`. The simulation stays off-chain. Individual ballots and private choices never leave the machine. What gets notarized is the official record: code identity, config, aggregate metrics, winner allocations. Anchoring a hash is already solved ([OpenTimestamps](https://opentimestamps.org/) into Bitcoin); FarmNotary's work is the domain part — allowlists, privacy, honest claims.
+
+A hash tool will tell you the bytes match. A research notary also tells you what you may claim, and what you may not. Immutability is not correctness. Re-run from the committed seed to check the science.
+
 ## In and out of scope
 
 **In**
