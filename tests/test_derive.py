@@ -2,7 +2,14 @@ import sys
 from pathlib import Path
 
 from farm_notary.cli import main
-from farm_notary.derive import extract_derived_from, normalize_rules, verify_derived
+import pytest
+
+from farm_notary.derive import (
+    DeriveError,
+    extract_derived_from,
+    normalize_rules,
+    verify_derived,
+)
 from farm_notary.manifest import build_manifest, write_manifest
 
 RECOMPUTE = """
@@ -140,3 +147,88 @@ def test_cli_verify_fails_on_bad_derivation(tmp_path, capsys):
     (run / "summary.csv").write_text("metric,value\nmean,0\n", encoding="utf-8")
     assert main(["verify", "--run-dir", str(run), "--verify-derived"]) == 1
     assert "recompute mismatch" in capsys.readouterr().out
+
+
+def test_normalize_rules_rejects_bad_shapes():
+    with pytest.raises(DeriveError, match="list of rules"):
+        normalize_rules({"outputs": ["a"]})
+    with pytest.raises(DeriveError, match="must be an object"):
+        normalize_rules(["not-an-object"])
+    with pytest.raises(DeriveError, match="missing outputs"):
+        normalize_rules([{"sources": ["a"], "command": "x"}])
+    with pytest.raises(DeriveError, match="missing sources"):
+        normalize_rules([{"outputs": ["a"], "command": "x"}])
+    with pytest.raises(DeriveError, match="missing command"):
+        normalize_rules([{"outputs": ["a"], "sources": ["b"]}])
+    with pytest.raises(DeriveError, match="mode must be"):
+        normalize_rules(
+            [{"outputs": ["a"], "sources": ["b"], "command": "x", "mode": "maybe"}]
+        )
+    assert normalize_rules(None) == []
+    assert extract_derived_from(None) == []
+    assert extract_derived_from({"notary": "nope"}) == []
+
+
+def test_verify_derived_reports_missing_source_and_output(tmp_path):
+    run, manifest, _ = _run_dir_with_derived(tmp_path)
+    (run / "trials.csv").unlink()
+    problems = verify_derived(manifest, run, allow_execute=True)
+    assert any("source missing: trials.csv" in p for p in problems)
+
+    other = tmp_path / "other"
+    other.mkdir()
+    run, manifest, _ = _run_dir_with_derived(other)
+    (run / "summary.csv").unlink()
+    problems = verify_derived(manifest, run, allow_execute=True)
+    assert any("output missing: summary.csv" in p for p in problems)
+
+
+def test_recompute_reports_when_command_does_not_write_output(tmp_path):
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "trials.csv").write_text("x\n", encoding="utf-8")
+    (run / "summary.csv").write_text("old\n", encoding="utf-8")
+    script = tmp_path / "noop.py"
+    script.write_text("import sys\n", encoding="utf-8")
+    manifest = build_manifest(
+        run,
+        publish_patterns=["*.csv"],
+        git_sha="abc",
+        derived_from=[
+            {
+                "outputs": ["summary.csv"],
+                "sources": ["trials.csv"],
+                "command": f"{sys.executable} {script} {{run_dir}}",
+                "mode": "recompute",
+            }
+        ],
+    )
+    problems = verify_derived(manifest, run, allow_execute=True)
+    assert any("did not produce: summary.csv" in p for p in problems)
+
+
+def test_placeholders_expand_source_and_output(tmp_path):
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "trials.csv").write_text("x\n", encoding="utf-8")
+    (run / "summary.csv").write_text("ok\n", encoding="utf-8")
+    script = tmp_path / "check.py"
+    script.write_text(
+        "import sys\nfrom pathlib import Path\n"
+        "sys.exit(0 if Path(sys.argv[1]).is_file() and Path(sys.argv[2]).is_file() else 1)\n",
+        encoding="utf-8",
+    )
+    manifest = build_manifest(
+        run,
+        publish_patterns=["*.csv"],
+        git_sha="abc",
+        derived_from=[
+            {
+                "outputs": ["summary.csv"],
+                "sources": ["trials.csv"],
+                "command": f"{sys.executable} {script} {{source}} {{output}}",
+                "mode": "verify",
+            }
+        ],
+    )
+    assert verify_derived(manifest, run, allow_execute=True) == []

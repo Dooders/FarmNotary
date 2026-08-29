@@ -120,6 +120,16 @@ def test_verify_via_manifest_path(tmp_path: Path):
     assert main(["verify", "--manifest", str(run_dir / "manifest.json")]) == 0
 
 
+def test_verify_requires_a_target(tmp_path: Path, capsys):
+    assert main(["verify"]) == 2
+    assert "--run-dir" in capsys.readouterr().err
+
+
+def test_index_requires_run_or_campaign(tmp_path: Path, capsys):
+    assert main(["index", "--registry", str(tmp_path / "reg")]) == 2
+    assert "--run-dir" in capsys.readouterr().err
+
+
 def test_verify_warns_and_continues_for_newer_schema(tmp_path: Path, capsys):
     run_dir = make_run_dir(tmp_path)
     assert main(["manifest", "--run-dir", str(run_dir), "--publish", "*.csv"]) == 0

@@ -21,3 +21,9 @@ def test_action_yml_contract():
     notarize_block = text.split("id: notarize", 1)[1].split("- name:", 1)[0]
     assert "continue-on-error" not in notarize_block
     assert "farm-notary verify --run-dir" in notarize_block
+    assert "--verify-derived" not in notarize_block
+    assert "PROFILE:" in notarize_block
+    assert 'man_args+=(--profile "${PROFILE}")' in notarize_block
+    assert 'default: "true"' in text
+    assert "no-check-gateway" in text
+    assert '[ots]"' in text or "[ots]" in text

@@ -1,3 +1,6 @@
+import json
+import sys
+
 from farm_notary.campaign import build_campaign
 from farm_notary.cli import main
 from farm_notary.manifest import build_manifest, write_manifest
@@ -71,6 +74,55 @@ def test_cli_paper_pack(tmp_path, capsys):
     assert "CID" in body
     assert "Content hash" in body
     assert "Publish allowlist" in body
+
+
+def test_bitcoin_attestation_eas_is_experimental():
+    class Eas:
+        anchor = {"backend": "eas", "attestation_uid": "0xabc"}
+
+    assert bitcoin_attestation_label(Eas()) == "EAS (experimental) 0xabc"
+
+    class Submitted:
+        anchor = {"backend": "eas"}
+
+    assert bitcoin_attestation_label(Submitted()) == "EAS (experimental) submitted"
+
+
+def test_cli_paper_pack_verify_derived_confirms_or_notes(tmp_path, capsys):
+    run, _ = _run(tmp_path)
+    assert main(["paper-pack", "--run-dir", str(run), "--name", "consensus"]) == 0
+    body = (run / "appendix.md").read_text(encoding="utf-8")
+    assert "--verify-derived" in body
+    assert "recompute exactly" not in body
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "paper-pack",
+                "--run-dir",
+                str(run),
+                "--name",
+                "consensus",
+                "--verify-derived",
+            ]
+        )
+        == 0
+    )
+    confirmed = (run / "appendix.md").read_text(encoding="utf-8")
+    assert "recompute exactly" in confirmed
+
+
+def test_cli_paper_pack_records_failed_derivation(tmp_path):
+    run, _ = _run(tmp_path)
+    script = tmp_path / "fail.py"
+    script.write_text("import sys; sys.exit(1)\n", encoding="utf-8")
+    data = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
+    data["derived_from"][0]["command"] = f"{sys.executable} {script}"
+    (run / "manifest.json").write_text(json.dumps(data), encoding="utf-8")
+    assert main(["paper-pack", "--run-dir", str(run), "--verify-derived"]) == 0
+    body = (run / "appendix.md").read_text(encoding="utf-8")
+    assert "were not confirmed" in body
 
 
 def test_paper_pack_for_campaign_lists_children(tmp_path):
