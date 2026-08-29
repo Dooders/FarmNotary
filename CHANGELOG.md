@@ -27,6 +27,11 @@ The last tagged / PyPI release is **0.1.0**. This tree is **0.2.0**.
 
 ### Added
 
+- `docs/PRINCIPLES.md`: constraint document for refusing features
+  (existence is not correctness, reader-side checks over publisher
+  decoration, cherry-picking out of scope, self-assertion as input,
+  publish is one-way, omission is recorded policy, trust-assumption
+  budget, outsource solved infrastructure).
 - README: a "Why FarmNotary" section — official record vs laptop folder,
   hash tool vs research notary, and why the domain work is allowlists,
   privacy, and honest claims (anchoring is outsourced).

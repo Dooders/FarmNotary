@@ -1,5 +1,7 @@
 # FarmNotary design
 
+Constraints that settle design arguments live in [PRINCIPLES.md](PRINCIPLES.md).
+
 ## Problem
 
 AgentFarm runs need an immutable *official* record: what code, what config, what aggregate outputs. That record should be checkable without trusting a laptop folder. The simulation itself must stay off-chain.
