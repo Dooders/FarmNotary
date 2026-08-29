@@ -2,20 +2,27 @@
 
 The artifact this audience puts in a PDF: CID, content hash, Bitcoin
 attestation (or pending), publish allowlist, unmatched count, precommit
-hash, claim level, ladder, and a scoped reproducibility sentence.
+hash, artifact label, and a scoped reproducibility sentence. The reader
+ladder is not cited here (see ``PAPER_LADDER_NOTE``).
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Optional
 
 from farm_notary.claims import infer_claim_level, scoped_reproducibility_sentence
 from farm_notary.fingerprint import environment_scope
-from farm_notary.manifest import Manifest
-from farm_notary.verify import evaluate_claims
 
 PAPER_PACK_NAME = "appendix.md"
+
+# Appendix tables do not cite Ln: FarmNotary does not verify Bitcoin headers.
+PAPER_LADDER_CELL = "—"
+PAPER_LADDER_NOTE = (
+    "Reader ladder levels are printed by `farm-notary verify`. This appendix "
+    "does not cite `Ln` because FarmNotary does not verify Bitcoin block "
+    "headers (`ots verify`). A campaign has no single-run ladder."
+)
 
 
 def bitcoin_attestation_label(record: Any, run_dir: Optional[Path] = None) -> str:
@@ -78,11 +85,6 @@ def build_paper_pack(
     unmatched = getattr(record, "unmatched_count", 0)
     precommit = getattr(record, "precommit_hash", None) or "—"
     claim = infer_claim_level(record, run_dir)
-    ladder = "—"
-    if run_dir is not None and isinstance(record, Manifest):
-        result = evaluate_claims(record, run_dir).ladder
-        if result is not None:
-            ladder = result.level
     env = environment_scope(getattr(record, "environment", None) or {})
     sentence = scoped_reproducibility_sentence(
         record, derived_ok=derived_ok, experiment=name if name != "experiment" else experiment
@@ -99,9 +101,11 @@ def build_paper_pack(
         f"| Publish allowlist | {allowlist} |",
         f"| Unmatched files | {unmatched} |",
         f"| Precommit hash | `{precommit}` |",
-        f"| Claim level | {claim} |",
-        f"| Ladder | {ladder} |",
+        f"| Artifact label | {claim} |",
+        f"| Reader ladder | {PAPER_LADDER_CELL} |",
         f"| Environment | {env} |",
+        "",
+        PAPER_LADDER_NOTE,
         "",
         sentence,
         "",

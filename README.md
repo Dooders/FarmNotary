@@ -134,7 +134,7 @@ farm-notary verify --run-dir path/to/run
 ```
 claim card
 level: none — no earned ladder level
-next:  L0 — these bytes existed by time T (missing: Bitcoin attestation)
+next:  L0 — these bytes existed by time T; Bitcoin headers not verified by this tool (missing: Bitcoin attestation)
 •  tamper-evident record           — pass
 •  existed by time T               — pending
 •  pre-specified design            — missing
@@ -143,9 +143,12 @@ next:  L0 — these bytes existed by time T (missing: Bitcoin attestation)
 ```
 
 The `level:` line is the highest earned reader-ladder step (L0–L3). Pending
-OTS is not L0. L1 needs a recorded command and environment fingerprint. L2
-(beacon seed) and L3 (independent identity) are reserved and unprintable
-until those checks exist. See [docs/CLAIMS.md](docs/CLAIMS.md).
+OTS is not L0. L0 means the proof commits to the content hash and carries a
+Bitcoin-height attestation; this tool does not check Bitcoin headers (`ots
+verify` does). L1 needs a recorded command, git SHA, and environment
+fingerprint — not a completed re-run. L2 (beacon seed) and L3 (independent
+identity) are reserved and unprintable until those checks exist. See
+[docs/CLAIMS.md](docs/CLAIMS.md).
 
 The only bitwise sentence the tool may emit today is *byte-identical on x86-64 Linux in a pinned environment*. Other hardware still reports `N/M` and refuses a cross-hardware claim. See [docs/CLAIMS.md](docs/CLAIMS.md).
 
@@ -201,7 +204,7 @@ farm-notary paper-pack --campaign sweep/ --out sweep/appendix.md
 farm-notary index --registry docs/registry.md --campaign sweep/
 ```
 
-`paper-pack` writes the appendix snippet: CID, content hash, Bitcoin attestation (or pending), allowlist, unmatched count, precommit hash, claim level, ladder, environment, scoped sentence. Campaigns also list child seeds and CIDs.
+`paper-pack` writes the appendix snippet: CID, content hash, Bitcoin attestation (or pending), allowlist, unmatched count, precommit hash, artifact label, reader-ladder placeholder (`—`), environment, scoped sentence. It does not cite `Ln`. Campaigns also list child seeds and CIDs.
 
 `index` maintains a static directory (Markdown + `registry.json` sidecar): experiment, seed, CID, claim level, date. Not a scoreboard. Running `index` rewrites the Markdown table; how-to text in that file is not preserved. See [docs/registry.md](docs/registry.md).
 

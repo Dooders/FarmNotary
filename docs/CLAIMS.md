@@ -13,7 +13,7 @@ correctness. Exit codes stay for scripts.
 ```
 claim card
 level: none — no earned ladder level
-next:  L0 — these bytes existed by time T (missing: Bitcoin attestation)
+next:  L0 — these bytes existed by time T; Bitcoin headers not verified by this tool (missing: Bitcoin attestation)
 •  tamper-evident record           — pass
 •  existed by time T               — pending
 •  pre-specified design            — missing
@@ -32,8 +32,8 @@ labels, not ladder levels.
 | Level | Meaning | Evidence | Command |
 |---|---|---|---|
 | none | No earned ladder level | Tamper-evident is not `pass`, or there is no Bitcoin attestation | `farm-notary verify` |
-| L0 | These bytes existed by time T | Tamper-evident `pass` **and** `existed by time T` is `Bitcoin height N`. Pending, dry-run, and EAS do not earn L0. | `farm-notary upgrade`, then `ots verify` for full independence |
-| L1 | Re-execution specified | L0 **and** a non-empty `command` **and** environment fingerprint (`os`, `arch`, `python`) | `farm-notary manifest --command ... --lockfile ...` |
+| L0 | These bytes existed by time T | Tamper-evident `pass` **and** `existed by time T` is `Bitcoin height N`. Pending, dry-run, and EAS do not earn L0. FarmNotary checks that the proof commits to the content hash and contains a Bitcoin-height attestation; it does **not** check Bitcoin headers. | `farm-notary upgrade`, then `ots verify` for header verification |
+| L1 | Re-execution specified (command was not run) | L0 **and** a non-empty `command` **and** `git_sha` **and** environment fingerprint (`os`, `arch`, `python`). Precommit stays on the card, not this rung. | `farm-notary manifest --command ... --lockfile ...` |
 | L2 | Seed not grindable after the plan | Reserved. Requires a beacon-derived seed after the plan is anchored. | *(not implemented)* |
 | L3 | Independent identity reproduced it | Reserved. Requires a signed third-party receipt, not `reproduction.json` the author wrote. | *(not implemented)* |
 
@@ -49,14 +49,14 @@ That is the difference between a hash tool and a research notary.
 |---|---|---|
 | Tamper-evident record | Artifact rehash against the manifest | `farm-notary verify` (claim card: pass/fail). Required for any ladder level. |
 | Existed by time T | OpenTimestamps proof, Bitcoin attestation | `farm-notary upgrade`, then `ots verify` for full independence. Only `Bitcoin height N` earns L0; `pending` does not. |
-| Verifiable provenance | Manifest records command, config, seed, git SHA, environment (packages/lockfile hash); a stranger can re-derive everything. `git_dirty` is recorded, but a dirty tree is not a code-identity claim: `precommit` and `anchor` refuse it unless `--allow-dirty`. Omitting `git_dirty` still inspects the working tree — a supplied SHA is not a bypass. | `farm-notary manifest --command ... --lockfile ...`; `farm-notary precommit` / `anchor` (fail if dirty). `command` + fingerprint earn L1 once L0 is held. |
+| Verifiable provenance | Manifest records command, config, seed, git SHA, environment (packages/lockfile hash); a stranger can re-derive everything. `git_dirty` is recorded, but a dirty tree is not a code-identity claim: `precommit` and `anchor` refuse it unless `--allow-dirty`. Omitting `git_dirty` still inspects the working tree — a supplied SHA is not a bypass. | `farm-notary manifest --command ... --lockfile ...`; `farm-notary precommit` / `anchor` (fail if dirty). `command` + `git_sha` + fingerprint earn L1 once L0 is held; that is specification, not a completed re-run. |
 | Pre-specified design | Precommit proof (config, command, git SHA anchored before the run); manifest's `precommit_hash` binds the two phases | `farm-notary precommit --config ... --command ... --backend ots`, then `farm-notary manifest --precommit precommit.json`; `farm-notary verify` reports `precommit bound`. Shown on the card; not a ladder level. |
 | Bitwise reproducible (scoped) | A reproduction receipt produced by re-running the recorded command and comparing every listed artifact; what was excluded is noted in the receipt | `farm-notary reproduce`; with `--ignore` globs for legitimately nondeterministic artifacts. Does not earn L3. |
 | Independently reproduced | Unearned / unprintable today. A self-run or unsigned `reproduction.json` is not this claim. L3 is reserved for a signed third-party receipt. | — |
 | Statistics recompute exactly | `derived_from` rules in the experiment profile recompute named artifacts from their sources. Commands are **not** run by default (a downloaded manifest is untrusted input). | `farm-notary verify --verify-derived` (prints the derivation claim when rules pass). Without the flag, verify still exits 0 and notes that rules were not executed. |
 | Sweep / paper figure | Parent campaign lists child CIDs, seeds, and a shared config hash | `farm-notary campaign`, then `farm-notary verify --campaign` |
 | Signed publication (optional) | minisign or SSH signature of the content hash, recorded on the manifest | `farm-notary sign --scheme ssh\|minisign --key PATH` |
-| Paper appendix | CID, content hash, Bitcoin attestation or pending, allowlist, unmatched count, precommit hash, claim level, ladder, scoped sentence | `farm-notary paper-pack` (add `--verify-derived` before the sentence claims statistics recompute) |
+| Paper appendix | CID, content hash, Bitcoin attestation or pending, allowlist, unmatched count, precommit hash, artifact label, reader-ladder placeholder (`—`), scoped sentence | `farm-notary paper-pack` (add `--verify-derived` before the sentence claims statistics recompute). Cite `verify` for `Ln`; the appendix does not print a ladder level. |
 
 Never claimable by tooling: **correctness of the science**. Immutability is
 not correctness; a manifest can perfectly notarize a wrong result. Re-run the
@@ -82,8 +82,11 @@ see which path was used.
 
 `farm-notary index` and `paper-pack` label what artifacts were checked
 (`bytes`, `bitwise`, …). These are never ranks and are **not** the L0–L3
-reader ladder. `paper-pack` also prints `Ladder` so a paper can cite the
-number `verify` earned without inventing it.
+reader ladder. `paper-pack` prints `Artifact label` for that vocabulary and
+leaves `Reader ladder` as `—`: this appendix does not cite `Ln`. Do not
+cite `FarmNotary Ln` from a PDF until Bitcoin header verification is
+in-tool. Run `farm-notary verify` for the stacked card. A campaign
+appendix has no single-run ladder.
 
 | Level | Meaning |
 |---|---|

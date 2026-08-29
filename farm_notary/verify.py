@@ -10,6 +10,7 @@ from __future__ import annotations
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import List, Optional
 
 from farm_notary.ladder import LadderResult, evaluate_ladder
@@ -365,16 +366,23 @@ def evaluate_claims(manifest: Manifest, run_dir: Path) -> ClaimCard:
             notes = format_diagnostics(diagnostics_from_receipt(load_receipt(run_dir)))
         except (ValueError, OSError, TypeError):
             notes = []
-    card = ClaimCard(
-        tamper_evident="pass" if not tamper_problems else "fail",
-        existed_by=_existed_by_status(manifest, run_dir, anchor_problems),
-        pre_specified=_pre_specified_status(manifest, precommit_problems),
-        bitwise_reproducible=_bitwise_status(manifest, run_dir, receipt_problems),
+    tamper_evident = "pass" if not tamper_problems else "fail"
+    existed_by = _existed_by_status(manifest, run_dir, anchor_problems)
+    pre_specified = _pre_specified_status(manifest, precommit_problems)
+    bitwise_reproducible = _bitwise_status(manifest, run_dir, receipt_problems)
+    ladder = evaluate_ladder(
+        SimpleNamespace(tamper_evident=tamper_evident, existed_by=existed_by),
+        manifest,
+    )
+    return ClaimCard(
+        tamper_evident=tamper_evident,
+        existed_by=existed_by,
+        pre_specified=pre_specified,
+        bitwise_reproducible=bitwise_reproducible,
         problems=tamper_problems
         + anchor_problems
         + receipt_problems
         + precommit_problems,
         notes=notes,
+        ladder=ladder,
     )
-    card.ladder = evaluate_ladder(card, manifest)
-    return card

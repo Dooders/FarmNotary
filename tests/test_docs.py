@@ -7,7 +7,7 @@ from farm_notary.cli import _build_parser
 from farm_notary.profiles import PROFILE_NAMES
 from farm_notary.schema import REQUIRED_KEYS, TOOL_VERSION
 from farm_notary.scope import ALLOWED_SENTENCE
-from farm_notary.ladder import LADDER_LEVELS
+from farm_notary.ladder import L0_MEANING, LADDER_LEVELS
 from farm_notary.verify import _CLAIM_NAMES
 
 README = Path("README.md").read_text(encoding="utf-8")
@@ -68,11 +68,19 @@ def test_claim_card_rows_match_the_tool():
     for level in LADDER_LEVELS:
         assert level in CLAIMS
         assert level in README
-    assert "level:" in README
-    assert "next:" in README
-    assert "level:" in CLAIMS
+    assert "level: none — no earned ladder level" in README
+    assert "level: none — no earned ladder level" in CLAIMS
+    assert f"next:  L0 — {L0_MEANING} (missing: Bitcoin attestation)" in README
+    assert f"next:  L0 — {L0_MEANING} (missing: Bitcoin attestation)" in CLAIMS
+    assert L0_MEANING in DESIGN
     assert "pending" in CLAIMS
     assert "not L0" in CLAIMS or "is not L0" in CLAIMS
+    assert "command was not run" in CLAIMS
+    assert "command was not run" in README or "not a completed re-run" in README
+    assert "Artifact label" in CLAIMS
+    assert "Reader ladder" in CLAIMS
+    assert "does not cite `Ln`" in CLAIMS
+    assert "does not cite `Ln`" in README or "does not cite `Ln`" in DESIGN
 
 
 def test_principles_is_listed_and_forbids_real_things():
