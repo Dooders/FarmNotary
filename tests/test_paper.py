@@ -4,7 +4,13 @@ import sys
 from farm_notary.campaign import build_campaign
 from farm_notary.cli import main
 from farm_notary.manifest import build_manifest, write_manifest
-from farm_notary.paper import bitcoin_attestation_label, build_paper_pack, write_paper_pack
+from farm_notary.paper import (
+    PAPER_LADDER_CELL,
+    PAPER_LADDER_NOTE,
+    bitcoin_attestation_label,
+    build_paper_pack,
+    write_paper_pack,
+)
 
 
 def _run(tmp_path, seed=0):
@@ -41,6 +47,11 @@ def test_paper_pack_contains_required_fields(tmp_path):
     assert "Bitcoin attestation" in text
     assert "`*.csv`" in text
     assert "Unmatched files" in text
+    assert "| Artifact label |" in text
+    assert f"| Reader ladder | {PAPER_LADDER_CELL} |" in text
+    assert PAPER_LADDER_NOTE in text
+    assert "| Claim level |" not in text
+    assert "| Ladder |" not in text
     assert manifest.precommit_hash in text
     assert "1-ulp" in text
     assert "summary.csv" in text
@@ -133,6 +144,8 @@ def test_paper_pack_for_campaign_lists_children(tmp_path):
     campaign = build_campaign(runs, name="consensus-sweep", campaign_dir=tmp_path)
     text = build_paper_pack(campaign, tmp_path)
     assert "Child runs" in text
+    assert f"| Reader ladder | {PAPER_LADDER_CELL} |" in text
+    assert PAPER_LADDER_NOTE in text
     assert "seeds 0…2" in text or "0" in text
     dest = write_paper_pack(text, tmp_path)
     assert dest.name == "appendix.md"

@@ -110,7 +110,7 @@ def test_verify_anchor_ots_proof_digest_mismatch(tmp_path: Path):
 
 def _card_line(rendered: str, claim: str) -> str:
     for line in rendered.splitlines():
-        if claim in line:
+        if line.startswith("•") and claim in line:
             return line
     raise AssertionError(f"claim {claim!r} not in card:\n{rendered}")
 
@@ -125,6 +125,9 @@ def test_claim_card_bare_manifest_is_honest_about_missing(tmp_path: Path):
     assert card.bitwise_reproducible == "missing"
     rendered = card.render()
     assert rendered.startswith("claim card\n")
+    assert "level: none" in rendered
+    assert "next:  L0" in rendered
+    assert "missing: Bitcoin attestation" in rendered
     assert "not claimed: scientific correctness" in rendered
     assert "•  tamper-evident record" in rendered
     assert "— pass" in _card_line(rendered, "tamper-evident record")

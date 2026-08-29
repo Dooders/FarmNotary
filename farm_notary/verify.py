@@ -10,8 +10,10 @@ from __future__ import annotations
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List
+from types import SimpleNamespace
+from typing import List, Optional
 
+from farm_notary.ladder import LadderResult, evaluate_ladder
 from farm_notary.manifest import RECEIPT_NAME, Manifest, hash_file
 from farm_notary.schema import MANIFEST_VERSION
 
@@ -237,7 +239,8 @@ class ClaimCard:
     """One status per CLAIMS.md claim, plus the diagnostic problem list.
 
     Missing is not failure: it means the claim was not earned. ``problems``
-    is empty only when every check that *was* attempted passed.
+    is empty only when every check that *was* attempted passed. ``ladder``
+    is the stacked L0–L3 shorthand; it never changes exit status.
     """
 
     tamper_evident: str
@@ -246,6 +249,7 @@ class ClaimCard:
     bitwise_reproducible: str
     problems: List[str] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
+    ladder: Optional[LadderResult] = None
 
     @property
     def ok(self) -> bool:
@@ -260,6 +264,8 @@ class ClaimCard:
             ("bitwise reproducible (scoped)", self.bitwise_reproducible),
         )
         out = ["claim card"]
+        if self.ladder is not None:
+            out.extend(self.ladder.lines())
         for name, status in rows:
             out.append(f"•  {name:<{width}} — {status}")
         out.append("•  not claimed: scientific correctness")
@@ -360,14 +366,23 @@ def evaluate_claims(manifest: Manifest, run_dir: Path) -> ClaimCard:
             notes = format_diagnostics(diagnostics_from_receipt(load_receipt(run_dir)))
         except (ValueError, OSError, TypeError):
             notes = []
+    tamper_evident = "pass" if not tamper_problems else "fail"
+    existed_by = _existed_by_status(manifest, run_dir, anchor_problems)
+    pre_specified = _pre_specified_status(manifest, precommit_problems)
+    bitwise_reproducible = _bitwise_status(manifest, run_dir, receipt_problems)
+    ladder = evaluate_ladder(
+        SimpleNamespace(tamper_evident=tamper_evident, existed_by=existed_by),
+        manifest,
+    )
     return ClaimCard(
-        tamper_evident="pass" if not tamper_problems else "fail",
-        existed_by=_existed_by_status(manifest, run_dir, anchor_problems),
-        pre_specified=_pre_specified_status(manifest, precommit_problems),
-        bitwise_reproducible=_bitwise_status(manifest, run_dir, receipt_problems),
+        tamper_evident=tamper_evident,
+        existed_by=existed_by,
+        pre_specified=pre_specified,
+        bitwise_reproducible=bitwise_reproducible,
         problems=tamper_problems
         + anchor_problems
         + receipt_problems
         + precommit_problems,
         notes=notes,
+        ladder=ladder,
     )

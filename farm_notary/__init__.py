@@ -23,6 +23,7 @@ from farm_notary.manifest import (
 from farm_notary.profiles import PUBLISH_PROFILES, PublishProfile, get_profile
 from farm_notary.diagnose import MismatchDiagnosis, diagnose_mismatch
 from farm_notary.reproduce import ReproductionResult, reproduce_run
+from farm_notary.ladder import LadderResult, evaluate_ladder
 from farm_notary.verify import (
     ClaimCard,
     evaluate_claims,
@@ -38,6 +39,7 @@ __all__ = [
     "Campaign",
     "ClaimCard",
     "DirtyTreeError",
+    "LadderResult",
     "Manifest",
     "MismatchDiagnosis",
     "PUBLISH_PROFILES",
@@ -49,6 +51,7 @@ __all__ = [
     "capture_environment",
     "diagnose_mismatch",
     "evaluate_claims",
+    "evaluate_ladder",
     "get_backend",
     "get_profile",
     "hash_file",
