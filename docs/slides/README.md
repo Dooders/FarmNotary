@@ -2,12 +2,12 @@
 
 A short talk for solo researchers and labs: what a research notary is, what FarmNotary will and will not claim, and how to hash one run this afternoon.
 
-Open [`index.html`](index.html) in a browser.
+Open [`index.html`](index.html) in a browser. The file is self-contained (no webfonts) so it presents offline.
 
 | Key | Action |
 |---|---|
-| `→` `space` | Next |
-| `←` | Previous |
+| click right / `→` `space` | Next |
+| click left / `←` | Previous |
 | `Home` / `End` | First / last |
 | `F` | Fullscreen |
 | `N` | Speaker notes |
