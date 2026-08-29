@@ -92,14 +92,7 @@ def sign_content_hash(
 
     public_key = _public_key_text(key_path, scheme)
     ident = _ssh_principal(public_key, principal) if scheme == SCHEME_SSH else principal
-    # Build the payload from both content_hash and principal so that the
-    # signature covers both fields and cannot be repurposed for a different
-    # principal after signing.
-    payload_dict = {"content_hash": content_hash.lower()}
-    if ident:
-        payload_dict["principal"] = ident
-    import json as _json
-    payload = _json.dumps(payload_dict, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    payload = _build_signed_payload(content_hash.lower(), ident)
 
     with tempfile.TemporaryDirectory(prefix="farm-notary-sign-") as tmp:
         message = Path(tmp) / "content_hash"
