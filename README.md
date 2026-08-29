@@ -298,6 +298,7 @@ CI runs pytest on Python 3.9–3.12.
 
 | Doc | Contents |
 |---|---|
+| [docs/PRINCIPLES.md](docs/PRINCIPLES.md) | Constraints that settle design arguments |
 | [docs/CLAIMS.md](docs/CLAIMS.md) | What each claim means, what backs it, hardware scope |
 | [docs/DESIGN.md](docs/DESIGN.md) | Schema, backends, privacy, provenance flow |
 | [docs/ACTION.md](docs/ACTION.md) | GitHub Action inputs, outputs, phases |
