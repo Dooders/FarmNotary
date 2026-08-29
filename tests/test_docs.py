@@ -15,6 +15,7 @@ CLAIMS = Path("docs/CLAIMS.md").read_text(encoding="utf-8")
 DESIGN = Path("docs/DESIGN.md").read_text(encoding="utf-8")
 ACTION = Path("docs/ACTION.md").read_text(encoding="utf-8")
 PRINCIPLES = Path("docs/PRINCIPLES.md").read_text(encoding="utf-8")
+SLIDES = Path("docs/slides/index.html").read_text(encoding="utf-8")
 
 
 def _cli_commands() -> list[str]:
@@ -81,6 +82,23 @@ def test_claim_card_rows_match_the_tool():
     assert "Reader ladder" in CLAIMS
     assert "does not cite `Ln`" in CLAIMS
     assert "does not cite `Ln`" in README or "does not cite `Ln`" in DESIGN
+
+
+def test_intro_deck_stays_inside_the_claim_card():
+    """The researcher/lab talk may not outrun CLAIMS.md."""
+    assert "[docs/slides/](docs/slides/)" in README
+    assert "not claimed: scientific correctness" in SLIDES
+    assert "Missing is not failure" in SLIDES
+    assert ALLOWED_SENTENCE in SLIDES
+    assert L0_MEANING in SLIDES
+    assert "command was not run" in SLIDES or "not a completed re-run" in SLIDES
+    for level in LADDER_LEVELS:
+        assert level in SLIDES
+    assert "Reserved" in SLIDES
+    assert "cross-hardware" in SLIDES.lower()
+    assert "verified result" in SLIDES.lower()
+    assert "badge" in SLIDES.lower()
+    assert "not independently reproduced" in SLIDES.lower()
 
 
 def test_principles_is_listed_and_forbids_real_things():
