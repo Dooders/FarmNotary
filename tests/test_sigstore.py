@@ -1,10 +1,11 @@
 """Tests for Sigstore keyless signing of reproduction receipts.
 
 Covers:
-- receipt_signable_bytes stability and sigstore-field exclusion (no cosign needed)
+- receipt_signable_bytes stability, sigstore-field exclusion, and sort_keys canonicality
 - L3 ladder logic via mocked sigstore verification
 - verify_receipt with mocked cosign (good and bad bundle)
 - CLI --sign flag with mocked cosign
+- sign_receipt command construction (identity-token, missing cosign, nonzero exit, bad JSON)
 """
 
 from __future__ import annotations
@@ -80,6 +81,13 @@ def test_signable_bytes_stable_across_roundtrip():
     byt_plain = receipt_signable_bytes(receipt_plain)
     byt_with = receipt_signable_bytes(receipt_with)
     assert byt_plain == byt_with
+
+
+def test_signable_bytes_sort_keys():
+    """Keys in signable bytes are sorted (canonical form independent of insertion order)."""
+    receipt_a = {"z_field": 1, "a_field": 2}
+    receipt_b = {"a_field": 2, "z_field": 1}
+    assert receipt_signable_bytes(receipt_a) == receipt_signable_bytes(receipt_b)
 
 
 def test_receipt_hash_excludes_sigstore():
@@ -326,3 +334,130 @@ def test_cli_reproduce_sign_flag(tmp_path: Path, capsys):
     receipt_data = json.loads((run_dir / RECEIPT_NAME).read_text(encoding="utf-8"))
     assert "sigstore" in receipt_data
     assert receipt_data["sigstore"]["mediaType"] == "test"
+
+
+# ---------------------------------------------------------------------------
+# sign_receipt command construction
+# ---------------------------------------------------------------------------
+
+def _fake_bundle_file(bundle_path, bundle):
+    """Side-effect helper: write bundle JSON to bundle_path when subprocess is called."""
+    import json as _json
+
+    def _side_effect(cmd, **kwargs):
+        # locate --bundle argument and write the fake bundle there
+        try:
+            idx = cmd.index("--bundle")
+            Path(cmd[idx + 1]).write_text(_json.dumps(bundle), encoding="utf-8")
+        except (ValueError, IndexError):
+            pass
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    return _side_effect
+
+
+def test_sign_receipt_basic_command_construction():
+    """sign_receipt calls cosign sign-blob with --bundle and --yes."""
+    from farm_notary.sigstore import sign_receipt
+
+    fake_bundle = {"mediaType": "application/vnd.dev.sigstore.bundle+json;version=0.3"}
+    receipt = _make_receipt()
+
+    with (
+        patch("farm_notary.sigstore.shutil.which", return_value="/usr/bin/cosign"),
+        patch("farm_notary.sigstore.subprocess.run") as mock_run,
+    ):
+        mock_run.side_effect = _fake_bundle_file(None, fake_bundle)
+        result = sign_receipt(receipt)
+
+    cmd = mock_run.call_args[0][0]
+    assert cmd[0] == "/usr/bin/cosign"
+    assert "sign-blob" in cmd
+    assert "--bundle" in cmd
+    assert "--yes" in cmd
+    assert result == fake_bundle
+
+
+def test_sign_receipt_includes_identity_token():
+    """When identity_token is provided it is appended as --identity-token TOKEN."""
+    from farm_notary.sigstore import sign_receipt
+
+    fake_bundle = {"mediaType": "test"}
+    receipt = _make_receipt()
+
+    with (
+        patch("farm_notary.sigstore.shutil.which", return_value="/usr/bin/cosign"),
+        patch("farm_notary.sigstore.subprocess.run") as mock_run,
+    ):
+        mock_run.side_effect = _fake_bundle_file(None, fake_bundle)
+        sign_receipt(receipt, identity_token="MY_TOKEN")
+
+    cmd = mock_run.call_args[0][0]
+    assert "--identity-token" in cmd
+    idx = cmd.index("--identity-token")
+    assert cmd[idx + 1] == "MY_TOKEN"
+
+
+def test_sign_receipt_missing_cosign_raises():
+    """sign_receipt raises SigstoreError when cosign is not on PATH."""
+    from farm_notary.sigstore import SigstoreError, sign_receipt
+
+    with patch("farm_notary.sigstore.shutil.which", return_value=None):
+        with pytest.raises(SigstoreError, match="cosign is not on PATH"):
+            sign_receipt(_make_receipt())
+
+
+def test_sign_receipt_nonzero_exit_raises():
+    """sign_receipt raises SigstoreError when cosign exits non-zero."""
+    from farm_notary.sigstore import SigstoreError, sign_receipt
+
+    with (
+        patch("farm_notary.sigstore.shutil.which", return_value="/usr/bin/cosign"),
+        patch(
+            "farm_notary.sigstore.subprocess.run",
+            return_value=MagicMock(returncode=1, stderr="OIDC error"),
+        ),
+    ):
+        with pytest.raises(SigstoreError, match="OIDC error"):
+            sign_receipt(_make_receipt())
+
+
+def test_sign_receipt_malformed_bundle_json_raises():
+    """sign_receipt raises SigstoreError when cosign writes invalid JSON."""
+    from farm_notary.sigstore import SigstoreError, sign_receipt
+
+    def _write_bad_json(cmd, **kwargs):
+        try:
+            idx = cmd.index("--bundle")
+            Path(cmd[idx + 1]).write_text("not-valid-json{{{", encoding="utf-8")
+        except (ValueError, IndexError):
+            pass
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    with (
+        patch("farm_notary.sigstore.shutil.which", return_value="/usr/bin/cosign"),
+        patch("farm_notary.sigstore.subprocess.run", side_effect=_write_bad_json),
+    ):
+        with pytest.raises(SigstoreError, match="malformed bundle JSON"):
+            sign_receipt(_make_receipt())
+
+
+def test_sign_receipt_bundle_not_object_raises():
+    """sign_receipt raises SigstoreError when the bundle JSON is not a dict."""
+    from farm_notary.sigstore import SigstoreError, sign_receipt
+
+    def _write_array(cmd, **kwargs):
+        try:
+            idx = cmd.index("--bundle")
+            Path(cmd[idx + 1]).write_text("[1, 2, 3]", encoding="utf-8")
+        except (ValueError, IndexError):
+            pass
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    with (
+        patch("farm_notary.sigstore.shutil.which", return_value="/usr/bin/cosign"),
+        patch("farm_notary.sigstore.subprocess.run", side_effect=_write_array),
+    ):
+        with pytest.raises(SigstoreError, match="not a JSON object"):
+            sign_receipt(_make_receipt())
+

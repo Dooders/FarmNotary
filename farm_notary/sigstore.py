@@ -54,7 +54,7 @@ def receipt_signable_bytes(receipt: dict) -> bytes:
     receipt round-trips (parse → strip → serialize).
     """
     d = {k: v for k, v in receipt.items() if k != SIGSTORE_FIELD}
-    return (json.dumps(d, indent=2) + "\n").encode("utf-8")
+    return (json.dumps(d, indent=2, sort_keys=True) + "\n").encode("utf-8")
 
 
 def sign_receipt(
@@ -86,10 +86,10 @@ def sign_receipt(
             cosign, "sign-blob",
             "--bundle", str(bundle_path),
             "--yes",
-            str(blob_path),
         ]
         if identity_token:
             cmd += ["--identity-token", identity_token]
+        cmd.append(str(blob_path))
 
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if result.returncode != 0:
@@ -97,7 +97,16 @@ def sign_receipt(
         if not bundle_path.is_file():
             raise SigstoreError("cosign sign-blob did not produce a bundle file")
 
-        return json.loads(bundle_path.read_text(encoding="utf-8"))
+        raw = bundle_path.read_text(encoding="utf-8")
+        try:
+            bundle = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise SigstoreError(f"cosign produced malformed bundle JSON: {exc}") from exc
+        if not isinstance(bundle, dict):
+            raise SigstoreError(
+                f"cosign bundle is not a JSON object (got {type(bundle).__name__})"
+            )
+        return bundle
 
 
 def verify_sigstore_bundle(
@@ -142,6 +151,7 @@ def verify_sigstore_bundle(
             "--bundle", str(bundle_path),
             "--certificate-identity-regexp", ".*",
             "--certificate-oidc-issuer-regexp", ".*",
+            "--offline",
             str(blob_path),
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)

@@ -442,7 +442,7 @@ def evaluate_claims(
                 from farm_notary.sigstore import cosign_available, extract_bundle_identity
 
                 _sigstore_probs = [p for p in receipt_problems if p.startswith("sigstore:")]
-                if cosign_available() and not _sigstore_probs:
+                if cosign_available() and not _sigstore_probs and not receipt_problems:
                     receipt_sigstore_verified = True
                     _identity = extract_bundle_identity(_bundle)
                     if _identity.get("subject"):
