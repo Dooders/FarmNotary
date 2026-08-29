@@ -13,6 +13,7 @@ README = Path("README.md").read_text(encoding="utf-8")
 CLAIMS = Path("docs/CLAIMS.md").read_text(encoding="utf-8")
 DESIGN = Path("docs/DESIGN.md").read_text(encoding="utf-8")
 ACTION = Path("docs/ACTION.md").read_text(encoding="utf-8")
+PRINCIPLES = Path("docs/PRINCIPLES.md").read_text(encoding="utf-8")
 
 
 def _cli_commands() -> list[str]:
@@ -63,6 +64,23 @@ def test_claim_card_rows_match_the_tool():
     assert "not claimed: scientific correctness" in CLAIMS
     assert ALLOWED_SENTENCE in README
     assert ALLOWED_SENTENCE in CLAIMS
+
+
+def test_principles_is_listed_and_forbids_real_things():
+    assert "[docs/PRINCIPLES.md](docs/PRINCIPLES.md)" in README
+    assert "[PRINCIPLES.md](PRINCIPLES.md)" in DESIGN
+    assert "not claimed: scientific correctness" in PRINCIPLES
+    assert "## Non-goals" in PRINCIPLES
+    assert "## How to use this document" in PRINCIPLES
+    for needle in (
+        "verified result",
+        "file drawer",
+        "independently reproduced",
+        "unmatched_count",
+        "SimulationRegistry",
+        "dry-run",
+    ):
+        assert needle in PRINCIPLES, f"PRINCIPLES.md lost a concrete forbid: {needle!r}"
 
 
 def test_action_docs_match_action_yml_defaults():
