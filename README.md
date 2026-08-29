@@ -114,7 +114,7 @@ farm-notary verify --run-dir path/to/run
 | Command | What it does |
 |---|---|
 | `manifest` | Write `manifest.json` (requires `--profile` and/or `--publish`) |
-| `verify` | Print a CLAIMS.md claim card; rehash; check proofs if present |
+| `verify` | Print a CLAIMS.md claim card (ladder + rows); rehash; check proofs if present |
 | `verify --verify-derived` | Also run `derived_from` commands (trusted manifests only) |
 | `verify --campaign` | Check child hashes and the shared config hash (not a claim card) |
 | `precommit` | Write `precommit.json` before the run (`dry-run` or `ots`) |
@@ -133,12 +133,19 @@ farm-notary verify --run-dir path/to/run
 
 ```
 claim card
+level: none — no earned ladder level
+next:  L0 — these bytes existed by time T (missing: Bitcoin attestation)
 •  tamper-evident record           — pass
 •  existed by time T               — pending
 •  pre-specified design            — missing
 •  bitwise reproducible (scoped)   — 6/6, ignored: *.mp4; byte-identical on x86-64 Linux in a pinned environment
 •  not claimed: scientific correctness
 ```
+
+The `level:` line is the highest earned reader-ladder step (L0–L3). Pending
+OTS is not L0. L1 needs a recorded command and environment fingerprint. L2
+(beacon seed) and L3 (independent identity) are reserved and unprintable
+until those checks exist. See [docs/CLAIMS.md](docs/CLAIMS.md).
 
 The only bitwise sentence the tool may emit today is *byte-identical on x86-64 Linux in a pinned environment*. Other hardware still reports `N/M` and refuses a cross-hardware claim. See [docs/CLAIMS.md](docs/CLAIMS.md).
 
@@ -194,7 +201,7 @@ farm-notary paper-pack --campaign sweep/ --out sweep/appendix.md
 farm-notary index --registry docs/registry.md --campaign sweep/
 ```
 
-`paper-pack` writes the appendix snippet: CID, content hash, Bitcoin attestation (or pending), allowlist, unmatched count, precommit hash, claim level, environment, scoped sentence. Campaigns also list child seeds and CIDs.
+`paper-pack` writes the appendix snippet: CID, content hash, Bitcoin attestation (or pending), allowlist, unmatched count, precommit hash, claim level, ladder, environment, scoped sentence. Campaigns also list child seeds and CIDs.
 
 `index` maintains a static directory (Markdown + `registry.json` sidecar): experiment, seed, CID, claim level, date. Not a scoreboard. Running `index` rewrites the Markdown table; how-to text in that file is not preserved. See [docs/registry.md](docs/registry.md).
 

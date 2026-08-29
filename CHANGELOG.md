@@ -27,6 +27,13 @@ The last tagged / PyPI release is **0.1.0**. This tree is **0.2.0**.
 
 ### Added
 
+- `farm-notary verify` prints a stacked reader ladder (`none` / L0–L3)
+  above the claim-card rows: highest earned level and the gap that
+  blocks the next. L0 requires a Bitcoin-height attestation (pending
+  OTS does not count). L1 requires L0 plus a recorded `command` and
+  environment fingerprint. L2 (beacon seed) and L3 (independent
+  identity) are reserved and unearned. `paper-pack` records `Ladder`
+  without replacing `claim_level`.
 - `docs/PRINCIPLES.md`: constraint document for refusing features
   (existence is not correctness, reader-side checks over publisher
   decoration, cherry-picking out of scope, self-assertion as input,

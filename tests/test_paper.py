@@ -41,6 +41,7 @@ def test_paper_pack_contains_required_fields(tmp_path):
     assert "Bitcoin attestation" in text
     assert "`*.csv`" in text
     assert "Unmatched files" in text
+    assert "| Ladder |" in text
     assert manifest.precommit_hash in text
     assert "1-ulp" in text
     assert "summary.csv" in text
