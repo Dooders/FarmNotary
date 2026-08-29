@@ -109,6 +109,17 @@ farm-notary verify --run-dir path/to/run
 
 `precommit` and `anchor` refuse a dirty git tree: the recorded SHA does not identify the code. `git_dirty` is still recorded. A supplied `--git-sha` is not a bypass — the working tree is inspected. Pass `--allow-dirty` (or `allow_dirty=True`) for an explicit exception.
 
+Beacon-derived seeds (L2): commit how many seeds and a `min_round` on the plan, stamp it, then derive. The used round must be exactly `min_round` (no later-round shopping). A 3s drand chain plus a delayed stamp is a race; the strong path is stamp, optionally `upgrade` the plan, then `derive-seeds`. L2 is not scientific correctness.
+
+```bash
+farm-notary precommit --config plan.json --command "python run.py --seed {seed} --out {run_dir}" \
+  --seed-count 8 --inclusion all_in_campaign --backend ots
+farm-notary derive-seeds --precommit precommit.json --wait
+farm-notary manifest --run-dir runs/i-0 --precommit precommit.json --seed-index 0 --profile consensus
+```
+
+`--beacon-fixture` (or `FARM_NOTARY_BEACON_FIXTURE`) is for tests and offline verify. Live verify fetches the recorded drand chain. A fetch failure leaves L2 unearned; it does not fail verify.
+
 ## Commands
 
 | Command | What it does |
@@ -117,7 +128,7 @@ farm-notary verify --run-dir path/to/run
 | `verify` | Print a CLAIMS.md claim card (ladder + rows); rehash; check proofs if present |
 | `verify --verify-derived` | Also run `derived_from` commands (trusted manifests only) |
 | `verify --campaign` | Check child hashes and the shared config hash (not a claim card) |
-| `precommit` | Write `precommit.json` before the run (`dry-run` or `ots`) |
+| `precommit` | Write `precommit.json` before the run (`dry-run` or `ots`); `--seed-count` adds a beacon seed plan |
 | `anchor` | Optional pin + stamp (`dry-run` default; `ots`; `eas` experimental) |
 | `upgrade` | Complete a pending `manifest.ots` with a Bitcoin attestation |
 | `reproduce` | Re-run the recorded command; write `reproduction.json` |
@@ -125,6 +136,7 @@ farm-notary verify --run-dir path/to/run
 | `campaign` | Build a parent `campaign.json` from child run directories |
 | `paper-pack` | Write `appendix.md` for a PDF |
 | `index` | Append a run or campaign to a static registry (no scores) |
+| `derive-seeds` | After the plan is stamped, fetch `min_round` and write `seeds.json` |
 | `register-schema` | One-time EAS schema registration |
 
 ## What you may claim
@@ -146,9 +158,9 @@ The `level:` line is the highest earned reader-ladder step (L0–L3). Pending
 OTS is not L0. L0 means the proof commits to the content hash and carries a
 Bitcoin-height attestation; this tool does not check Bitcoin headers (`ots
 verify` does). L1 needs a recorded command, git SHA, and environment
-fingerprint — not a completed re-run. L2 (beacon seed) and L3 (independent
-identity) are reserved and unprintable until those checks exist. See
-[docs/CLAIMS.md](docs/CLAIMS.md).
+fingerprint — not a completed re-run. L2 requires a beacon-derived seed
+after the plan is anchored (not scientific correctness). L3 (independent
+identity) is reserved. See [docs/CLAIMS.md](docs/CLAIMS.md).
 
 The only bitwise sentence the tool may emit today is *byte-identical on x86-64 Linux in a pinned environment*. Other hardware still reports `N/M` and refuses a cross-hardware claim. See [docs/CLAIMS.md](docs/CLAIMS.md).
 

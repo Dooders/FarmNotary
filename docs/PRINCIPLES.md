@@ -61,10 +61,14 @@ product.
 What the tool does instead: `precommit` anchors config, command, and
 code identity before artifacts exist. Only a bound precommit earns
 "pre-specified design." A timestamp taken after the result is known is
-not that claim.
+not that claim. L2 additionally binds run seeds to a public beacon
+round committed on that plan (`seed = H(plan || drand_round)`). That
+makes an **unbound seed search** after seeing outcomes visible as a
+gap (wrong seed, wrong round, or unpublished members of the committed
+set). A public ledger of every local directory is still out of scope.
 
 The cost: a dishonest author still publishes the favorable run. The tool
-will stamp it.
+will stamp it. L2 does not mean the science is correct.
 
 **Rules out:** a claim that this run is the only run; describing an OTS
 proof as evidence against HARKing or the file drawer; refusing to stamp

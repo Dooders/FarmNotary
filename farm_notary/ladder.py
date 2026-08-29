@@ -5,10 +5,10 @@ two reserved gaps) into the highest *earned* level and the next missing
 check. ``claim_level`` in ``farm_notary.claims`` is a different vocabulary
 (paper-pack / index artifact labels). Do not mix them.
 
-L2 (beacon-derived seed) and L3 (independent identity) are unearn-able
-until those features exist. A self-run ``reproduction.json`` never yields L3.
-L1 means the re-execution inputs are on the record, not that ``verify`` ran
-the command.
+L2 requires a beacon-derived seed after the plan is anchored. L3
+(independent identity) is reserved. A self-run ``reproduction.json``
+never yields L3. L1 means the re-execution inputs are on the record,
+not that ``verify`` ran the command.
 """
 
 from __future__ import annotations
@@ -31,8 +31,10 @@ LADDER_MEANINGS = {
     "L3": "independent identity reproduced it",
 }
 
-L2_NEXT_MEANING = "seed not beacon-derived (not implemented)"
+L2_NEXT_MEANING = LADDER_MEANINGS["L2"]
 L3_NEXT_MEANING = "independent identity has not signed a receipt (not implemented)"
+
+L2_GAP_SEED_PLAN = "missing: seed_plan"
 
 BITCOIN_HEIGHT_PREFIX = "Bitcoin height"
 FINGERPRINT_KEYS: Tuple[str, ...] = ("os", "arch", "python")
@@ -98,7 +100,11 @@ def _result(
     )
 
 
-def evaluate_ladder(card: Any, manifest: Any) -> LadderResult:
+def evaluate_ladder(
+    card: Any,
+    manifest: Any,
+    beacon_gaps: Optional[Sequence[str]] = None,
+) -> LadderResult:
     """Return the stacked level earned by ``card`` against ``manifest``.
 
     L0 requires a passing tamper-evident row *and* a Bitcoin-height time
@@ -106,7 +112,9 @@ def evaluate_ladder(card: Any, manifest: Any) -> LadderResult:
     not earn L0. FarmNotary does not check Bitcoin headers; L0 is a
     commitment-plus-attestation-type check. L1 requires a recorded command,
     git SHA, and environment fingerprint; it does not mean the command ran.
-    L2 and L3 are reserved and never returned as ``level``.
+    L2 requires a passing beacon binding (seed plan, precommit proof,
+    exact ``min_round``, recomputed seed, authenticated randomness).
+    L3 is reserved and never returned as ``level``.
     """
     if getattr(card, "tamper_evident", None) != "pass":
         return _result(LADDER_NONE, "L0", ["tamper-evident failed"])
@@ -122,4 +130,7 @@ def evaluate_ladder(card: Any, manifest: Any) -> LadderResult:
         l1_gaps.append("missing: environment fingerprint")
     if l1_gaps:
         return _result("L0", "L1", l1_gaps)
-    return _result("L1", "L2")
+    gaps = list(beacon_gaps) if beacon_gaps is not None else [L2_GAP_SEED_PLAN]
+    if gaps:
+        return _result("L1", "L2", gaps)
+    return _result("L2", "L3")

@@ -42,7 +42,7 @@ See `farm_notary/schema.py` and `farm_notary/manifest.py`.
 
 **Usually present:** `farm_notary_version` (`0.2.0`), `git_dirty`, `runner`, `command`, `environment`, `official_record`.
 
-**Optional (omitted when empty so older bodies keep a stable hash):** `derived_from`, `publish_profile`, `precommit_hash`, `identity`.
+**Optional (omitted when empty so older bodies keep a stable hash):** `derived_from`, `publish_profile`, `precommit_hash`, `beacon`, `identity`.
 
 **Stamp fields** (written after the content hash; excluded from it): `cid`, `cid_reachable`, `cid_reachable_checked_utc`, `pin_service`, `anchor`, `identity`.
 
@@ -52,7 +52,7 @@ Artifact discovery is recursive; paths are POSIX-style relative to the run direc
 
 ## Campaign / sweep manifests
 
-A parent record (`campaign.json`, schema `farmnotary.campaign.v1`) lists child run CIDs, seeds, and a seed-excluded config hash. A reviewer of a paper figure (100 trials, seed 0…N) verifies the parent instead of one folder.
+A parent record (`campaign.json`, schema `farmnotary.campaign.v1`) lists child run CIDs, seeds, and a seed-excluded config hash. When children share a precommit `seed_plan`, the parent copies it and child entries may record `seed_index`. A reviewer of a paper figure (100 trials, seed 0…N) verifies the parent instead of one folder.
 
 ```
 farm-notary campaign --name consensus-sweep \
@@ -63,7 +63,13 @@ farm-notary verify --campaign sweep/
 
 Each child entry records `seed`, `content_hash`, `config_hash` (config minus `seed` / `rng_seed` / `random_seed`), optional `cid`, `claim_level`, and a relative `path` when resolvable. The parent `config_hash` is set only when every child shares it.
 
-`verify --campaign` is a structural check (shared config hash, child content hashes, optional local rehash). It does **not** print a single-run claim card. Pass `--require-local` to fail when a child directory is absent.
+`verify --campaign` is a structural check (shared config hash, child content hashes, optional local rehash). It does **not** print a single-run claim card. Pass `--require-local` to fail when a child directory is absent. When children share a `seed_plan`, verify prints how many committed indices were published and lists missing members. Publishing a subset does not fail the check.
+
+## Beacon-derived seeds (L2)
+
+`precommit --seed-count N --inclusion TEXT` records a `seed_plan` (drand `chain_hash`, `genesis_time`, `period`, `min_round = latest + delay_rounds`, derivation `sha256-v1`). The plan config must not contain a concrete seed. After `precommit.ots` exists, `derive-seeds` fetches **exactly** `min_round` and writes `seeds.json`. Each run manifest records a `beacon` block (`round`, `randomness`, `seed_index`, `derived_seed`) inside the content hash.
+
+`seed_i = uint64_be(SHA256(canonical_json({chain_hash, round, index, config_hash}) || randomness)[:8])` where `config_hash` excludes seed keys. `verify` recomputes that function and authenticates randomness via an injectable `BeaconClient` (`FixedBeacon` in CI; `DrandHttpClient` live). L2 also requires L0 and L1. Calendar attestation on the plan is enough for L2; Bitcoin on the plan is not required. Bitcoin on the **run** remains L0.
 
 ## Derivation claims
 
@@ -168,7 +174,7 @@ The pinned tree includes `manifest.json`. Because `content_hash` excludes stamp 
 
 1. **Stamp** (`anchor --backend ots`): submit the manifest content hash to the configured calendars (`FARM_NOTARY_CALENDARS` or the public pools), merge their responses, and write the proof to `manifest.ots`. The proof commits to the *content hash digest directly* — no privacy nonce, because the manifest hash is meant to be public.
 2. **Upgrade** (`upgrade`): calendars batch digests into Bitcoin on their own schedule (typically hours). The upgrade command asks each pending calendar for the completed path to a Bitcoin block header attestation and rewrites the proof. Exit code 1 means still pending; run it again later.
-3. **Verify** (`verify`): rehash artifacts, recompute the content hash, check the proof commits to it, and print a CLAIMS.md claim card — stacked ladder (`none` / L0–L1 today; L2/L3 reserved), tamper-evident record, existed by time T (pending or Bitcoin height), pre-specified design, bitwise reproducible (scoped), and an explicit non-claim of scientific correctness. Only a Bitcoin-height attestation earns L0; pending calendars do not. L0 means these bytes existed by time T; Bitcoin headers not verified by this tool (commitment plus attestation type). Checking the Bitcoin merkle path against a local node is left to `ots verify`. L1 requires recorded `command`, `git_sha`, and environment fingerprint; `verify` does not run that command.
+3. **Verify** (`verify`): rehash artifacts, recompute the content hash, check the proof commits to it, and print a CLAIMS.md claim card — stacked ladder (`none` / L0–L2 today; L3 reserved), tamper-evident record, existed by time T (pending or Bitcoin height), pre-specified design, bitwise reproducible (scoped), and an explicit non-claim of scientific correctness. Only a Bitcoin-height attestation earns L0; pending calendars do not. L0 means these bytes existed by time T; Bitcoin headers not verified by this tool (commitment plus attestation type). Checking the Bitcoin merkle path against a local node is left to `ots verify`. L1 requires recorded `command`, `git_sha`, and environment fingerprint; `verify` does not run that command. L2 requires a beacon-derived seed after the plan is anchored (`seed_plan` + `precommit.ots` + exact `min_round` + recomputed seed + authenticated randomness). A failed beacon fetch leaves L2 unearned; it does not fail verify.
 
 Because `manifest.ots` commits to the content hash rather than the raw file bytes, stamping `manifest.json` with `cid`/`anchor` after anchoring never invalidates the proof.
 

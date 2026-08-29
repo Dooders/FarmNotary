@@ -11,8 +11,9 @@ import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
-from typing import List, Optional
+from typing import Any, List, Optional
 
+from farm_notary.beacon import BeaconCheck, verify_beacon_binding
 from farm_notary.ladder import LadderResult, evaluate_ladder
 from farm_notary.manifest import RECEIPT_NAME, Manifest, hash_file
 from farm_notary.schema import MANIFEST_VERSION
@@ -156,12 +157,14 @@ def verify_precommit(manifest: Manifest, run_dir: Path) -> List[str]:
     - ``precommit.json`` exists next to the manifest.
     - Its content hash matches ``manifest.precommit_hash``.
     - The config, command, and git_sha recorded in the precommit match the
-      manifest byte-for-byte (the fields that were meant to be pre-specified).
+      manifest. With a ``seed_plan``, config is compared without seed keys
+      (the concrete seed is derived after the plan).
     - When ``precommit.ots`` is present, the proof commits to the precommit
       content hash.
 
     Returns an empty list when no precommit is referenced by the manifest.
     """
+    from farm_notary.beacon import config_has_seed, strip_seed_keys
     from farm_notary.precommit import (
         BOUND_FIELDS,
         PRECOMMIT_NAME,
@@ -193,11 +196,22 @@ def verify_precommit(manifest: Manifest, run_dir: Path) -> List[str]:
             f"computed {computed}"
         )
 
+    seed_plan = pc.get("seed_plan")
+    if seed_plan and config_has_seed(pc.get("config")):
+        problems.append(
+            "precommit config must not contain a seed when seed_plan is set"
+        )
+
     for field_name in BOUND_FIELDS:
         import json as _json
 
         pc_val = pc.get(field_name)
         manifest_val = getattr(manifest, field_name, None)
+        if field_name == "config" and seed_plan:
+            pc_val = strip_seed_keys(pc_val if isinstance(pc_val, dict) else {})
+            manifest_val = strip_seed_keys(
+                manifest_val if isinstance(manifest_val, dict) else {}
+            )
         # Use canonical JSON comparison to avoid Python equality quirks such as
         # ``True == 1`` or ``1 == 1.0`` that would let a semantically-changed
         # value pass as matching.
@@ -345,18 +359,27 @@ def _bitwise_status(
     )
 
 
-def evaluate_claims(manifest: Manifest, run_dir: Path) -> ClaimCard:
+def evaluate_claims(
+    manifest: Manifest,
+    run_dir: Path,
+    *,
+    beacon_client: Optional[Any] = None,
+) -> ClaimCard:
     """Run every verify check and return a CLAIMS.md claim card.
 
     The card is always complete: a missing precommit or receipt is reported
     as ``missing``, not as a problem. Problems are reserved for checks that
-    were attempted and failed.
+    were attempted and failed. A beacon fetch failure leaves L2 unearned
+    without failing verify.
     """
     run_dir = Path(run_dir)
     tamper_problems = verify_run_dir(manifest, run_dir)
     anchor_problems = verify_anchor(manifest, run_dir)
     receipt_problems = verify_receipt(manifest, run_dir)
     precommit_problems = verify_precommit(manifest, run_dir)
+    beacon_check: BeaconCheck = verify_beacon_binding(
+        manifest, run_dir, client=beacon_client
+    )
     notes: List[str] = []
     from farm_notary.diagnose import diagnostics_from_receipt, format_diagnostics
     from farm_notary.reproduce import load_receipt
@@ -366,6 +389,7 @@ def evaluate_claims(manifest: Manifest, run_dir: Path) -> ClaimCard:
             notes = format_diagnostics(diagnostics_from_receipt(load_receipt(run_dir)))
         except (ValueError, OSError, TypeError):
             notes = []
+    notes.extend(beacon_check.notes)
     tamper_evident = "pass" if not tamper_problems else "fail"
     existed_by = _existed_by_status(manifest, run_dir, anchor_problems)
     pre_specified = _pre_specified_status(manifest, precommit_problems)
@@ -373,6 +397,7 @@ def evaluate_claims(manifest: Manifest, run_dir: Path) -> ClaimCard:
     ladder = evaluate_ladder(
         SimpleNamespace(tamper_evident=tamper_evident, existed_by=existed_by),
         manifest,
+        beacon_gaps=beacon_check.gaps,
     )
     return ClaimCard(
         tamper_evident=tamper_evident,
@@ -382,7 +407,8 @@ def evaluate_claims(manifest: Manifest, run_dir: Path) -> ClaimCard:
         problems=tamper_problems
         + anchor_problems
         + receipt_problems
-        + precommit_problems,
+        + precommit_problems
+        + beacon_check.problems,
         notes=notes,
         ladder=ladder,
     )

@@ -124,7 +124,7 @@ def test_bitcoin_command_fingerprint_and_sha_is_l1():
     assert "command was not run" in result.meaning
     assert result.next_level == "L2"
     assert result.next_meaning == L2_NEXT_MEANING
-    assert result.next_gaps == []
+    assert result.next_gaps == ["missing: seed_plan"]
 
 
 def test_tamper_fail_is_none_even_with_bitcoin():
@@ -205,6 +205,7 @@ def test_evaluate_claims_bitcoin_with_command_is_l1(tmp_path):
     assert card.ladder.level == "L1"
     assert card.ladder.next_level == "L2"
     assert L2_NEXT_MEANING in card.render()
+    assert "missing: seed_plan" in card.render()
     assert "command was not run" in card.render()
 
 
