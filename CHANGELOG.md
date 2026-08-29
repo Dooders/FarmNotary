@@ -5,9 +5,35 @@ All notable changes to FarmNotary will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 FarmNotary uses [Semantic Versioning](https://semver.org/).
 
+The last tagged / PyPI release is **0.1.0**. This tree is **0.2.0**.
+
 ---
 
-## [Unreleased] — breaking changes
+## [Unreleased]
+
+### Changed
+
+- Docs rewritten against the 0.2 CLI: install path (PyPI is 0.1.0; current
+  line is git `@dev`), `anchor` dry-run default vs Action `ots`,
+  `--verify-derived`, publish profiles, claim levels, and Action pin
+  (`dooders/FarmNotary@dev` — there is no `v0.2` tag yet).
+- `farm-notary verify` no longer fails when `derived_from` rules are present
+  but `--verify-derived` was not passed. Missing is not failure; the CLI
+  notes that rules were not executed. `--verify-derived` still runs them
+  and can fail the check.
+- GitHub Action accepts a `profile` input (`consensus`, `rl-sweep`,
+  `evolution-run`).
+- Package description no longer says “on-chain attestation”.
+
+### Added
+
+- Tests for claim levels (`infer_claim_level`, paper sentences), docs-to-CLI
+  lock, paper-pack `--verify-derived`, campaign `--require-local` / artifact
+  rehash, derivation rule validation, and a tighter Action contract.
+
+---
+
+## [0.2.0] — unreleased tag (package version on `dev`)
 
 ### Added
 
@@ -59,6 +85,51 @@ patterns append. The resolved allowlist is recorded as `publish_patterns`
 (already in the schema); `publish_profile` is recorded when a profile was
 used, so the policy is part of the claim.
 
+#### Campaign / sweep manifests
+
+- `farm-notary campaign` writes `campaign.json` (`farmnotary.campaign.v1`):
+  child run CIDs, seeds, and a seed-excluded config hash so a reviewer can
+  check a paper figure (100 trials, seed 0…N) instead of one folder.
+- `farm-notary verify --campaign` checks shared config hash and, when child
+  directories are present, each child's content hash. It does not print a
+  single-run claim card.
+
+#### Derivation claims
+
+- Optional `notary.derived_from` rules in the experiment profile are copied
+  onto the manifest. `verify --verify-derived` recomputes named outputs from
+  sources (or runs a verify-style command) so "statistics recompute exactly"
+  is a first-class claim even when a PNG is renderer-dependent. Default
+  `verify` does not execute those commands.
+
+#### Environment fingerprint
+
+- `environment` now records `os`, `arch`, `python`, `python_implementation`,
+  `system`, `machine`, and — when numpy is installed — the BLAS/LAPACK build.
+  Lockfile hash is unchanged. This keeps “bitwise on x86-64 Linux, pinned env”
+  scoped when a reviewer reproduces on Apple Silicon and sees a 1-ulp diff.
+
+#### Optional identity
+
+- `farm-notary sign --scheme ssh|minisign` records a signature of the
+  content hash. Stamp field: excluded from `content_hash`. No protocol token;
+  EAS stays experimental.
+
+#### Paper pack and public index
+
+- `farm-notary paper-pack` writes an appendix snippet (CID, content hash,
+  Bitcoin attestation or pending, publish allowlist, unmatched count,
+  precommit hash, scoped reproducibility sentence).
+- `farm-notary index` maintains a static registry (Markdown + JSON) of
+  published manifests: experiment, seed, CID, claim level, date. Scores and
+  rankings are rejected.
+
+#### Reusable GitHub Action
+
+- Root `action.yml` (`farm-notary-action`): precommit on workflow start,
+  notarize + optional pin-remote on success, upload `manifest.json` +
+  `manifest.ots`, fail the job if verify fails. See `docs/ACTION.md`.
+
 ### Changed
 
 #### Durable pin is the published path
@@ -108,22 +179,8 @@ and pinned silently.
 
 **The default is now to include nothing.**  A file is hashed, listed in the
 manifest, or uploaded to IPFS only when it matches at least one declared
-*publish pattern*:
-
-```bash
-# CLI
-farm-notary manifest --run-dir path/to/run --config config.json \
-  --publish 'summary.csv' --publish 'allocation_means.csv' --publish '*.png'
-```
-
-```json
-// Run config (versioned with the experiment)
-{
-  "notary": {
-    "publish": ["summary.csv", "allocation_means.csv", "*.png", "REPORT.md"]
-  }
-}
-```
+*publish pattern* (`--profile`, `--publish`, `notary.profile`, or
+`notary.publish`).
 
 Patterns follow `fnmatch` semantics.  A plain `*.ext` pattern matches files in
 any subdirectory (not just the run-dir root).
@@ -152,57 +209,19 @@ how many files were left out without revealing their names.
 
 #### `notarize_run()` API
 
-`notarize_run()` now accepts a `publish_patterns` keyword argument, forwarded
-to `build_manifest()`.
-
-### Added
-
-#### Campaign / sweep manifests
-- `farm-notary campaign` writes `campaign.json` (`farmnotary.campaign.v1`):
-  child run CIDs, seeds, and a seed-excluded config hash so a reviewer can
-  check a paper figure (100 trials, seed 0…N) instead of one folder.
-- `farm-notary verify --campaign` checks shared config hash and, when child
-  directories are present, each child's content hash.
-
-#### Derivation claims
-- Optional `notary.derived_from` rules in the experiment profile are copied
-  onto the manifest. `verify` recomputes named outputs from sources (or runs
-  a verify-style command) so "statistics recompute exactly" is a first-class
-  claim even when a PNG is renderer-dependent.
-
-#### Environment fingerprint
-- `environment` now records `os`, `arch`, `python`, `python_implementation`,
-  and — when numpy is installed — the BLAS/LAPACK build. Lockfile hash is
-  unchanged. This keeps “bitwise on x86-64 Linux, pinned env” scoped when a
-  reviewer reproduces on Apple Silicon and sees a 1-ulp diff.
-
-#### Optional identity
-- `farm-notary sign --scheme ssh|minisign` records a signature of the
-  content hash. Stamp field: excluded from `content_hash`. No protocol token;
-  EAS stays experimental.
-
-#### Paper pack and public index
-- `farm-notary paper-pack` writes an appendix snippet (CID, content hash,
-  Bitcoin attestation or pending, publish allowlist, unmatched count,
-  precommit hash, scoped reproducibility sentence).
-- `farm-notary index` maintains a static registry (Markdown + JSON) of
-  published manifests: experiment, seed, CID, claim level, date. Scores and
-  rankings are rejected.
-
-#### Reusable GitHub Action
-- Root `action.yml` (`dooders/farm-notary-action`): precommit on workflow
-  start, notarize + optional pin-remote on success, upload `manifest.json` +
-  `manifest.ots`, fail the job if verify fails. See `docs/ACTION.md`.
+`notarize_run()` now accepts `publish_patterns` and `publish_profile`,
+forwarded to `build_manifest()`.
 
 ---
 
+## [0.1.0] — 2026-08-27
 
-
-First release.
+First release. Published to PyPI as `farm-notary==0.1.0`.
 
 ### Added
 
 #### Core
+
 - `manifest.json` schema v1: recursive artifact discovery, SHA-256 map, UTC
   timestamp, git SHA + dirty flag, config object, optional `official_record`,
   `cid`, and `anchor` fields (`farm_notary/schema.py`, `farm_notary/manifest.py`).
@@ -216,6 +235,7 @@ First release.
   installed package set; accepts an optional lockfile hash.
 
 #### CLI (`farm-notary`)
+
 - `manifest` — build and write `manifest.json` for a run directory.
 - `verify` — rehash artifacts, check OTS proof, check reproduction receipt.
 - `anchor` — dry-run (default) or live anchor via a configured backend; `--pin`
@@ -226,6 +246,7 @@ First release.
 - `register-schema` — one-time EAS schema registration on Base / Base Sepolia.
 
 #### Backends
+
 - **Dry-run** (default): returns the payload that would be submitted without
   contacting any external service.
 - **OpenTimestamps** (`farm-notary[ots]`): submits the manifest content hash to
@@ -238,12 +259,14 @@ First release.
   back into `manifest.json`.
 
 #### IPFS
+
 - `IpfsClient`: multipart upload to a Kubo daemon's `/api/v0/add` with
   `wrap-with-directory=true&cid-version=1&pin=true`; stdlib only, no extra
   needed. Endpoint from `FARM_NOTARY_IPFS_API` (default
   `http://127.0.0.1:5001`).
 
 #### Reproduction
+
 - `reproduce_run`: re-executes the recorded command (with `{run_dir}`
   placeholder) into a fresh temp directory and returns per-file comparison
   results.
@@ -255,11 +278,13 @@ First release.
   validates the optional `reproduction.ots` proof.
 
 #### Public Python API
+
 - `notarize_run(run_dir, ...)` — build manifest, optionally pin and anchor,
   return `(Manifest, AnchorReceipt)`. Dry-run by default.
 - All major types and helpers exported from `farm_notary` directly.
 
 ### Dependencies
+
 - Zero runtime dependencies for the core (manifest, verify, IPFS, dry-run
   anchor); stdlib only.
 - `farm-notary[ots]` adds `opentimestamps>=0.4.5`.
@@ -267,6 +292,7 @@ First release.
 - Requires Python ≥ 3.9.
 
 ### Empirical validation
+
 - The AgentFarm political consensus experiment (PR #985, 100 trials, 300
   voters, 8 candidates, seed 0) was notarized and reproduced **8/8 artifacts
   bitwise** in a pinned environment with no exclusions. See

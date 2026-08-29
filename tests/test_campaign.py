@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 
 from farm_notary.campaign import (
@@ -119,4 +120,41 @@ def test_cli_campaign_and_verify(tmp_path, capsys):
     assert "runs 2" in printed
     assert "config_hash" in printed
     assert main(["verify", "--campaign", str(out)]) == 0
-    assert "child run" in capsys.readouterr().out
+    campaign_out = capsys.readouterr().out
+    assert "child run" in campaign_out
+    assert "claim card" not in campaign_out
+
+    assert main(["verify", "--run-dir", str(out)]) == 0
+    auto = capsys.readouterr().out
+    assert "child run" in auto
+    assert "claim card" not in auto
+
+
+def test_cli_campaign_missing_child_manifest(tmp_path, capsys):
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert (
+        main(["campaign", "--run-dir", str(empty), "--out", str(tmp_path / "sweep")])
+        == 2
+    )
+    assert "missing manifest.json" in capsys.readouterr().err
+
+
+def test_verify_campaign_require_local_when_child_gone(tmp_path):
+    children = [_child(tmp_path, f"s{i}", i) for i in (0, 1)]
+    campaign = build_campaign(children, name="sweep", campaign_dir=tmp_path)
+    write_campaign(campaign, tmp_path)
+    shutil.rmtree(children[0])
+    assert verify_campaign(campaign, tmp_path) == []
+    problems = verify_campaign(campaign, tmp_path, require_local=True)
+    assert any("local run not present" in p for p in problems)
+    assert main(["verify", "--campaign", str(tmp_path), "--require-local"]) == 1
+
+
+def test_verify_campaign_catches_artifact_tamper_without_rewrite(tmp_path):
+    children = [_child(tmp_path, f"s{i}", i) for i in (0, 1)]
+    campaign = build_campaign(children, name="sweep", campaign_dir=tmp_path)
+    write_campaign(campaign, tmp_path)
+    (children[0] / "summary.csv").write_text("tampered-bytes\n", encoding="utf-8")
+    problems = verify_campaign(load_campaign(tmp_path), tmp_path)
+    assert any("artifact hash mismatch" in p for p in problems)

@@ -29,6 +29,12 @@ inputs:
     description: Comma-separated publish globs (or set notary.publish in the config).
     required: false
     default: ""
+  profile:
+    description: >-
+      Named publish profile (consensus, rl-sweep, evolution-run). Prefer this
+      over inventing globs. Extra publish globs still append.
+    required: false
+    default: ""
   lockfile:
     description: Dependency lockfile to hash into the environment fingerprint.
     required: false
@@ -138,6 +144,7 @@ runs:
         CONFIG: ${{ inputs.config }}
         COMMAND: ${{ inputs.command }}
         PUBLISH: ${{ inputs.publish }}
+        PROFILE: ${{ inputs.profile }}
         LOCKFILE: ${{ inputs.lockfile }}
         GIT_SHA: ${{ inputs.git-sha }}
         RUNNER: ${{ inputs.runner }}
@@ -164,6 +171,7 @@ runs:
         if [ -f "${RUN_DIR}/precommit.json" ]; then
           man_args+=(--precommit "${RUN_DIR}/precommit.json")
         fi
+        if [ -n "${PROFILE}" ]; then man_args+=(--profile "${PROFILE}"); fi
         if [ -n "${PUBLISH}" ]; then
           IFS=',' read -r -a globs <<< "${PUBLISH}"
           for g in "${globs[@]}"; do

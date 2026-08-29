@@ -120,3 +120,73 @@ def test_campaign_entries(tmp_path):
     rows = entries_from_campaign(campaign)
     assert len(rows) == 2
     assert {r["seed"] for r in rows} == {0, 1}
+
+
+def test_entry_from_manifest_declares_unrun_derivation(tmp_path):
+    run = tmp_path / "derived"
+    run.mkdir()
+    (run / "summary.csv").write_text("ok\n", encoding="utf-8")
+    (run / "trials.csv").write_text("t\n", encoding="utf-8")
+    manifest = build_manifest(
+        run,
+        publish_patterns=["*.csv"],
+        git_sha="abc",
+        runner="consensus",
+        config={
+            "seed": 0,
+            "notary": {
+                "publish": ["*.csv"],
+                "derived_from": [
+                    {
+                        "outputs": ["summary.csv"],
+                        "sources": ["trials.csv"],
+                        "command": "true",
+                        "mode": "verify",
+                    }
+                ],
+            },
+        },
+    )
+    write_manifest(manifest, run)
+    entry = entry_from_manifest(manifest, run)
+    assert entry["claim_level"] == "derived_declared"
+
+
+def test_cli_index_claim_override(tmp_path, capsys):
+    run, _ = _run(tmp_path)
+    registry = tmp_path / "public"
+    assert (
+        main(
+            [
+                "index",
+                "--registry",
+                str(registry),
+                "--run-dir",
+                str(run),
+                "--claim",
+                "bitwise",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    body = (registry / "index.md").read_text(encoding="utf-8")
+    assert "bitwise" in body
+
+
+def test_render_index_escapes_pipes():
+    md = render_index(
+        [
+            {
+                "experiment": "a|b",
+                "seed": 0,
+                "cid": "c",
+                "claim_level": "bytes",
+                "date": "2026-01-01",
+            }
+        ]
+    )
+    assert "a\\|b" in md
+    assert "| Score |" not in md
+    row = [line for line in md.splitlines() if "a\\|" in line][0]
+    assert row.startswith("| ") and row.endswith(" |")

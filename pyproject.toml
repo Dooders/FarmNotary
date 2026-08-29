@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "farm-notary"
 version = "0.2.0"
-description = "Notary for AgentFarm runs: manifest hash, CID, on-chain attestation"
+description = "Notary for AgentFarm runs: manifest hash, optional IPFS pin, OpenTimestamps anchor"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "Apache-2.0" }
