@@ -59,7 +59,7 @@ def infer_claim_level(record: Any, run_dir: Optional[Path] = None) -> str:
                 has_receipt = False
                 receipt_valid = False
     if has_receipt and has_derived:
-        return CLAIM_BITWISE_DERIVED if receipt_valid else CLAIM_BITWISE_DERIVED_DECLARED
+        return CLAIM_BITWISE_DERIVED_DECLARED
     if has_receipt:
         return CLAIM_BITWISE if receipt_valid else CLAIM_BITWISE_DECLARED
     if has_derived:

@@ -2,215 +2,180 @@
 
 [![CI](https://github.com/Dooders/FarmNotary/actions/workflows/ci.yml/badge.svg)](https://github.com/Dooders/FarmNotary/actions/workflows/ci.yml)
 
-Notary for [AgentFarm](https://github.com/Dooders/AgentFarm) runs.
+Notary for [AgentFarm](https://github.com/Dooders/AgentFarm) runs. Simulation stays off-chain.
 
-Simulation stays off-chain. FarmNotary writes a manifest (config, code identity, artifact hashes), optionally pins the result directory to IPFS, and anchors the manifest hash publicly via [OpenTimestamps](https://opentimestamps.org/) — free calendar servers that batch digests into Bitcoin.
+FarmNotary writes a `manifest.json` (config, code identity, artifact hashes), optionally pins the run directory to IPFS, and can anchor the manifest hash via [OpenTimestamps](https://opentimestamps.org/) — free calendar servers that batch digests into Bitcoin.
 
-Immutability is not correctness. Re-run from the committed seed to check the science. The anchor only makes "this is the file we published" hard to walk back.
+Immutability is not correctness. Re-run from the committed seed to check the science. The anchor only makes “this is the file we published” hard to walk back.
 
-## Scope
+**This repo is 0.2.0.** PyPI still serves `0.1.0`. Install from git for the current line (see [Install](#install)).
+
+## In and out of scope
 
 **In**
 
-- Canonical `manifest.json` schema (recursive artifact discovery, SHA-256 map)
-- Campaign / sweep parent manifests (child CIDs, seeds, shared config hash)
-- Derivation claims (`notary.derived_from` in the experiment profile)
-- Environment fingerprint (OS, arch, Python, optional numpy/BLAS build)
+- Canonical `manifest.json` (`farmnotary.manifest.v1`): recursive discovery, SHA-256 map, publish allowlist
+- Campaign / sweep parent manifests (`farmnotary.campaign.v1`)
+- Derivation claims (`notary.derived_from`) — executed only with `--verify-derived`
+- Environment fingerprint (OS, arch, Python, `system` / `machine`, optional numpy/BLAS)
 - Optional minisign / SSH identity on the content hash (no protocol token)
 - Paper-pack appendix snippet and a static public index (no scores)
-- Reusable GitHub Action (`dooders/farm-notary-action`)
-- Optional IPFS upload via the Kubo HTTP API (stdlib only, no extra needed)
+- Reusable GitHub Action in this repo (`dooders/FarmNotary`)
+- Optional IPFS upload via the Kubo HTTP API (stdlib only)
 - Anchoring via OpenTimestamps: no contract, no keys, no gas
-- Verify: rehash artifacts locally, check the proof commits to the manifest hash
+- Verify: claim card + local rehash; OTS proof commits to the content hash
 
 **Out**
 
-- Running our own anchoring infrastructure (contracts, chains, servers) — that layer is outsourced
+- Running anchoring infrastructure (contracts, chains, servers)
 - Running simulations inside the EVM
 - Publishing individual voter or agent ballots
-- Social scores, rankings, or reputation as a product
+- Social scores, rankings, or reputation
 - A public index that is anything other than a directory of published manifests
 
 ## Official record vs private choice
 
-If the experiment is a consensus / selection paradigm:
+For a consensus / selection experiment:
 
 - Voter (or agent) choice stays private
-- What gets notarized is the *official* record: config, code hash, aggregate metrics, winner allocations
+- What gets notarized is the official record: config, code hash, aggregate metrics, winner allocations
 
-### Allowlist-first privacy model
-
-**Nothing is hashed, listed, or uploaded by default.** Prefer a named
-experiment-type profile so labs do not invent globs (and forget `REPORT.md`
-or include a path they should not):
+**Nothing is hashed, listed, or uploaded by default.** Prefer a named profile so labs do not invent globs (and forget `REPORT.md` or include a path they should not):
 
 ```bash
 farm-notary manifest --run-dir path/to/run --profile consensus
 ```
 
-Profiles (`consensus`, `rl-sweep`, `evolution-run`) are checked-in lists of
-official artifacts. The denylist still applies. The resolved allowlist is
-recorded on the manifest as `publish_patterns` (and `publish_profile`) so the
-policy is part of the claim.
+Checked-in profiles: `consensus`, `rl-sweep`, `evolution-run`. Extra `--publish` globs append. The resolved allowlist is recorded as `publish_patterns` (and `publish_profile`) so the policy is part of the claim.
 
-Or declare extra globs — appended to the profile, or used alone:
-
-```bash
-farm-notary manifest --run-dir path/to/run --profile consensus \
-  --publish 'notes.md'
-```
-
-```json
-{
-  "notary": {
-    "profile": "consensus",
-    "publish": ["extra_table.csv"]
-  }
-}
-```
-
-Files not covered by any pattern are **excluded** and counted in the manifest
-(`unmatched_count`).  The CLI warns loudly about the count (never the names).
-
-As a belt-and-braces second pass, files whose paths contain `ballot`, `vote`,
-`voter`, `individual_choice`, or `private` are always excluded even if a
-publish pattern would otherwise admit them.
+The denylist still applies: any path containing `ballot`, `vote`, `voter`, `individual_choice`, or `private` is excluded even if a pattern would admit it. Files that match no pattern are counted as `unmatched_count` (names are never printed).
 
 ## Install
 
+Python ≥ 3.9. Core (manifest, verify, IPFS, dry-run) is stdlib-only.
+
 ```bash
-pip install farm-notary          # manifest + verify, no chain deps
-pip install "farm-notary[chain]" # adds web3 for the EAS backend
-pip install "farm-notary[ots]"   # adds opentimestamps for anchoring and proof checks
+# 0.2 line (this repo) — campaigns, profiles, claim cards, paper-pack
+pip install "farm-notary[ots] @ git+https://github.com/Dooders/FarmNotary.git@dev"
+
+# last PyPI release (0.1.0) — first-release CLI only
+pip install "farm-notary[ots]"
 ```
 
 Extras:
 
-- `farm-notary[chain]` — adds `web3`, needed for the EAS backend.
-- `farm-notary[ots]` — adds the `opentimestamps` library, needed to anchor and to check proofs. Manifest building and local verification are stdlib-only.
-- IPFS upload needs no extra, just a reachable Kubo daemon.
+| Extra | Adds | Needed for |
+|---|---|---|
+| *(none)* | — | `manifest`, `verify` (local rehash), IPFS pin |
+| `[ots]` | `opentimestamps` | `anchor --backend ots`, `upgrade`, OTS proof checks |
+| `[chain]` | `web3` | experimental EAS backend |
+| `[dev]` | pytest + both extras | development |
 
-## Schema stability
-
-Every manifest records the tool version that created it (`farm_notary_version`) and the schema identifier (`schema`).
-
-**Promise:** within the `0.x` line, schema changes are **minor-version bumps** (e.g. `0.1 → 0.2`). The `verify` command stays backward-compatible with all older manifests: fields added in a later version are simply ignored when reading an older manifest. Reading a manifest produced by a *newer* tool emits a warning and still attempts verification. Optional fields (`derived_from`, `identity`) are omitted when empty so a v1 body keeps a stable content hash.
-
-Breaking changes (new required fields, renamed keys, removed fields) are reserved for a `1.0` bump and will be communicated in the changelog with a migration guide.
+IPFS upload needs a reachable Kubo daemon (`FARM_NOTARY_IPFS_API`, default `http://127.0.0.1:5001`), not a Python extra.
 
 ## Quick start
 
 ```bash
-# 1. Hash the run directory into manifest.json
-farm-notary manifest --run-dir path/to/run --config config.json
+# 1. Hash the run directory (profile or --publish is required)
+farm-notary manifest --run-dir path/to/run --profile consensus --config config.json
 
-# 2. Verify: print a CLAIMS.md claim card
+# 2. Claim card: rehash artifacts. Derivation commands are not run.
 farm-notary verify --run-dir path/to/run
 
-# 3. Anchor to OpenTimestamps calendars and write proof to manifest.ots
+# 3. Optional: stamp the content hash on public calendars
 farm-notary anchor --run-dir path/to/run --backend ots
 ```
 
-Anchoring for real, with a durable pin (the published path):
+`anchor` and `precommit` default to `--backend dry-run` (print the payload, contact nothing). Pass `--backend ots` to submit. The GitHub Action defaults to `ots`.
+
+Published path (durable pin + calendar stamp):
 
 ```bash
-# Register a pinning service once (Kubo stores the endpoint + token):
 ipfs pin remote service add pinata https://api.pinata.cloud/psa <jwt-token>
 
 farm-notary anchor --run-dir path/to/run --pin-remote pinata --backend ots
-# ... hours later, once a calendar has batched the digest into Bitcoin:
+# hours later, once a calendar has batched the digest into Bitcoin:
 farm-notary upgrade --run-dir path/to/run
 farm-notary verify --run-dir path/to/run
 ```
 
-`--backend ots` submits the manifest content hash to public OpenTimestamps calendars (override with `--calendar` or `FARM_NOTARY_CALENDARS`) and writes the proof to `manifest.ots`. `--pin-remote` uploads the run directory (manifest included) to local Kubo, then delegates the pin to a registered service (Pinata, web3.storage, or any [IPFS Pinning Service API](https://ipfs.github.io/pinning-services-api-spec/)). That durable pin is what you cite in a paper or academy writeup. `upgrade` completes the pending proof with a Bitcoin attestation; `verify` then reports **existed by time T** as a Bitcoin height.
+`precommit` and `anchor` refuse a dirty git tree: the recorded SHA does not identify the code. `git_dirty` is still recorded. A supplied `--git-sha` is not a bypass — the working tree is inspected. Pass `--allow-dirty` (or `allow_dirty=True`) for an explicit exception.
 
-`precommit` and `anchor` refuse a dirty git tree by default: the recorded SHA
-does not identify the code, so it is not a code-identity claim. `git_dirty` is
-still recorded on the manifest. Supplying `--git-sha` without a dirty flag
-still inspects the working tree. Pass `--allow-dirty` (or `allow_dirty=True`)
-to make an explicit exception.
+## Commands
 
-## IPFS persistence
+| Command | What it does |
+|---|---|
+| `manifest` | Write `manifest.json` (requires `--profile` and/or `--publish`) |
+| `verify` | Print a CLAIMS.md claim card; rehash; check proofs if present |
+| `verify --verify-derived` | Also run `derived_from` commands (trusted manifests only) |
+| `verify --campaign` | Check child hashes and the shared config hash (not a claim card) |
+| `precommit` | Write `precommit.json` before the run (`dry-run` or `ots`) |
+| `anchor` | Optional pin + stamp (`dry-run` default; `ots`; `eas` experimental) |
+| `upgrade` | Complete a pending `manifest.ots` with a Bitcoin attestation |
+| `reproduce` | Re-run the recorded command; write `reproduction.json` |
+| `sign` | Attach a minisign or SSH signature of the content hash |
+| `campaign` | Build a parent `campaign.json` from child run directories |
+| `paper-pack` | Write `appendix.md` for a PDF |
+| `index` | Append a run or campaign to a static registry (no scores) |
+| `register-schema` | One-time EAS schema registration |
 
-**`--pin-remote` is the published path.** Local Kubo is a lab convenience.
+## What you may claim
 
-The CID is content-addressed and immutable, but the _content_ is only reachable as long as at least one node holding it is online and responsive. A local daemon on a laptop goes offline when the lid closes — the manifest will still record the CID, but `ipfs get <cid>` will hang with no diagnosis. Do not cite a local-only pin in a paper or academy writeup.
+`farm-notary verify` prints a card. Reviewers read the card, not the exit code. **Missing is not failure.** Exit 0 means no attempted check failed — not that every claim was earned, and not that the science is right.
 
-`--pin-remote <service>` uploads via Kubo, then delegates to a remote pinning service (Pinata, web3.storage, or any [IPFS Pinning Service API](https://ipfs.github.io/pinning-services-api-spec/)). Register the service once:
+```
+claim card
+•  tamper-evident record           — pass
+•  existed by time T               — pending
+•  pre-specified design            — missing
+•  bitwise reproducible (scoped)   — 6/6, ignored: *.mp4; byte-identical on x86-64 Linux in a pinned environment
+•  not claimed: scientific correctness
+```
+
+The only bitwise sentence the tool may emit today is *byte-identical on x86-64 Linux in a pinned environment*. Other hardware still reports `N/M` and refuses a cross-hardware claim. See [docs/CLAIMS.md](docs/CLAIMS.md).
+
+Derivation is a separate, opt-in check:
 
 ```bash
-ipfs pin remote service add pinata https://api.pinata.cloud/psa <jwt-token>
-farm-notary anchor --run-dir path/to/run --pin-remote pinata --backend ots
+farm-notary verify --run-dir path/to/run --verify-derived
 ```
 
-`--pin-remote` implies `--pin`. The manifest records `pin_service` (`"local"` or the service name) so the pin path is part of the claim.
+Without the flag, rules stay on the manifest and the card still exits 0. The CLI prints a note; it does not execute commands from a downloaded manifest. Only pass `--verify-derived` for manifests you trust.
 
-`--pin` alone still uploads to local Kubo and warns. Use it at the bench; switch to `--pin-remote` before you publish.
+## Pinning
 
-After each pin, FarmNotary checks whether the CID is immediately resolvable through the public IPFS gateway (`https://ipfs.io/ipfs/<cid>`) and records `cid_reachable` with a timestamp. A warning is printed when the CID is not reachable.
+**`--pin-remote` is the published path.** Local Kubo (`--pin`) is a lab convenience and always warns.
 
-To skip the gateway check (e.g. in CI where the CID will propagate later), pass `--no-check-gateway`.
+The CID is content-addressed, but the bytes are only reachable while some node holds them. Do not cite a local-only pin. `--pin-remote <service>` uploads via Kubo, then calls a registered [IPFS Pinning Service](https://ipfs.github.io/pinning-services-api-spec/) (Pinata, web3.storage, …). `--pin-remote` implies `--pin`. The manifest records `pin_service` (`"local"` or the service name).
 
-## Anchoring with EAS (experimental)
+After each pin, FarmNotary checks `https://ipfs.io/ipfs/<cid>` and records `cid_reachable` plus a UTC timestamp. Pass `--no-check-gateway` in CI (the Action does this by default).
 
-> **Experimental.** The `eas` backend requires a funded private key, costs
-> gas on Base, and ties verification to an attester address that verifiers
-> must know in advance.  `--backend ots` is the recommended default: no key,
-> no gas, Bitcoin-backed, no prior relationship with the verifier required.
+## Anchoring
 
-See [docs/EAS.md](docs/EAS.md) for full EAS configuration, schema details,
-and a tradeoff table comparing OTS and EAS.
+- **CLI default:** `dry-run` — no network.
+- **Recommended live backend:** `--backend ots` — keyless, no gas, Bitcoin-backed.
+- **Experimental:** `--backend eas` — funded key, gas on Base, attester-address trust. See [docs/EAS.md](docs/EAS.md).
 
-## AgentFarm inheritance
+`--backend ots` submits the *content hash* (SHA-256 of the canonical body, excluding stamp fields `cid`, `cid_reachable`, `pin_service`, `anchor`, `identity`) to public calendars (`--calendar` or `FARM_NOTARY_CALENDARS`). The proof is `manifest.ots`. Stamping the manifest afterwards does not invalidate it.
 
-AgentFarm should depend on a version pin (`farm-notary>=0.1,<0.2`) via an extra such as `farm[notary]`, then call one function after the runner writes artifacts:
-
-```python
-from farm_notary import notarize_run
-from farm_notary.ots import OpenTimestampsBackend
-
-manifest, receipt = notarize_run(
-    run_dir,
-    git_sha=sha,
-    runner="consensus_paradigms",
-    config=config,
-    backend=OpenTimestampsBackend(),
-)
-```
-
-The example above uses `OpenTimestampsBackend()` (from `farm_notary.ots`); add `pin_remote="pinata"` for a durable pin (the published path), or `pin=True` for a local Kubo pin (lab convenience). Do not submodule unless the API is still thrashing.
+`upgrade` asks calendars for a Bitcoin attestation (typically hours). Exit 1 means still pending. Full header checks against your own node are left to standard `ots verify` tooling.
 
 ## Reproducing a run
 
-If the manifest records the command that produced it (`--command`, with
-`{run_dir}` marking the output directory), anyone can re-execute and
-byte-compare:
+Record the command with `{run_dir}` marking the output directory:
 
 ```bash
-farm-notary manifest --run-dir path/to/run \
+farm-notary manifest --run-dir path/to/run --profile consensus \
   --command "python run_experiment.py --seed 0 --out {run_dir}" \
   --lockfile requirements.lock
-farm-notary reproduce --run-dir path/to/run --ignore '*.mp4' --anchor
+farm-notary reproduce --run-dir path/to/run --cwd path/to/experiment --ignore '*.mp4' --anchor
 ```
 
-`reproduce` re-runs the command into a fresh directory, compares every listed
-artifact's bytes against the manifest, and writes a `reproduction.json`
-receipt (rerunner's environment, per-file results, mismatch diagnostics).
-A byte-diff is classified (`embedded_absolute_path`, `timestamp`,
-`float_print_format`, `video_encoder`) and labeled **not a science failure**
-when that is what it is. `--anchor` timestamps the receipt itself via
-OpenTimestamps, so "independently reproduced" comes with a proof. `verify` reports the receipt as **bitwise reproducible (scoped)** —
-`N/M` of compared artifacts, any `--ignore` globs, and the only sentence the
-tool may emit today: *byte-identical on x86-64 Linux in a pinned
-environment*. A match on other hardware still reports `N/M` and refuses a
-cross-hardware claim. See [docs/CLAIMS.md](docs/CLAIMS.md).
+`reproduce` re-runs into a fresh directory, compares every listed artifact, and writes `reproduction.json`. A byte-diff is classified (`embedded_absolute_path`, `timestamp`, `float_print_format`, `video_encoder`) and labeled **not a science failure** when that is what it is. `--cwd` is the experiment repo when it is not the run directory. `--anchor` timestamps the receipt (`reproduction.ots`).
 
-See [docs/CLAIMS.md](docs/CLAIMS.md) for exactly which claim each check earns.
+`verify` then reports **bitwise reproducible (scoped)** — `N/M` of compared artifacts, any `--ignore` globs, and the scoped sentence above.
 
 ## Campaigns, paper pack, and the public index
-
-A sweep is a parent record, not a pile of folders:
 
 ```bash
 farm-notary campaign --name consensus-sweep \
@@ -221,11 +186,9 @@ farm-notary paper-pack --campaign sweep/ --out sweep/appendix.md
 farm-notary index --registry docs/registry.md --campaign sweep/
 ```
 
-`paper-pack` writes the appendix snippet this audience puts in a PDF: CID,
-content hash, Bitcoin attestation (or pending), publish allowlist, unmatched
-count, precommit hash, and a reproducibility sentence scoped to OS / arch /
-Python / BLAS. The index is a static directory — experiment, seed, CID, claim
-level, date — not a scoreboard. See [docs/registry.md](docs/registry.md).
+`paper-pack` writes the appendix snippet: CID, content hash, Bitcoin attestation (or pending), allowlist, unmatched count, precommit hash, claim level, environment, scoped sentence. Campaigns also list child seeds and CIDs.
+
+`index` maintains a static directory (Markdown + `registry.json` sidecar): experiment, seed, CID, claim level, date. Not a scoreboard. Running `index` rewrites the Markdown table; how-to text in that file is not preserved. See [docs/registry.md](docs/registry.md).
 
 Optional lab identity (still no protocol token):
 
@@ -233,16 +196,13 @@ Optional lab identity (still no protocol token):
 farm-notary sign --run-dir path/to/run --scheme ssh --key ~/.ssh/id_ed25519
 ```
 
-Reviewers who know the key can attribute the publication; everyone else still
-has OpenTimestamps. EAS remains experimental.
-
-Derivation claims live in the experiment profile so statistics can recompute
-exactly when a PNG is renderer-dependent:
+Derivation rules live in the experiment profile so statistics can recompute when a PNG is renderer-dependent:
 
 ```json
 {
   "notary": {
-    "publish": ["*.csv", "*.png", "REPORT.md"],
+    "profile": "consensus",
+    "publish": ["extra_table.csv"],
     "derived_from": [
       {
         "outputs": ["summary.csv", "allocation_means.csv", "REPORT.md"],
@@ -255,40 +215,66 @@ exactly when a PNG is renderer-dependent:
 }
 ```
 
+`mode: recompute` (default) copies sources to a temp directory, runs `command`, and byte-compares outputs. `mode: verify` runs a check that exits 0 when derived artifacts match.
+
 ## GitHub Action
 
-Labs adopt this without reading DESIGN.md:
+The action lives at the repo root (`action.yml`). There is no `v0.2` tag yet; pin `dev` or a commit SHA. Last release tag is `v0.1.0`.
 
 ```yaml
-- uses: dooders/FarmNotary@v0.2
+- uses: dooders/FarmNotary@dev
   with:
     phase: notarize
     run-dir: results
-    publish: "*.csv,REPORT.md"
+    profile: consensus
     pin-remote: pinata
     backend: ots
 ```
 
-Precommit on workflow start (`phase: precommit`), notarize + pin-remote on
-success, upload `manifest.json` + `manifest.ots`, fail the job if verify
-fails. Full contract: [docs/ACTION.md](docs/ACTION.md).
+`phase: precommit` at job start, `phase: notarize` after success (binds `precommit.json` when present, anchors, runs `verify`, uploads `manifest.json` + `manifest.ots`). `phase: all` is notarize-only for an already-finished run. Verify failure fails the job; artifacts are still uploaded. The Action does not pass `--verify-derived`. Full contract: [docs/ACTION.md](docs/ACTION.md).
+
+## Python API
+
+AgentFarm should depend on a 0.2 pin (`farm-notary>=0.2,<0.3`) via an extra such as `farm[notary]`:
+
+```python
+from farm_notary import notarize_run
+from farm_notary.ots import OpenTimestampsBackend
+
+manifest, receipt = notarize_run(
+    run_dir,
+    git_sha=sha,
+    runner="consensus_paradigms",
+    config=config,
+    publish_profile="consensus",
+    backend=OpenTimestampsBackend(),
+    pin_remote="pinata",
+)
+```
+
+`notarize_run` is dry-run until a backend is passed. `pin_remote=` is the published pin path; `pin=True` is local Kubo only. Do not submodule unless the API is still thrashing.
+
+## Schema stability
+
+Every manifest records `farm_notary_version` (currently `0.2.0`) and `schema` (`farmnotary.manifest.v1`).
+
+**Promise:** within the `0.x` line, schema changes are **minor-version bumps**. `verify` stays backward-compatible with older manifests: new fields are ignored when reading an older body. A newer schema emits a warning and still attempts verification. Optional fields (`derived_from`, `identity`, `publish_profile`, …) are omitted when empty so a v1 body keeps a stable content hash.
+
+Required on every v1 body: `schema`, `created_utc`, `git_sha`, `config`, `artifacts`, `artifact_hashes`, `publish_patterns`, `unmatched_count`.
+
+Breaking changes (new required fields, renamed keys, removed fields) are reserved for `1.0` and will land in the changelog with a migration guide.
 
 ## Verifying someone else's claim
 
-1. Fetch the CID (`ipfs get <cid>`), or obtain the run directory some other way. If `ipfs get` hangs, the CID may not be pinned on any reachable node — check `pin_service` (a local-only pin is not archival), `cid_reachable`, and `cid_reachable_checked_utc`, and try the public gateway: `https://ipfs.io/ipfs/<cid>`.
+1. Fetch the CID (`ipfs get <cid>`), or obtain the run directory another way. If `ipfs get` hangs, check `pin_service` (local-only is not archival), `cid_reachable`, and try `https://ipfs.io/ipfs/<cid>`.
 2. `farm-notary verify --run-dir <dir>`
-3. Read the claim card. Each line is a CLAIMS.md claim (`pass` / `fail` /
-   `pending` / Bitcoin height / `precommit bound` / `N/M` / `missing`).
-   **Missing is not failure.** Exit code 0 means no attempted check failed;
-   it does not mean the science is right, and it does not mean every claim
-   was earned. The card always ends with `not claimed: scientific correctness`.
+3. Read the claim card. **Missing is not failure.** The card always ends with `not claimed: scientific correctness`.
+4. Only if you trust the recorded commands: `farm-notary verify --run-dir <dir> --verify-derived`
 
-`verify` distinguishes two artifact-check failure modes (printed after the card):
+`verify` distinguishes:
 
-- **`artifact unreachable: <name>`** — the file is absent from the local directory; if the manifest records a CID, the hint `(fetch with: ipfs get <cid>)` is appended.
-- **`artifact hash mismatch: <name>`** — the file is present but its content differs from what was hashed at notarization time.
-
-The proof in `manifest.ots` is a standard OpenTimestamps file: it commits to the manifest *content hash* (SHA-256 of the canonical manifest body, excluding the `cid` and `anchor` stamp fields), so it stays valid after the manifest is stamped with upload results. Full trust-minimized verification against your own Bitcoin node is possible with the standard `ots` tooling.
+- **`artifact unreachable: <name>`** — file absent; CID hint appended when known
+- **`artifact hash mismatch: <name>`** — present but different bytes
 
 ## Development
 
@@ -298,6 +284,22 @@ python3 -m venv .venv
 .venv/bin/python -m pytest
 ```
 
+CI runs pytest on Python 3.9–3.12.
+
+## Documentation
+
+| Doc | Contents |
+|---|---|
+| [docs/CLAIMS.md](docs/CLAIMS.md) | What each claim means, what backs it, hardware scope |
+| [docs/DESIGN.md](docs/DESIGN.md) | Schema, backends, privacy, provenance flow |
+| [docs/ACTION.md](docs/ACTION.md) | GitHub Action inputs, outputs, phases |
+| [docs/EAS.md](docs/EAS.md) | Experimental EAS backend |
+| [docs/registry.md](docs/registry.md) | Generated public index (no scores) |
+| [CHANGELOG.md](CHANGELOG.md) | Version history |
+| [integration/agentfarm/README.md](integration/agentfarm/README.md) | AgentFarm provenance patch |
+
 ## Status
 
-0.2. Manifest, campaigns, derivation claims, environment fingerprints, optional identity, paper pack, public index, hashing, IPFS pinning, OpenTimestamps anchoring (dry-run default), proof upgrade, verification, a reusable GitHub Action, and EAS attestation on Base/Base Sepolia (experimental) are implemented and tested. The anchoring layer is deliberately outsourced — earlier revisions carried a custom `SimulationRegistry` contract, which was removed in favor of existing public infrastructure.
+0.2. Manifests, campaigns, derivation claims, environment fingerprints, optional identity, paper pack, public index, hashing, IPFS pinning, OpenTimestamps (CLI dry-run default; Action `ots`), proof upgrade, claim-card verify, reusable GitHub Action, and experimental EAS on Base / Base Sepolia are implemented and tested.
+
+The last tagged / PyPI release is **0.1.0**. This tree is **0.2.0**. The anchoring layer is outsourced — earlier revisions carried a custom `SimulationRegistry` contract, which was removed.

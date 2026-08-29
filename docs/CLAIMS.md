@@ -17,6 +17,10 @@ claim card
 •  not claimed: scientific correctness
 ```
 
+Derivation is not a card row. `verify` does not run `derived_from` commands
+unless you pass `--verify-derived` (trusted manifests only). Missing that
+check is not a failure.
+
 That is the difference between a hash tool and a research notary.
 
 | Claim | Backed by | Command |
@@ -27,22 +31,22 @@ That is the difference between a hash tool and a research notary.
 | Pre-specified design | Precommit proof (config, command, git SHA anchored before the run); manifest's `precommit_hash` binds the two phases | `farm-notary precommit --config ... --command ... --backend ots`, then `farm-notary manifest --precommit precommit.json`; `farm-notary verify` reports `precommit bound` |
 | Bitwise reproducible (scoped) | A reproduction receipt produced by re-running the recorded command and comparing every listed artifact; what was excluded is noted in the receipt | `farm-notary reproduce`; with `--ignore` globs for legitimately nondeterministic artifacts |
 | Independently reproduced | A reproduction receipt produced on another machine, optionally timestamped | `farm-notary reproduce --anchor` |
-| Statistics recompute exactly | `derived_from` rules in the experiment profile recompute named artifacts from their sources | `farm-notary verify` (prints the derivation claim when rules pass) |
+| Statistics recompute exactly | `derived_from` rules in the experiment profile recompute named artifacts from their sources. Commands are **not** run by default (a downloaded manifest is untrusted input). | `farm-notary verify --verify-derived` (prints the derivation claim when rules pass). Without the flag, verify still exits 0 and notes that rules were not executed. |
 | Sweep / paper figure | Parent campaign lists child CIDs, seeds, and a shared config hash | `farm-notary campaign`, then `farm-notary verify --campaign` |
 | Signed publication (optional) | minisign or SSH signature of the content hash, recorded on the manifest | `farm-notary sign --scheme ssh\|minisign --key PATH` |
-| Paper appendix | CID, content hash, Bitcoin attestation or pending, allowlist, unmatched count, precommit hash, scoped sentence | `farm-notary paper-pack` |
+| Paper appendix | CID, content hash, Bitcoin attestation or pending, allowlist, unmatched count, precommit hash, claim level, scoped sentence | `farm-notary paper-pack` (add `--verify-derived` before the sentence claims statistics recompute) |
 
 Never claimable by tooling: **correctness of the science**. Immutability is
 not correctness; a manifest can perfectly notarize a wrong result. Re-run the
 committed seed, interrogate the model, replicate with an independent
 implementation.
 
-> **Note on anchoring backends:** The commands above use `--backend ots`
-> (OpenTimestamps), which is the recommended default — no key, no gas, and
-> Bitcoin-backed.  The `--backend eas` option is **experimental**: it requires
-> a funded attester key, costs gas, and ties verification to an attester
-> address that verifiers must know in advance.  See [EAS.md](EAS.md) for
-> details and a tradeoff table.
+> **Note on anchoring backends:** CLI `anchor` / `precommit` default to
+> `--backend dry-run` (no network). The recommended *live* backend is
+> `--backend ots` — no key, no gas, Bitcoin-backed. The GitHub Action
+> defaults to `ots`. `--backend eas` is **experimental**: funded attester
+> key, gas, and an attester-address trust problem that OTS avoids. See
+> [EAS.md](EAS.md).
 
 ## Durable pin as the published path
 
@@ -51,6 +55,20 @@ A CID is not a citation if only a laptop holds the bytes. Local Kubo
 writeup, `--pin-remote` (Pinata, web3.storage, or a pinning-service API) is
 the documented default. The manifest records `pin_service` so reviewers can
 see which path was used.
+
+## Claim levels (not scores)
+
+`farm-notary index` and `paper-pack` label what was checked. These are never
+ranks:
+
+| Level | Meaning |
+|---|---|
+| `bytes` | Tamper-evident artifact hashes only |
+| `derived_declared` | Derivation rules are on the record but have not been executed |
+| `bitwise` / `bitwise_declared` | A `reproduction.json` exists; `_declared` if it is unbound or not `ok` |
+| `bitwise+derived_declared` | Validated receipt plus derivation rules; derivation must be confirmed with `--verify-derived` to earn the full `bitwise+derived` claim |
+
+A `_declared` suffix means the artefact is present, not that the claim is earned.
 
 ## Official artifacts and publish profiles
 

@@ -11,6 +11,15 @@ git checkout cursor/political-consensus-experiment-2c46
 git am path/to/0001-Verifiable-provenance-for-the-consensus-experiment-r.patch
 ```
 
+FarmNotary's hardware matrix
+(`.github/workflows/reproduce-consensus-matrix.yml`) does **not** apply this
+patch at runtime. It checkouts AgentFarm at a reviewed SHA
+(`c98a476eaf1f9d3100383787fa34ec352e896dff`) that already has the portable
+command and `run_config.json` work.
+
+Depend on the 0.2 line (`farm-notary>=0.2,<0.3`), not `>=0.1,<0.2`. PyPI still
+serves 0.1.0; install from this repo's `dev` branch until 0.2 is tagged.
+
 ## What the patch contains
 
 - **Reproducible reports**: `run_experiment.py` records the run command with a
@@ -25,13 +34,14 @@ git am path/to/0001-Verifiable-provenance-for-the-consensus-experiment-r.patch
   from `trials.csv` and byte-compares them (using pandas
   `float_precision="round_trip"`, since the default parser is off by one ulp).
 - **FarmNotary adapter** (`farm/provenance/`): `notarize()`, `verify()`, and
-  `reproduce()` against the current FarmNotary API; `notarize()` picks up the
-  command and config from `run_config.json` automatically. farm-notary stays
-  an optional dependency.
-- **CI machine reproduction** (`.github/workflows/reproduce-consensus.yml`):
-  on every change to the experiment, CI runs it, verifies the derived
-  artifacts, notarizes, re-runs the recorded command, and fails unless every
-  artifact is byte-identical. That job is x86-64 Linux only.
+  `reproduce()` against the FarmNotary 0.2 API (`publish_profile="consensus"`,
+  dry-run until a backend is passed). `notarize()` picks up the command and
+  config from `run_config.json` automatically. farm-notary stays an optional
+  dependency.
+- **CI machine reproduction** (`.github/workflows/reproduce-consensus.yml` on
+  the AgentFarm side): on every change to the experiment, CI runs it, verifies
+  the derived artifacts, notarizes, re-runs the recorded command, and fails
+  unless every artifact is byte-identical. That job is x86-64 Linux only.
 - **FarmNotary hardware matrix**
   (`.github/workflows/reproduce-consensus-matrix.yml` in this repo): produce
   on x86-64 Linux, reproduce on Linux x86 / Linux ARM / macOS ARM. The tool
@@ -41,5 +51,6 @@ git am path/to/0001-Verifiable-provenance-for-the-consensus-experiment-r.patch
   command recording, derivation verification (including tamper detection),
   and adapter tests that skip when farm-notary is not installed.
 
-All of it was executed against the real experiment in this session:
-8/8 artifacts reproduced bitwise with no exclusions.
+All of it was executed against the real experiment: 8/8 artifacts reproduced
+bitwise with no exclusions on the original lab machine. The matrix smoke cell
+(12×50, seed 0) is the demonstrated CI cell — see `docs/CLAIMS.md`.

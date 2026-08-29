@@ -490,7 +490,13 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     for w in caught:
         print(f"warning: {w.message}", file=sys.stderr)
     problems = []
-    problems += verify_derived_artifacts(manifest, run_dir, allow_execute=getattr(args, "verify_derived", False))
+    ran_derived = bool(getattr(args, "verify_derived", False))
+    if ran_derived:
+        problems += verify_derived_artifacts(manifest, run_dir, allow_execute=True)
+    else:
+        from farm_notary.derive import validate_derived_rules
+
+        problems += validate_derived_rules(manifest)
     problems += verify_identity_record(manifest, run_dir)
 
     print(card.render(), end="")
@@ -508,8 +514,13 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             print("FAIL", problem)
         return 1
     print("OK", manifest.content_hash())
-    if getattr(manifest, "derived_from", None):
+    if ran_derived and getattr(manifest, "derived_from", None):
         print("claim: statistics recompute exactly from recorded sources")
+    elif getattr(manifest, "derived_from", None):
+        print(
+            "note: derivation rules are recorded but were not executed "
+            "(pass --verify-derived to check; only for manifests you trust)"
+        )
     if getattr(manifest, "identity", None):
         scheme = manifest.identity.get("scheme")
         principal = manifest.identity.get("principal") or "lab key"
