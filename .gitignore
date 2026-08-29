@@ -8,3 +8,4 @@ build/
 .env
 *.jsonl
 .pytest_cache/
+docs/demo/_live/

@@ -327,6 +327,7 @@ CI runs pytest on Python 3.9–3.12.
 | [docs/ACTION.md](docs/ACTION.md) | GitHub Action inputs, outputs, phases |
 | [docs/EAS.md](docs/EAS.md) | Experimental EAS backend |
 | [docs/registry.md](docs/registry.md) | Generated public index (no scores) |
+| [docs/demo/](docs/demo/) | Live notebook: claim card, allowlist, scoped re-run |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
 | [integration/agentfarm/README.md](integration/agentfarm/README.md) | AgentFarm provenance patch |
 
