@@ -27,6 +27,10 @@ The last tagged / PyPI release is **0.1.0**. This tree is **0.2.0**.
 
 ### Added
 
+- Live demo notebook (`docs/demo/`): a tiny consensus-style experiment
+  notarized with the dry-run backend so researchers can see the claim
+  card, the allowlist, a scoped re-run, and a packaging mismatch labeled
+  not a science failure. `tests/test_demo.py` execs the notebook cells.
 - Beacon-derived seeds (issue #30): `precommit --seed-count` records a
   `seed_plan`; `derive-seeds` requires a `precommit.ots` that commits to
   the plan, then binds seeds to exactly `min_round`. The run manifest

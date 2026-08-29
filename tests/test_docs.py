@@ -15,6 +15,7 @@ CLAIMS = Path("docs/CLAIMS.md").read_text(encoding="utf-8")
 DESIGN = Path("docs/DESIGN.md").read_text(encoding="utf-8")
 ACTION = Path("docs/ACTION.md").read_text(encoding="utf-8")
 PRINCIPLES = Path("docs/PRINCIPLES.md").read_text(encoding="utf-8")
+DEMO_NOTEBOOK = Path("docs/demo/farmnotary_live_demo.ipynb").read_text(encoding="utf-8")
 SLIDES = Path("docs/slides/index.html").read_text(encoding="utf-8")
 
 
@@ -116,6 +117,21 @@ def test_principles_is_listed_and_forbids_real_things():
         "dry-run",
     ):
         assert needle in PRINCIPLES, f"PRINCIPLES.md lost a concrete forbid: {needle!r}"
+
+
+def test_live_demo_notebook_stays_inside_the_claim_card():
+    """The live demo may not outrun CLAIMS.md."""
+    assert "[docs/demo/](docs/demo/)" in README
+    assert "not claimed: scientific correctness" in DEMO_NOTEBOOK
+    assert "Missing is not failure" in DEMO_NOTEBOOK
+    assert ALLOWED_SENTENCE in DEMO_NOTEBOOK
+    assert "dry-run" in DEMO_NOTEBOOK
+    assert "not a science failure" in DEMO_NOTEBOOK.lower()
+    lower = DEMO_NOTEBOOK.lower()
+    assert "will not claim independently reproduced" in lower
+    assert "may **not** take" in lower or "may not take" in lower
+    assert "verified result" in lower
+    assert "cross-hardware" in lower
 
 
 def test_action_docs_match_action_yml_defaults():
