@@ -52,11 +52,14 @@ Its UID is derived deterministically and is the same on every chain:
 One-time per chain, register the schema, then anchor runs:
 
 ```bash
-pip install -e ".[chain]"   # adds web3
+pip install "farm-notary[chain] @ git+https://github.com/Dooders/FarmNotary.git@dev"
 
-python -m farm_notary.cli register-schema
+farm-notary register-schema
 farm-notary anchor --run-dir path/to/run --backend eas --cid <cid>
 ```
+
+`register-schema` is a one-time SchemaRegistry call per chain. The CLI
+`anchor` default is still `dry-run`; `eas` must be requested explicitly.
 
 A successful anchor writes the receipt (tx hash, attestation UID, chain id)
 back into `manifest.json` and prints an [EASScan](https://base-sepolia.easscan.org)

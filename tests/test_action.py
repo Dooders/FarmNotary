@@ -7,7 +7,9 @@ def test_action_yml_contract():
     assert "phase:" in text
     assert "run-dir:" in text
     assert "pin-remote:" in text
+    assert "profile:" in text
     assert "identity-key:" in text
+    assert "--profile" in text
     assert "default: ots" in text
     assert "default: notarize" in text
     assert "farm-notary verify" in text

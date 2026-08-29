@@ -117,6 +117,16 @@ def test_verify_derived_disallowed_by_default(tmp_path):
     assert "allow_execute" in problems[0]
 
 
+def test_cli_verify_skips_derivation_unless_flagged(tmp_path, capsys):
+    """Missing is not failure: un-run derivation rules do not fail verify."""
+    run, _, _ = _run_dir_with_derived(tmp_path)
+    assert main(["verify", "--run-dir", str(run)]) == 0
+    out = capsys.readouterr().out
+    assert "OK" in out
+    assert "statistics recompute exactly" not in out
+    assert "--verify-derived" in out
+
+
 def test_cli_verify_reports_derivation_claim(tmp_path, capsys):
     run, _, _ = _run_dir_with_derived(tmp_path)
     assert main(["verify", "--run-dir", str(run), "--verify-derived"]) == 0
