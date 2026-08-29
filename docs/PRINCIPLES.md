@@ -18,10 +18,10 @@ These are constraints, used to refuse features without relitigating them.
 An OpenTimestamps proof commits a digest to Bitcoin. It answers: these
 bytes existed by time T. It does not answer whether the model is
 specified well, whether the seed was chosen after seeing outcomes, or
-whether anyone should believe the result. `farm-notary verify`
-prints a claim card whose last row is always `not claimed: scientific
-correctness`. Exit code 0 means no attempted check failed. A manifest
-can perfectly notarize a wrong result.
+whether anyone should believe the result. `farm-notary verify` prints a
+claim card whose last row is always `not claimed: scientific correctness`.
+Exit code 0 means no attempted check failed. A manifest can perfectly
+notarize a wrong result.
 
 **Rules out:** a "verified result" badge; a paper-pack sentence that the
 finding is correct; treating `verify` exit 0 as review; any line that
