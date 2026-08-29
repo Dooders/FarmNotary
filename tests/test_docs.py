@@ -67,8 +67,8 @@ def test_claim_card_rows_match_the_tool():
 
 
 def test_principles_is_listed_and_forbids_real_things():
-    assert "[docs/PRINCIPLES.md]" in README
-    assert "PRINCIPLES.md" in DESIGN
+    assert "[docs/PRINCIPLES.md](docs/PRINCIPLES.md)" in README
+    assert "[PRINCIPLES.md](PRINCIPLES.md)" in DESIGN
     assert "not claimed: scientific correctness" in PRINCIPLES
     assert "## Non-goals" in PRINCIPLES
     assert "## How to use this document" in PRINCIPLES
