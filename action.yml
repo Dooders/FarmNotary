@@ -48,7 +48,7 @@ inputs:
     required: false
     default: ""
   backend:
-    description: Anchor backend after notarize (ots, dry-run, or eas). ots is recommended.
+    description: Anchor backend after notarize (ots or dry-run). ots is recommended.
     required: false
     default: ots
   pin-remote:

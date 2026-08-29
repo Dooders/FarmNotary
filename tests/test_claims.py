@@ -93,7 +93,7 @@ def test_unbound_or_failed_receipt_is_bitwise_declared(tmp_path: Path):
 def test_receipt_plus_derived_rules(tmp_path: Path):
     run, manifest = _run(tmp_path, derived=True)
     _write_receipt(run, manifest, ok=True, bound=True)
-    assert infer_claim_level(manifest, run) == CLAIM_BITWISE_DERIVED
+    assert infer_claim_level(manifest, run) == CLAIM_BITWISE_DERIVED_DECLARED
     _write_receipt(run, manifest, ok=False, bound=True)
     assert infer_claim_level(manifest, run) == CLAIM_BITWISE_DERIVED_DECLARED
 

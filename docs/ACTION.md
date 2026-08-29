@@ -93,7 +93,7 @@ artifacts. It does not invent a precommit after the fact.
 | `lockfile` | | Hashed into the environment fingerprint |
 | `git-sha` | current HEAD | Code identity |
 | `runner` | | Runner name recorded on the manifest |
-| `backend` | `ots` | `ots` (recommended), `dry-run`, or `eas` (experimental). Precommit accepts `ots` / `dry-run` only |
+| `backend` | `ots` | `ots` (recommended) or `dry-run`. Precommit accepts `ots` / `dry-run` only |
 | `pin-remote` | | Kubo remote pin service; implies pin |
 | `pin` | `false` | Pin to a local Kubo daemon |
 | `no-check-gateway` | `true` | Skip the public IPFS gateway check (typical in CI) |

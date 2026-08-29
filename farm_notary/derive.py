@@ -114,6 +114,26 @@ def _check_listed_files(run_dir: Path, names: Sequence[str], *, kind: str, index
     return problems
 
 
+def validate_derived_rules(manifest: Any) -> List[str]:
+    """Validate ``derived_from`` rule structure without executing commands.
+
+    Returns problems for malformed rules.  Safe to call on untrusted manifests
+    because no commands are run.
+    """
+    raw = getattr(manifest, "derived_from", None)
+    if not raw:
+        config = getattr(manifest, "config", None) or {}
+        try:
+            raw = extract_derived_from(config)
+        except DeriveError as exc:
+            return [str(exc)]
+    try:
+        normalize_rules(raw)
+    except DeriveError as exc:
+        return [str(exc)]
+    return []
+
+
 def verify_derived(
     manifest: Any,
     run_dir: Path,

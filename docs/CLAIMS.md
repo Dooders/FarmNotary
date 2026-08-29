@@ -66,7 +66,7 @@ ranks:
 | `bytes` | Tamper-evident artifact hashes only |
 | `derived_declared` | Derivation rules are on the record but have not been executed |
 | `bitwise` / `bitwise_declared` | A `reproduction.json` exists; `_declared` if it is unbound or not `ok` |
-| `bitwise+derived` / `bitwise+derived_declared` | Receipt plus derivation rules; `_declared` if the receipt is not validated |
+| `bitwise+derived_declared` | Validated receipt plus derivation rules; derivation must be confirmed with `--verify-derived` to earn the full `bitwise+derived` claim |
 
 A `_declared` suffix means the artefact is present, not that the claim is earned.
 

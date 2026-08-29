@@ -493,6 +493,10 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     ran_derived = bool(getattr(args, "verify_derived", False))
     if ran_derived:
         problems += verify_derived_artifacts(manifest, run_dir, allow_execute=True)
+    else:
+        from farm_notary.derive import validate_derived_rules
+
+        problems += validate_derived_rules(manifest)
     problems += verify_identity_record(manifest, run_dir)
 
     print(card.render(), end="")
