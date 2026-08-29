@@ -77,7 +77,7 @@ def _environment_recorded(manifest: Any) -> bool:
     env = getattr(manifest, "environment", None) or {}
     if not isinstance(env, dict):
         return False
-    return all(env.get(key) for key in FINGERPRINT_KEYS)
+    return all(_nonempty(env.get(key)) for key in FINGERPRINT_KEYS)
 
 
 def _result(
