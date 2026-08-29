@@ -6,9 +6,16 @@ check. ``claim_level`` in ``farm_notary.claims`` is a different vocabulary
 (paper-pack / index artifact labels). Do not mix them.
 
 L2 requires a beacon-derived seed after the plan is anchored. L3
-(independent identity) is reserved. A self-run ``reproduction.json``
-never yields L3. L1 means the re-execution inputs are on the record,
-not that ``verify`` ran the command.
+(independent identity) requires a Sigstore keyless signature on the
+reproduction receipt. A self-run ``reproduction.json`` without a signature
+never yields L3. L1 means the re-execution inputs are on the record, not
+that ``verify`` ran the command.
+
+Note on credibility
+-------------------
+Receipt count is **not** credibility.  Ten throwaway Gmail reproductions are
+not equivalent to one lab CI reproduction.  Inspect the ``issuer`` field to
+distinguish workload-identity CI tokens (strong) from personal OIDC logins.
 """
 
 from __future__ import annotations
@@ -32,9 +39,13 @@ LADDER_MEANINGS = {
 }
 
 L2_NEXT_MEANING = LADDER_MEANINGS["L2"]
-L3_NEXT_MEANING = "independent identity has not signed a receipt (not implemented)"
+L3_NEXT_MEANING = (
+    "add a Sigstore keyless signature to the reproduction receipt "
+    "(farm-notary reproduce --sign)"
+)
 
 L2_GAP_SEED_PLAN = "missing: seed_plan"
+L3_GAP_SIGNATURE = "missing: Sigstore-signed reproduction receipt"
 
 BITCOIN_HEIGHT_PREFIX = "Bitcoin height"
 FINGERPRINT_KEYS: Tuple[str, ...] = ("os", "arch", "python")
@@ -52,10 +63,11 @@ class LadderResult:
 
     def lines(self) -> List[str]:
         header = [f"level: {self.level} — {self.meaning}"]
-        nxt = f"next:  {self.next_level} — {self.next_meaning}"
-        if self.next_gaps:
-            nxt += f" ({', '.join(self.next_gaps)})"
-        header.append(nxt)
+        if self.next_level:
+            nxt = f"next:  {self.next_level} — {self.next_meaning}"
+            if self.next_gaps:
+                nxt += f" ({', '.join(self.next_gaps)})"
+            header.append(nxt)
         return header
 
 
@@ -89,6 +101,8 @@ def _result(
         next_meaning = L2_NEXT_MEANING
     elif next_level == "L3":
         next_meaning = L3_NEXT_MEANING
+    elif not next_level:
+        next_meaning = ""
     else:
         next_meaning = LADDER_MEANINGS[next_level]
     return LadderResult(
@@ -104,6 +118,8 @@ def evaluate_ladder(
     card: Any,
     manifest: Any,
     beacon_gaps: Optional[Sequence[str]] = None,
+    *,
+    receipt_sigstore: bool = False,
 ) -> LadderResult:
     """Return the stacked level earned by ``card`` against ``manifest``.
 
@@ -115,7 +131,9 @@ def evaluate_ladder(
     L2 requires a passing beacon binding (seed plan, bound precommit proof,
     plan not dated after the round, exact ``min_round``, recomputed seed,
     HTTP or fixture randomness match).
-    L3 is reserved and never returned as ``level``.
+    L3 requires a Sigstore keyless signature on the reproduction receipt
+    (``receipt_sigstore=True``).  Pass it from ``evaluate_claims`` which
+    verifies the bundle with cosign.
     """
     if getattr(card, "tamper_evident", None) != "pass":
         return _result(LADDER_NONE, "L0", ["tamper-evident failed"])
@@ -134,4 +152,6 @@ def evaluate_ladder(
     gaps = list(beacon_gaps) if beacon_gaps is not None else [L2_GAP_SEED_PLAN]
     if gaps:
         return _result("L1", "L2", gaps)
-    return _result("L2", "L3")
+    if not receipt_sigstore:
+        return _result("L2", "L3", [L3_GAP_SIGNATURE])
+    return _result("L3", "", [])

@@ -89,7 +89,11 @@ def verify_receipt(manifest: Manifest, run_dir: Path) -> List[str]:
 
     Validates that the receipt refers to this manifest's content hash and,
     when a reproduction.ots proof exists, that the proof commits to the
-    receipt's own hash.
+    receipt's own hash.  When a ``"sigstore"`` bundle is present and
+    ``cosign`` is on PATH, the bundle is verified against the receipt bytes;
+    a failed verification is reported as a problem.  When ``cosign`` is not
+    available the bundle is noted but not treated as a hard failure so that
+    unsigned-receipt verification keeps working without cosign installed.
     """
     from farm_notary.manifest import RECEIPT_NAME
     from farm_notary.reproduce import RECEIPT_PROOF_NAME, load_receipt, receipt_hash
@@ -120,6 +124,14 @@ def verify_receipt(manifest: Manifest, run_dir: Path) -> List[str]:
             f"receipt proof: {p}"
             for p in verify_proof(proof_path.read_bytes(), receipt_hash(receipt))
         ]
+    # Check the Sigstore bundle when cosign is available.
+    sigstore_bundle = receipt.get("sigstore")
+    if sigstore_bundle:
+        from farm_notary.sigstore import cosign_available, verify_sigstore_bundle
+
+        if cosign_available():
+            sig_probs, _ = verify_sigstore_bundle(sigstore_bundle, receipt)
+            problems += [f"sigstore: {p}" for p in sig_probs]
     return problems
 
 
@@ -416,10 +428,40 @@ def evaluate_claims(
     tamper_evident = "pass" if not tamper_problems else "fail"
     existed_by = _existed_by_status(manifest, run_dir, anchor_problems)
     bitwise_reproducible = _bitwise_status(manifest, run_dir, receipt_problems)
+
+    # Resolve whether the receipt has a verified Sigstore signature so
+    # evaluate_ladder can award L3.  verify_receipt already ran cosign when
+    # available, so we read its result from receipt_problems rather than
+    # calling verify_sigstore_bundle a second time.
+    receipt_sigstore_verified = False
+    if (run_dir / RECEIPT_NAME).is_file():
+        try:
+            _receipt = load_receipt(run_dir)
+            _bundle = _receipt.get("sigstore")
+            if _bundle:
+                from farm_notary.sigstore import cosign_available, extract_bundle_identity
+
+                _sigstore_probs = [p for p in receipt_problems if p.startswith("sigstore:")]
+                if cosign_available() and not _sigstore_probs:
+                    receipt_sigstore_verified = True
+                    _identity = extract_bundle_identity(_bundle)
+                    if _identity.get("subject"):
+                        notes.append(f"sigstore identity: {_identity['subject']}")
+                    if _identity.get("issuer"):
+                        notes.append(f"sigstore issuer: {_identity['issuer']}")
+                elif not cosign_available():
+                    notes.append(
+                        "sigstore bundle present but cosign not on PATH; "
+                        "install cosign to verify"
+                    )
+        except (ValueError, OSError, TypeError):
+            pass
+
     ladder = evaluate_ladder(
         SimpleNamespace(tamper_evident=tamper_evident, existed_by=existed_by),
         manifest,
         beacon_gaps=beacon_check.gaps,
+        receipt_sigstore=receipt_sigstore_verified,
     )
     return ClaimCard(
         tamper_evident=tamper_evident,

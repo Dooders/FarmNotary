@@ -244,6 +244,23 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Anchor the reproduction receipt via OpenTimestamps",
     )
     p_rep.add_argument("--calendar", action="append", help="Calendar URL; repeatable")
+    p_rep.add_argument(
+        "--sign",
+        action="store_true",
+        help=(
+            "Sign the reproduction receipt with Sigstore keyless (cosign sign-blob). "
+            "Bundles the Rekor inclusion proof and cert chain in the receipt so "
+            "offline verification is possible without a live Rekor round-trip."
+        ),
+    )
+    p_rep.add_argument(
+        "--identity-token",
+        dest="identity_token",
+        help=(
+            "OIDC identity token for cosign (e.g. a GitHub Actions token). "
+            "Omit for interactive browser-based OIDC."
+        ),
+    )
 
     sub.add_parser(
         "register-schema",
@@ -847,6 +864,21 @@ def _cmd_reproduce(args: argparse.Namespace) -> int:
         proof_path = run_dir / RECEIPT_PROOF_NAME
         proof_path.write_bytes(proof)
         print(f"receipt anchored via {len(accepted)} calendar(s); proof at {proof_path}")
+
+    if args.sign:
+        from farm_notary.sigstore import SigstoreError, sign_receipt
+
+        try:
+            bundle = sign_receipt(
+                receipt,
+                identity_token=getattr(args, "identity_token", None),
+            )
+            receipt["sigstore"] = bundle
+            write_receipt(receipt, run_dir)
+            print("receipt signed with Sigstore keyless; bundle embedded in receipt")
+        except SigstoreError as exc:
+            print(f"sigstore signing failed: {exc}", file=sys.stderr)
+            return 2
 
     return 0 if result.ok else 1
 
