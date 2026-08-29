@@ -87,6 +87,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to a precommit.json produced by `farm-notary precommit`; "
         "binds the manifest to the pre-run specification",
     )
+    p_man.add_argument(
+        "--seed-index",
+        type=int,
+        help="Committed seed index to bind from the precommit seed_plan",
+    )
+    p_man.add_argument(
+        "--seeds",
+        help="Path to seeds.json from `farm-notary derive-seeds` "
+        "(default: next to the precommit)",
+    )
+    _add_beacon_args(p_man)
 
     p_pre = sub.add_parser(
         "precommit",
@@ -120,6 +131,23 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Allow a dirty git tree (the recorded sha will not identify the code)",
     )
+    p_pre.add_argument(
+        "--seed-count",
+        type=int,
+        help="Commit this many beacon-derived seeds (writes seed_plan)",
+    )
+    p_pre.add_argument(
+        "--inclusion",
+        help="Declared rule for which committed seeds are published "
+        "(required with --seed-count)",
+    )
+    p_pre.add_argument(
+        "--delay-rounds",
+        type=int,
+        default=1,
+        help="min_round = latest + this (default: 1). Derive uses exactly min_round.",
+    )
+    _add_beacon_args(p_pre)
 
     p_anc = sub.add_parser("anchor", help="Pin (optional) and anchor an existing manifest")
     p_anc.add_argument("--run-dir", required=True)
@@ -310,8 +338,91 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="When verifying a campaign, fail if a child run directory is not present",
     )
+    _add_beacon_args(p_ver)
+
+    p_der = sub.add_parser(
+        "derive-seeds",
+        help="Derive committed seeds from the precommit seed_plan's min_round",
+    )
+    p_der.add_argument(
+        "--precommit",
+        required=True,
+        help="Path to precommit.json (or its directory)",
+    )
+    p_der.add_argument(
+        "--out",
+        help="Where to write seeds.json (default: next to the precommit)",
+    )
+    p_der.add_argument(
+        "--wait",
+        action="store_true",
+        help="Poll the beacon until min_round exists",
+    )
+    _add_beacon_args(p_der)
 
     return parser
+
+
+def _add_beacon_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--beacon-url",
+        help="drand HTTP base URL (implies a live fetch; default https://api.drand.sh)",
+    )
+    parser.add_argument(
+        "--beacon-fixture",
+        help="Fixed-beacon JSON for tests / offline use (or FARM_NOTARY_BEACON_FIXTURE)",
+    )
+    parser.add_argument(
+        "--live-beacon",
+        action="store_true",
+        help="Fetch the recorded drand chain over HTTP (TLS; signatures not checked)",
+    )
+
+
+def _beacon_client_from_args(
+    args: argparse.Namespace,
+    *,
+    chain_hash: Optional[str] = None,
+    require: bool = False,
+):
+    from farm_notary.beacon import BeaconError, resolve_beacon_client
+
+    fixture = getattr(args, "beacon_fixture", None)
+    url = getattr(args, "beacon_url", None)
+    live = bool(getattr(args, "live_beacon", False) or url or (require and not fixture))
+    try:
+        client = resolve_beacon_client(
+            url=url,
+            fixture=Path(fixture) if fixture else None,
+            chain_hash=chain_hash,
+            live=live,
+        )
+    except (BeaconError, OSError, ValueError) as exc:
+        raise SystemExit(f"error: {exc}") from exc
+    if require and client is None:
+        raise SystemExit(
+            "error: pass --beacon-fixture or --live-beacon / --beacon-url"
+        )
+    return client
+
+
+def _seed_plan_chain_hash(precommit_path: Optional[str]) -> Optional[str]:
+    if not precommit_path:
+        return None
+    from farm_notary.precommit import PRECOMMIT_NAME, load_precommit
+
+    raw = Path(precommit_path)
+    path = raw / PRECOMMIT_NAME if raw.is_dir() else raw
+    if not path.is_file():
+        return None
+    try:
+        pc = load_precommit(path)
+    except (ValueError, OSError):
+        return None
+    plan = pc.get("seed_plan")
+    if isinstance(plan, dict) and plan.get("chain_hash"):
+        return str(plan["chain_hash"])
+    return None
 
 
 def _cmd_manifest(args: argparse.Namespace) -> int:
@@ -326,6 +437,14 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         try:
+            from farm_notary.beacon import BeaconError as _BeaconError
+            seed_index = getattr(args, "seed_index", None)
+            chain_hash = _seed_plan_chain_hash(getattr(args, "precommit", None))
+            beacon_client = (
+                _beacon_client_from_args(args, chain_hash=chain_hash)
+                if seed_index is not None or getattr(args, "beacon_fixture", None)
+                else None
+            )
             manifest = build_manifest(
                 run_dir,
                 publish_patterns=args.publish or [],
@@ -338,8 +457,11 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
                 config=config,
                 official_record=_load_json_arg(args.official_record),
                 precommit_path=Path(args.precommit) if args.precommit else None,
+                seed_index=seed_index,
+                beacon_client=beacon_client,
+                seeds_path=Path(args.seeds) if getattr(args, "seeds", None) else None,
             )
-        except ValueError as exc:
+        except (ValueError, _BeaconError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
     for w in caught:
@@ -478,6 +600,19 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     else:
         print("error: pass --run-dir, --manifest, or --campaign", file=sys.stderr)
         return 2
+    from farm_notary.precommit import PRECOMMIT_NAME, load_precommit
+
+    pc = None
+    pc_path = run_dir / PRECOMMIT_NAME
+    chain_hash = None
+    if pc_path.is_file():
+        try:
+            pc = load_precommit(pc_path)
+            plan = pc.get("seed_plan")
+            if isinstance(plan, dict) and plan.get("chain_hash"):
+                chain_hash = str(plan["chain_hash"])
+        except (ValueError, OSError):
+            pc = None
     try:
         manifest = load_manifest(manifest_path, validate=False)
     except (ValueError, OSError) as exc:
@@ -486,7 +621,12 @@ def _cmd_verify(args: argparse.Namespace) -> int:
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        card = evaluate_claims(manifest, run_dir)
+        card = evaluate_claims(
+            manifest,
+            run_dir,
+            beacon_client=_beacon_client_from_args(args, chain_hash=chain_hash),
+            precommit=pc,
+        )
     for w in caught:
         print(f"warning: {w.message}", file=sys.stderr)
     problems = []
@@ -546,6 +686,13 @@ def _cmd_precommit(args: argparse.Namespace) -> int:
 
     _, detected_dirty = detect_git_status()
     try:
+        seed_count = getattr(args, "seed_count", None)
+        if seed_count is not None and not getattr(args, "inclusion", None):
+            print("error: --inclusion is required with --seed-count", file=sys.stderr)
+            return 2
+        beacon_client = None
+        if seed_count is not None:
+            beacon_client = _beacon_client_from_args(args, require=True)
         pc = build_precommit(
             config=_load_json_arg(args.config),
             command=args.command,
@@ -553,8 +700,12 @@ def _cmd_precommit(args: argparse.Namespace) -> int:
             git_dirty=detected_dirty,
             lockfile=Path(args.lockfile) if args.lockfile else None,
             allow_dirty=args.allow_dirty,
+            seed_count=seed_count,
+            inclusion=getattr(args, "inclusion", None),
+            delay_rounds=getattr(args, "delay_rounds", 1),
+            beacon_client=beacon_client,
         )
-    except DirtyTreeError as exc:
+    except (DirtyTreeError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     if pc.get("git_dirty"):
@@ -566,6 +717,11 @@ def _cmd_precommit(args: argparse.Namespace) -> int:
     print(f"precommit written to {dest}")
     pc_hash = precommit_hash(pc)
     print("precommit_hash", pc_hash)
+    if pc.get("seed_plan"):
+        plan = pc["seed_plan"]
+        print("seed_plan count", plan.get("count"))
+        print("seed_plan min_round", plan.get("min_round"))
+        print("seed_plan inclusion", plan.get("inclusion"))
 
     if args.backend == "ots":
         from farm_notary.ots import stamp_digest
@@ -578,6 +734,59 @@ def _cmd_precommit(args: argparse.Namespace) -> int:
         print(f"precommit anchored via {len(accepted)} calendar(s); proof at {proof_dest}")
     else:
         print("backend dry-run: precommit not anchored (use --backend ots to anchor)")
+    return 0
+
+
+def _cmd_derive_seeds(args: argparse.Namespace) -> int:
+    from farm_notary.beacon import (
+        SEEDS_NAME,
+        BeaconError,
+        derive_seeds,
+        fetch_plan_round,
+        seeds_record,
+        write_seeds,
+    )
+    from farm_notary.precommit import (
+        PRECOMMIT_NAME,
+        load_precommit,
+        require_precommit_proof,
+    )
+
+    raw = Path(args.precommit)
+    pc_path = raw / PRECOMMIT_NAME if raw.is_dir() else raw
+    try:
+        pc = load_precommit(pc_path)
+    except (ValueError, OSError) as exc:
+        print(f"error: could not load precommit: {exc}", file=sys.stderr)
+        return 2
+    plan = pc.get("seed_plan")
+    if not plan:
+        print("error: precommit has no seed_plan (pass --seed-count)", file=sys.stderr)
+        return 2
+    try:
+        require_precommit_proof(pc, pc_path)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    client = _beacon_client_from_args(
+        args, chain_hash=str(plan.get("chain_hash") or "") or None, require=True
+    )
+    try:
+        fetched = fetch_plan_round(plan, client, wait=bool(args.wait))
+        seeds = derive_seeds(plan, pc.get("config"), fetched.randomness, round=fetched.round)
+    except BeaconError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    dest = Path(args.out) if args.out else pc_path.parent / SEEDS_NAME
+    if dest.is_dir() or dest.suffix == "":
+        dest.mkdir(parents=True, exist_ok=True)
+        dest = dest / SEEDS_NAME
+    write_seeds(seeds_record(plan, fetched, seeds), dest)
+    print(dest)
+    print("round", fetched.round)
+    print("count", len(seeds))
+    for i, seed in enumerate(seeds):
+        print(f"seed {i} {seed}")
     return 0
 
 
@@ -690,6 +899,11 @@ def _cmd_verify_campaign(args: argparse.Namespace) -> int:
         return 1
     print("OK", campaign.content_hash())
     print(f"campaign: {len(campaign.runs)} child run(s)")
+    from farm_notary.campaign import campaign_seed_coverage_note
+
+    coverage = campaign_seed_coverage_note(campaign)
+    if coverage:
+        print(coverage)
     if campaign.config_hash:
         print("config_hash", campaign.config_hash)
     if campaign.identity:
@@ -866,6 +1080,7 @@ def main(argv: Optional[list] = None) -> int:
         "verify": _cmd_verify,
         "upgrade": _cmd_upgrade,
         "reproduce": _cmd_reproduce,
+        "derive-seeds": _cmd_derive_seeds,
         "precommit": _cmd_precommit,
         "register-schema": _cmd_register_schema,
         "campaign": _cmd_campaign,

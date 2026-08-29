@@ -13,37 +13,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List, Mapping, Optional, Sequence
 
+from farm_notary.beacon import subset_note
 from farm_notary.manifest import (
     MANIFEST_NAME,
     Manifest,
+    SEED_KEYS,
     capture_environment,
+    config_hash_excluding_seed,
+    extract_seed,
     hash_json,
     load_manifest,
 )
+from farm_notary.precommit import PRECOMMIT_NAME, load_precommit, precommit_hash as hash_precommit
 from farm_notary.schema import CAMPAIGN_VERSION, TOOL_VERSION
 
 CAMPAIGN_NAME = "campaign.json"
-
-SEED_KEYS = ("seed", "rng_seed", "random_seed")
-
-
-def extract_seed(config: Optional[Mapping[str, Any]]) -> Optional[Any]:
-    if not config:
-        return None
-    for key in SEED_KEYS:
-        if key in config:
-            return config[key]
-    return None
-
-
-def config_hash_excluding_seed(config: Optional[Mapping[str, Any]]) -> str:
-    """Hash of the experiment config with per-run seed keys removed.
-
-    A sweep of seed 0…N should share this hash even though each child
-    records a different seed.
-    """
-    body = {k: v for k, v in dict(config or {}).items() if k not in SEED_KEYS}
-    return hash_json(body)
 
 
 @dataclass
@@ -62,6 +46,7 @@ class Campaign:
     publish_patterns: list = field(default_factory=list)
     unmatched_count: int = 0
     precommit_hash: Optional[str] = None
+    seed_plan: Optional[dict] = None
     cid: Optional[str] = None
     cid_reachable: Optional[bool] = None
     cid_reachable_checked_utc: Optional[str] = None
@@ -77,6 +62,7 @@ class Campaign:
             "command",
             "config_hash",
             "precommit_hash",
+            "seed_plan",
             "cid",
             "cid_reachable",
             "cid_reachable_checked_utc",
@@ -137,6 +123,9 @@ def child_entry(manifest: Manifest, run_dir: Path, *, campaign_dir: Optional[Pat
         entry["cid"] = manifest.cid
     if manifest.git_sha:
         entry["git_sha"] = manifest.git_sha
+    beacon = getattr(manifest, "beacon", None) or {}
+    if isinstance(beacon, Mapping) and beacon.get("seed_index") is not None:
+        entry["seed_index"] = int(beacon["seed_index"])
     rel = _relative_child_path(run_dir, campaign_dir)
     if rel:
         entry["path"] = rel
@@ -223,6 +212,8 @@ def build_campaign(
     if environment is None:
         environment = capture_environment(lockfile)
 
+    seed_plan = _shared_seed_plan(run_dirs, precommit_hash)
+
     campaign = Campaign(
         farm_notary_version=TOOL_VERSION,
         created_utc=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -237,6 +228,7 @@ def build_campaign(
         publish_patterns=publish_patterns,
         unmatched_count=unmatched_total,
         precommit_hash=precommit_hash,
+        seed_plan=seed_plan,
     )
     campaign.validate()
     return campaign
@@ -280,6 +272,27 @@ def verify_campaign(
 
     campaign_dir = Path(campaign_dir)
     parent_hash = campaign.config_hash
+
+    # Cross-check campaign.seed_plan against the precommit it claims to commit.
+    canonical_plan: Optional[dict] = None
+    if campaign.precommit_hash and isinstance(campaign.seed_plan, Mapping):
+        run_dirs = [
+            Path(r["path"])
+            for r in campaign.runs
+            if isinstance(r, Mapping) and r.get("path")
+        ]
+        canonical_plan = _shared_seed_plan(
+            [campaign_dir / p for p in run_dirs], campaign.precommit_hash
+        )
+        if canonical_plan is not None:
+            campaign_count = (campaign.seed_plan or {}).get("count")
+            committed_count = canonical_plan.get("count")
+            if str(campaign_count) != str(committed_count):
+                problems.append(
+                    f"campaign seed_plan.count {campaign_count!r} does not match "
+                    f"precommit seed_plan.count {committed_count!r}"
+                )
+
     for i, run in enumerate(campaign.runs):
         child_hash = run.get("config_hash")
         if parent_hash and child_hash and child_hash != parent_hash:
@@ -314,6 +327,24 @@ def verify_campaign(
             problems.append(
                 f"runs[{i}] cid mismatch: campaign records {run['cid']}, child is {manifest.cid}"
             )
+
+        # Verify that the campaign-recorded seed_index matches the child manifest's beacon record.
+        campaign_seed_index = run.get("seed_index")
+        if campaign_seed_index is not None:
+            child_beacon = getattr(manifest, "beacon", None) or {}
+            child_seed_index = child_beacon.get("seed_index") if isinstance(child_beacon, Mapping) else None
+            if child_seed_index is not None:
+                try:
+                    if int(campaign_seed_index) != int(child_seed_index):
+                        problems.append(
+                            f"runs[{i}] seed_index {campaign_seed_index!r} does not match "
+                            f"child manifest beacon seed_index {child_seed_index!r}"
+                        )
+                except (TypeError, ValueError):
+                    problems.append(
+                        f"runs[{i}] seed_index {campaign_seed_index!r} is not a valid integer"
+                    )
+
         # Rehash every artifact in the child run directory so that tampering
         # with artifacts (without rewriting the child manifest) is caught.
         from farm_notary.verify import verify_run_dir
@@ -322,6 +353,49 @@ def verify_campaign(
         for p in artifact_problems:
             problems.append(f"runs[{i}] {p}")
     return problems
+
+
+def _shared_seed_plan(
+    run_dirs: Sequence[Path], precommit_hash: Optional[str]
+) -> Optional[dict]:
+    """Copy seed_plan from a child precommit when children share that hash."""
+    if not precommit_hash:
+        return None
+
+    for raw in run_dirs:
+        pc_path = Path(raw) / PRECOMMIT_NAME
+        if not pc_path.is_file():
+            continue
+        try:
+            pc = load_precommit(pc_path)
+        except (ValueError, OSError):
+            continue
+        if hash_precommit(pc) != precommit_hash:
+            continue
+        plan = pc.get("seed_plan")
+        if isinstance(plan, Mapping):
+            return dict(plan)
+    return None
+
+
+def campaign_seed_coverage_note(campaign: Campaign) -> Optional[str]:
+    """Reader note: published indices vs the committed seed_plan count."""
+    plan = campaign.seed_plan
+    if not isinstance(plan, Mapping):
+        return None
+    try:
+        count = int(plan["count"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    published = [
+        int(run["seed_index"])
+        for run in campaign.runs
+        if isinstance(run, Mapping) and run.get("seed_index") is not None
+    ]
+    if not published:
+        return None
+    return subset_note(count, published)
+
 
 
 def _resolve_child_dir(run: Mapping[str, Any], campaign_dir: Path) -> Optional[Path]:

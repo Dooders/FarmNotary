@@ -126,6 +126,9 @@ def notarize_run(
     lockfile: Optional[Path] = None,
     official_record: Optional[Mapping[str, Any]] = None,
     precommit_path: Optional[Path] = None,
+    seed_index: Optional[int] = None,
+    beacon_client: Optional[Any] = None,
+    seeds_path: Optional[Path] = None,
     backend: Optional[AnchorBackend] = None,
     pin: bool = False,
     pin_remote: Optional[str] = None,
@@ -165,6 +168,9 @@ def notarize_run(
         lockfile=lockfile,
         official_record=official_record,
         precommit_path=precommit_path,
+        seed_index=seed_index,
+        beacon_client=beacon_client,
+        seeds_path=seeds_path,
     )
     require_clean_identity(manifest.git_dirty, allow_dirty=allow_dirty)
     write_manifest(manifest, run_dir)

@@ -24,8 +24,8 @@ next:  L0 — these bytes existed by time T; Bitcoin headers not verified by thi
 ## Reader ladder (L0–L3)
 
 These names are 1:1 with `farm_notary.ladder`. Unearned names are
-unprintable: do not write `FarmNotary L2` until a beacon binding exists, and
-do not write independently reproduced for a self-run unsigned receipt.
+unprintable: do not write `FarmNotary L2` until the beacon binding checks
+pass, and do not write independently reproduced for a self-run unsigned receipt.
 Pending OTS (any calendar) is not L0. `bytes` / `bitwise` below are index
 labels, not ladder levels.
 
@@ -34,7 +34,7 @@ labels, not ladder levels.
 | none | No earned ladder level | Tamper-evident is not `pass`, or there is no Bitcoin attestation | `farm-notary verify` |
 | L0 | These bytes existed by time T | Tamper-evident `pass` **and** `existed by time T` is `Bitcoin height N`. Pending, dry-run, and EAS do not earn L0. FarmNotary checks that the proof commits to the content hash and contains a Bitcoin-height attestation; it does **not** check Bitcoin headers. | `farm-notary upgrade`, then `ots verify` for header verification |
 | L1 | Re-execution specified (command was not run) | L0 **and** a non-empty `command` **and** `git_sha` **and** environment fingerprint (`os`, `arch`, `python`). Precommit stays on the card, not this rung. | `farm-notary manifest --command ... --lockfile ...` |
-| L2 | Seed not grindable after the plan | Reserved. Requires a beacon-derived seed after the plan is anchored. | *(not implemented)* |
+| L2 | Seed not grindable after the plan | L1 **and** a bound precommit `seed_plan` **and** a `precommit.ots` that commits to that plan **and** the plan's `created_utc` is not after the round's scheduled time **and** the run's seed equals `sha256-v1` at the recorded index for **exactly** `min_round` **and** recorded randomness matches a live or fixture beacon fetch. Publishing a subset of the committed set is allowed; missing indices are listed. Live fetch is TLS to the configured drand HTTP API; threshold signatures are not checked. L2 is not scientific correctness. | `farm-notary precommit --seed-count N --inclusion … --backend ots`, `farm-notary derive-seeds`, `farm-notary verify --live-beacon` |
 | L3 | Independent identity reproduced it | Reserved. Requires a signed third-party receipt, not `reproduction.json` the author wrote. | *(not implemented)* |
 
 ## Checks that earn (or do not earn) a level

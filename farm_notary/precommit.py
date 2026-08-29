@@ -29,6 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
+from farm_notary.beacon import BeaconClient, build_seed_plan, config_has_seed
 from farm_notary.manifest import (
     hash_file,
     hash_json,
@@ -52,6 +53,11 @@ def build_precommit(
     git_dirty: Optional[bool] = None,
     lockfile: Optional[Path] = None,
     allow_dirty: bool = False,
+    seed_count: Optional[int] = None,
+    inclusion: Optional[str] = None,
+    delay_rounds: int = 1,
+    beacon_client: Optional[BeaconClient] = None,
+    seed_plan: Optional[Mapping[str, Any]] = None,
 ) -> dict:
     """Build a pre-run manifest dict (no artifacts).
 
@@ -74,8 +80,16 @@ def build_precommit(
     allow_dirty:
         If false (the default), raise ``DirtyTreeError`` when the working tree
         is dirty so a precommit cannot claim a code identity it does not have.
+    seed_count / inclusion / delay_rounds / beacon_client:
+        When *seed_count* is set, record a ``seed_plan`` that binds later
+        run seeds to a beacon round after this plan. The config must not
+        contain a concrete seed.
+    seed_plan:
+        An already-built plan (tests). Mutually exclusive with building
+        one from *seed_count*.
     """
     git_sha, git_dirty = resolve_git_identity(git_sha, git_dirty)
+    cfg = dict(config or {})
 
     pc: dict = {
         "schema": PRECOMMIT_VERSION,
@@ -83,11 +97,34 @@ def build_precommit(
         "git_sha": git_sha,
         "git_dirty": git_dirty,
         "command": command,
-        "config": dict(config or {}),
+        "config": cfg,
     }
     if lockfile is not None:
         pc["lockfile"] = Path(lockfile).name
         pc["lockfile_sha256"] = hash_file(Path(lockfile))
+
+    if seed_plan is not None and seed_count is not None:
+        raise ValueError("pass seed_plan or seed_count, not both")
+    if seed_count is not None:
+        if config_has_seed(cfg):
+            raise ValueError(
+                "precommit config must not contain a seed when --seed-count is set; "
+                "derive seeds after the plan is stamped"
+            )
+        if beacon_client is None:
+            raise ValueError("beacon_client is required when seed_count is set")
+        pc["seed_plan"] = build_seed_plan(
+            count=seed_count,
+            inclusion=inclusion or "",
+            client=beacon_client,
+            delay_rounds=delay_rounds,
+        )
+    elif seed_plan is not None:
+        if config_has_seed(cfg):
+            raise ValueError(
+                "precommit config must not contain a seed when seed_plan is set"
+            )
+        pc["seed_plan"] = dict(seed_plan)
     require_clean_identity(pc.get("git_dirty"), allow_dirty=allow_dirty)
     return pc
 
@@ -116,3 +153,18 @@ def load_precommit(path: Path) -> dict:
             f"expected {PRECOMMIT_VERSION!r}"
         )
     return data
+
+
+def require_precommit_proof(pc: dict, pc_path: Path) -> None:
+    """Refuse derive-seeds until the plan has a proof that commits to it."""
+    from farm_notary.ots import verify_proof
+
+    proof_path = Path(pc_path).parent / PRECOMMIT_PROOF_NAME
+    if not proof_path.is_file():
+        raise ValueError(
+            f"{PRECOMMIT_PROOF_NAME} is required before derive-seeds; "
+            "stamp the plan with `precommit --backend ots`"
+        )
+    problems = verify_proof(proof_path.read_bytes(), precommit_hash(pc))
+    if problems:
+        raise ValueError("; ".join(problems))

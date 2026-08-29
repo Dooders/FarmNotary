@@ -18,12 +18,38 @@ RECEIPT_NAME = "reproduction.json"
 
 # Notary metadata written next to the artifacts, never treated as artifacts.
 NOTARY_FILE_NAMES = frozenset(
-    {MANIFEST_NAME, RECEIPT_NAME, "precommit.json", "campaign.json", "appendix.md"}
+    {
+        MANIFEST_NAME,
+        RECEIPT_NAME,
+        "precommit.json",
+        "campaign.json",
+        "appendix.md",
+        "seeds.json",
+    }
 )
 NOTARY_FILE_SUFFIXES = (".ots",)
 
 # Seed keys stripped when hashing a sweep's shared config.
 SEED_KEYS = ("seed", "rng_seed", "random_seed")
+
+
+def extract_seed(config: Optional[Mapping[str, Any]]) -> Optional[Any]:
+    if not config:
+        return None
+    for key in SEED_KEYS:
+        if key in config:
+            return config[key]
+    return None
+
+
+def config_hash_excluding_seed(config: Optional[Mapping[str, Any]]) -> str:
+    """Hash of the experiment config with per-run seed keys removed.
+
+    A sweep of seed 0…N should share this hash even though each child
+    records a different seed.
+    """
+    body = {k: v for k, v in dict(config or {}).items() if k not in SEED_KEYS}
+    return hash_json(body)
 
 # Stamp fields that may be added after content_hash is computed.
 _STAMP_KEYS = (
@@ -247,6 +273,8 @@ class Manifest:
     # so older manifests keep a stable content hash.
     derived_from: list = field(default_factory=list)
     precommit_hash: Optional[str] = None
+    # Beacon-derived seed binding (content-hashed; omitted when unused).
+    beacon: Optional[dict] = None
     cid: Optional[str] = None
     cid_reachable: Optional[bool] = None
     cid_reachable_checked_utc: Optional[str] = None
@@ -266,6 +294,7 @@ class Manifest:
         _OMIT_IF_NONE = {
             "farm_notary_version",
             "precommit_hash",
+            "beacon",
             "publish_profile",
             "cid",
             "cid_reachable",
@@ -335,6 +364,10 @@ def build_manifest(
     official_record: Optional[Mapping[str, Any]] = None,
     precommit_path: Optional[Path] = None,
     derived_from: Optional[Sequence[Mapping[str, Any]]] = None,
+    beacon: Optional[Mapping[str, Any]] = None,
+    seed_index: Optional[int] = None,
+    beacon_client: Optional[Any] = None,
+    seeds_path: Optional[Path] = None,
 ) -> Manifest:
     """Build a :class:`Manifest` for *run_dir*.
 
@@ -426,6 +459,7 @@ def build_manifest(
         unmatched_count=unmatched,
         official_record=dict(official_record or {}),
         derived_from=rules,
+        beacon=dict(beacon) if beacon is not None else None,
     )
     if precommit_path is not None:
         import shutil
@@ -450,6 +484,37 @@ def build_manifest(
             src_proof = precommit_path.parent / PRECOMMIT_PROOF_NAME
             if src_proof.is_file():
                 shutil.copy2(src_proof, run_dir / PRECOMMIT_PROOF_NAME)
+        default_seeds = precommit_path.parent / "seeds.json"
+        if seed_index is not None:
+            from farm_notary.beacon import bind_run_seed  # late: avoid import cycle
+
+            plan = pc.get("seed_plan")
+            if not plan:
+                raise ValueError(
+                    "--seed-index requires a precommit with a seed_plan "
+                    "(pass --seed-count when running precommit)"
+                )
+            resolved_seeds = Path(seeds_path) if seeds_path is not None else default_seeds
+            bound_config, bound_beacon = bind_run_seed(
+                config=manifest.config,
+                seed_plan=plan,
+                seed_index=seed_index,
+                client=beacon_client,
+                seeds_path=resolved_seeds if resolved_seeds.is_file() else None,
+            )
+            manifest.config = bound_config
+            manifest.beacon = bound_beacon
+            if resolved_seeds.is_file():
+                target_seeds = run_dir / "seeds.json"
+                if resolved_seeds.resolve() != target_seeds.resolve():
+                    shutil.copy2(resolved_seeds, target_seeds)
+        elif seeds_path is None and default_seeds.is_file() and pc.get("seed_plan"):
+            # Keep seeds.json next to the run when the lab already derived.
+            target_seeds = run_dir / "seeds.json"
+            if default_seeds.resolve() != target_seeds.resolve():
+                shutil.copy2(default_seeds, target_seeds)
+    elif seed_index is not None:
+        raise ValueError("--seed-index requires --precommit")
     manifest.validate()
     return manifest
 
