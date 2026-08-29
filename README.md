@@ -16,7 +16,7 @@ Published runs need a record that does not depend on the author's laptop. Review
 
 That is a narrower job than "put the simulation on a chain" and a broader one than `sha256sum`. The simulation stays off-chain. Individual ballots and private choices never leave the machine. What gets notarized is the official record: code identity, config, aggregate metrics, winner allocations. Anchoring a hash is already solved ([OpenTimestamps](https://opentimestamps.org/) into Bitcoin); FarmNotary's work is the domain part — allowlists, privacy, honest claims.
 
-A hash tool will tell you the bytes match. A research notary also tells you what you may claim, and what you may not. Immutability is not correctness. Re-run from the committed seed to check the science.
+A hash tool will tell you the bytes match. A research notary also tells you what you may claim, and what you may not.
 
 ## In and out of scope
 
