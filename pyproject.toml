@@ -15,6 +15,7 @@ dependencies = []
 [project.optional-dependencies]
 chain = ["web3>=7,<8"]
 ots = ["opentimestamps>=0.4.5"]
+sigstore = ["cryptography>=41"]
 dev = ["pytest", "web3>=7,<8", "opentimestamps>=0.4.5"]
 
 [project.scripts]

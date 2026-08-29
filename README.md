@@ -160,8 +160,12 @@ OTS is not L0. L0 means the proof commits to the content hash and carries a
 Bitcoin-height attestation; this tool does not check Bitcoin headers (`ots
 verify` does). L1 needs a recorded command, git SHA, and environment
 fingerprint — not a completed re-run. L2 requires a beacon-derived seed
-after the plan is anchored (not scientific correctness). L3 (independent
-identity) is reserved. See [docs/CLAIMS.md](docs/CLAIMS.md).
+after the plan is anchored (not scientific correctness). L3 needs a Sigstore keyless signature on the reproduction receipt
+(`farm-notary reproduce --sign`). A receipt count is **not** credibility — ten
+throwaway Gmail reproductions are not equivalent to one lab CI reproduction.
+Inspect the `sigstore identity:` and `sigstore issuer:` notes to distinguish
+workload-identity CI tokens from personal OIDC logins. See
+[docs/CLAIMS.md](docs/CLAIMS.md).
 
 The only bitwise sentence the tool may emit today is *byte-identical on x86-64 Linux in a pinned environment*. Other hardware still reports `N/M` and refuses a cross-hardware claim. See [docs/CLAIMS.md](docs/CLAIMS.md).
 

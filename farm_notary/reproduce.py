@@ -173,7 +173,13 @@ def build_receipt(manifest: Manifest, result: ReproductionResult) -> dict:
 
 
 def receipt_hash(receipt: dict) -> str:
-    return hash_json(receipt)
+    """Hash the receipt, excluding the ``"sigstore"`` bundle field.
+
+    This makes the hash stable whether or not a Sigstore bundle has been
+    attached: OTS anchoring and the cosign signature both commit to the same
+    underlying content.
+    """
+    return hash_json({k: v for k, v in receipt.items() if k != "sigstore"})
 
 
 def write_receipt(receipt: dict, run_dir: Path) -> Path:
