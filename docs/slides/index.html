@@ -857,18 +857,19 @@
     }
 
     document.addEventListener("keydown", (e) => {
+      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       if (["INPUT", "TEXTAREA"].includes(e.target.tagName)) return;
-      if (["ArrowRight", "ArrowDown", " ", "PageDown"].includes(e.key)) { e.preventDefault(); show(i + 1); }
-      if (["ArrowLeft", "ArrowUp", "PageUp", "Backspace"].includes(e.key)) { e.preventDefault(); show(i - 1); }
-      if (e.key === "Home") show(0);
-      if (e.key === "End") show(slides.length - 1);
-      if (e.key === "?" || e.key === "h") helpEl.classList.toggle("show");
-      if (e.key === "n") notesEl.classList.toggle("show");
-      if (e.key === "f") {
+      if (["ArrowRight", "ArrowDown", " ", "PageDown"].includes(key)) { e.preventDefault(); show(i + 1); }
+      if (["ArrowLeft", "ArrowUp", "PageUp", "Backspace"].includes(key)) { e.preventDefault(); show(i - 1); }
+      if (key === "Home") show(0);
+      if (key === "End") show(slides.length - 1);
+      if (key === "?" || key === "h") helpEl.classList.toggle("show");
+      if (key === "n") notesEl.classList.toggle("show");
+      if (key === "f") {
         if (!document.fullscreenElement) document.documentElement.requestFullscreen();
         else document.exitFullscreen();
       }
-      if (e.key === "p") window.print();
+      if (key === "p") window.print();
     });
 
     let touchX = null;
