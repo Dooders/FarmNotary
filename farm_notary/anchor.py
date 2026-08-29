@@ -146,6 +146,9 @@ def notarize_run(
     ``precommit_hash`` field, binding the post-run proof to the pre-run
     specification.
 
+    Derivation rules (``config.notary.derived_from``) are copied onto the
+    manifest by ``build_manifest``.
+
     A dirty tree is refused unless *allow_dirty* is true: the SHA would not
     identify the code, so the anchor would not be a code-identity claim.
     """

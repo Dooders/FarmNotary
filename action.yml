@@ -1,0 +1,225 @@
+name: farm-notary-action
+description: >-
+  Precommit on workflow start, notarize + optional pin-remote on success,
+  upload manifest.json and manifest.ots, fail if verify fails.
+author: Dooders
+branding:
+  icon: shield
+  color: purple
+
+inputs:
+  phase:
+    description: >-
+      precommit (start of job), notarize (after the run succeeds), or all
+      (notarize an already-finished run directory).
+    required: false
+    default: notarize
+  run-dir:
+    description: Run directory (created by precommit; must contain artifacts for notarize).
+    required: true
+  config:
+    description: Path to the experiment / run configuration JSON.
+    required: false
+    default: ""
+  command:
+    description: Exact command with {run_dir} placeholder.
+    required: false
+    default: ""
+  publish:
+    description: Comma-separated publish globs (or set notary.publish in the config).
+    required: false
+    default: ""
+  lockfile:
+    description: Dependency lockfile to hash into the environment fingerprint.
+    required: false
+    default: ""
+  git-sha:
+    description: Code identity. Defaults to the current HEAD.
+    required: false
+    default: ""
+  runner:
+    description: Runner name recorded on the manifest.
+    required: false
+    default: ""
+  backend:
+    description: Anchor backend after notarize (ots, dry-run, or eas). ots is recommended.
+    required: false
+    default: ots
+  pin-remote:
+    description: Kubo remote pinning service name (implies pin). Empty skips upload.
+    required: false
+    default: ""
+  pin:
+    description: Upload the run directory to a local Kubo daemon.
+    required: false
+    default: "false"
+  no-check-gateway:
+    description: Skip the public IPFS gateway reachability check (typical in CI).
+    required: false
+    default: "true"
+  identity-key:
+    description: Optional minisign or SSH private key to sign the content hash.
+    required: false
+    default: ""
+  identity-scheme:
+    description: ssh or minisign. Ignored unless identity-key is set.
+    required: false
+    default: ssh
+  identity-principal:
+    description: Label recorded with the optional identity signature.
+    required: false
+    default: ""
+  artifact-name:
+    description: Name of the uploaded GitHub Actions artifact.
+    required: false
+    default: farm-notary
+
+outputs:
+  content-hash:
+    description: Manifest (or campaign) content hash.
+    value: ${{ steps.notarize.outputs.content-hash }}
+  cid:
+    description: IPFS CID when pinning was requested.
+    value: ${{ steps.notarize.outputs.cid }}
+  precommit-hash:
+    description: Precommit content hash (precommit phase or bound precommit).
+    value: ${{ steps.precommit.outputs.precommit-hash || steps.notarize.outputs.precommit-hash }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install farm-notary
+      shell: bash
+      run: |
+        set -euo pipefail
+        python -m pip install --upgrade pip
+        python -m pip install "${{ github.action_path }}[ots]"
+
+    - name: Precommit
+      id: precommit
+      if: ${{ inputs.phase == 'precommit' }}
+      shell: bash
+      env:
+        RUN_DIR: ${{ inputs.run-dir }}
+        CONFIG: ${{ inputs.config }}
+        COMMAND: ${{ inputs.command }}
+        LOCKFILE: ${{ inputs.lockfile }}
+        GIT_SHA: ${{ inputs.git-sha }}
+        BACKEND: ${{ inputs.backend }}
+      run: |
+        set -euo pipefail
+        mkdir -p "${RUN_DIR}"
+        args=(precommit --out "${RUN_DIR}")
+        if [ -n "${CONFIG}" ]; then args+=(--config "${CONFIG}"); fi
+        if [ -n "${COMMAND}" ]; then args+=(--command "${COMMAND}"); fi
+        if [ -n "${LOCKFILE}" ]; then args+=(--lockfile "${LOCKFILE}"); fi
+        if [ -n "${GIT_SHA}" ]; then args+=(--git-sha "${GIT_SHA}"); fi
+        if [ "${BACKEND}" = "ots" ]; then args+=(--backend ots); fi
+        farm-notary "${args[@]}"
+        hash="$(python -c "from farm_notary.precommit import load_precommit, precommit_hash; print(precommit_hash(load_precommit('${RUN_DIR}/precommit.json')))")"
+        echo "precommit-hash=${hash}" >> "${GITHUB_OUTPUT}"
+
+    - name: Upload precommit artifacts
+      if: ${{ inputs.phase == 'precommit' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}-precommit
+        path: |
+          ${{ inputs.run-dir }}/precommit.json
+          ${{ inputs.run-dir }}/precommit.ots
+        if-no-files-found: warn
+
+    - name: Notarize
+      id: notarize
+      if: ${{ inputs.phase == 'notarize' || inputs.phase == 'all' }}
+      shell: bash
+      env:
+        RUN_DIR: ${{ inputs.run-dir }}
+        CONFIG: ${{ inputs.config }}
+        COMMAND: ${{ inputs.command }}
+        PUBLISH: ${{ inputs.publish }}
+        LOCKFILE: ${{ inputs.lockfile }}
+        GIT_SHA: ${{ inputs.git-sha }}
+        RUNNER: ${{ inputs.runner }}
+        BACKEND: ${{ inputs.backend }}
+        PIN_REMOTE: ${{ inputs.pin-remote }}
+        PIN: ${{ inputs.pin }}
+        NO_CHECK_GATEWAY: ${{ inputs.no-check-gateway }}
+        IDENTITY_KEY: ${{ inputs.identity-key }}
+        IDENTITY_SCHEME: ${{ inputs.identity-scheme }}
+        IDENTITY_PRINCIPAL: ${{ inputs.identity-principal }}
+      run: |
+        set -euo pipefail
+        if [ ! -d "${RUN_DIR}" ]; then
+          echo "error: run-dir ${RUN_DIR} does not exist" >&2
+          exit 2
+        fi
+
+        man_args=(manifest --run-dir "${RUN_DIR}")
+        if [ -n "${CONFIG}" ]; then man_args+=(--config "${CONFIG}"); fi
+        if [ -n "${COMMAND}" ]; then man_args+=(--command "${COMMAND}"); fi
+        if [ -n "${LOCKFILE}" ]; then man_args+=(--lockfile "${LOCKFILE}"); fi
+        if [ -n "${GIT_SHA}" ]; then man_args+=(--git-sha "${GIT_SHA}"); fi
+        if [ -n "${RUNNER}" ]; then man_args+=(--runner "${RUNNER}"); fi
+        if [ -f "${RUN_DIR}/precommit.json" ]; then
+          man_args+=(--precommit "${RUN_DIR}/precommit.json")
+        fi
+        if [ -n "${PUBLISH}" ]; then
+          IFS=',' read -r -a globs <<< "${PUBLISH}"
+          for g in "${globs[@]}"; do
+            g="$(echo "${g}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+            if [ -n "${g}" ]; then man_args+=(--publish "${g}"); fi
+          done
+        fi
+        farm-notary "${man_args[@]}"
+
+        if [ -n "${IDENTITY_KEY}" ]; then
+          sign_args=(sign --run-dir "${RUN_DIR}" --scheme "${IDENTITY_SCHEME}" --key "${IDENTITY_KEY}")
+          if [ -n "${IDENTITY_PRINCIPAL}" ]; then sign_args+=(--principal "${IDENTITY_PRINCIPAL}"); fi
+          farm-notary "${sign_args[@]}"
+        fi
+
+        anc_args=(anchor --run-dir "${RUN_DIR}" --backend "${BACKEND}")
+        if [ "${PIN_REMOTE}" != "" ]; then
+          anc_args+=(--pin-remote "${PIN_REMOTE}")
+        elif [ "${PIN}" = "true" ]; then
+          anc_args+=(--pin)
+        fi
+        if [ "${NO_CHECK_GATEWAY}" = "true" ]; then
+          anc_args+=(--no-check-gateway)
+        fi
+        farm-notary "${anc_args[@]}"
+
+        # Fail the job if verify fails.
+        farm-notary verify --run-dir "${RUN_DIR}"
+
+        python - <<'PY'
+        import os
+        from pathlib import Path
+        out = Path(os.environ["GITHUB_OUTPUT"])
+        run = Path(os.environ["RUN_DIR"])
+        if (run / "manifest.json").is_file():
+            from farm_notary.manifest import load_manifest
+            rec = load_manifest(run)
+        else:
+            from farm_notary.campaign import load_campaign
+            rec = load_campaign(run)
+        with out.open("a", encoding="utf-8") as fh:
+            fh.write(f"content-hash={rec.content_hash()}\n")
+            if rec.cid:
+                fh.write(f"cid={rec.cid}\n")
+            if getattr(rec, "precommit_hash", None):
+                fh.write(f"precommit-hash={rec.precommit_hash}\n")
+        PY
+
+    - name: Upload FarmNotary artifacts
+      if: ${{ always() && (inputs.phase == 'notarize' || inputs.phase == 'all') }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: |
+          ${{ inputs.run-dir }}/manifest.json
+          ${{ inputs.run-dir }}/manifest.ots
+          ${{ inputs.run-dir }}/campaign.json
+          ${{ inputs.run-dir }}/appendix.md
+        if-no-files-found: warn

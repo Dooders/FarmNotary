@@ -16,7 +16,15 @@ from farm_notary.manifest import (
     require_clean_identity,
     write_manifest,
 )
-from farm_notary.verify import evaluate_claims
+from farm_notary.verify import (
+    evaluate_claims,
+    verify_anchor,
+    verify_derived_artifacts,
+    verify_identity_record,
+    verify_precommit,
+    verify_receipt,
+    verify_run_dir,
+)
 
 
 def _load_json_arg(path: Optional[str]) -> Optional[dict]:
@@ -168,6 +176,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_ver.add_argument("--run-dir", help="Run directory containing manifest.json")
     p_ver.add_argument("--manifest", help=f"Path to a {MANIFEST_NAME} (artifacts checked next to it)")
+    p_ver.add_argument(
+        "--verify-derived",
+        action="store_true",
+        help=(
+            "Execute the derivation commands recorded in the manifest. "
+            "Only use this flag for manifests you trust, since commands "
+            "are run as-is via the shell."
+        ),
+    )
 
     p_upg = sub.add_parser(
         "upgrade", help="Complete a pending OpenTimestamps proof with Bitcoin attestations"
@@ -203,6 +220,95 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "register-schema",
         help="Register the FarmNotary schema with the EAS SchemaRegistry (one-time per chain)",
+    )
+
+    p_camp = sub.add_parser(
+        "campaign",
+        help="Build a parent sweep manifest from child run directories",
+    )
+    p_camp.add_argument(
+        "--run-dir",
+        action="append",
+        dest="run_dirs",
+        required=True,
+        metavar="DIR",
+        help="Child run directory containing manifest.json; repeatable",
+    )
+    p_camp.add_argument("--name", help="Experiment / sweep name")
+    p_camp.add_argument("--config", help="Shared sweep configuration JSON")
+    p_camp.add_argument("--git-sha", help="Code identity; taken from the first child if omitted")
+    p_camp.add_argument("--command", help="Recorded command template (with {run_dir})")
+    p_camp.add_argument("--lockfile", help="Dependency lockfile to hash into the environment")
+    p_camp.add_argument(
+        "--out",
+        required=True,
+        help="Directory (or campaign.json path) where the parent manifest is written",
+    )
+
+    p_sign = sub.add_parser(
+        "sign",
+        help="Attach a minisign or SSH signature of the content hash (optional identity)",
+    )
+    p_sign.add_argument("--run-dir", help="Run directory containing manifest.json")
+    p_sign.add_argument("--campaign", help="Path to campaign.json (or its directory)")
+    p_sign.add_argument(
+        "--scheme",
+        choices=("ssh", "minisign"),
+        default="ssh",
+        help="ssh (default) or minisign; EAS is not used here",
+    )
+    p_sign.add_argument("--key", required=True, help="Path to the private key")
+    p_sign.add_argument(
+        "--principal",
+        help="Identity label recorded with the signature (SSH allowed-signers principal)",
+    )
+
+    p_paper = sub.add_parser(
+        "paper-pack",
+        help="Write a PDF appendix snippet (CID, hash, attestation, scoped claim)",
+    )
+    p_paper.add_argument("--run-dir", help="Run directory containing manifest.json")
+    p_paper.add_argument("--campaign", help="Path to campaign.json (or its directory)")
+    p_paper.add_argument(
+        "--out",
+        help="Output markdown path (default: <dir>/appendix.md)",
+    )
+    p_paper.add_argument("--name", help="Experiment name override for the appendix heading")
+    p_paper.add_argument(
+        "--verify-derived",
+        action="store_true",
+        help=(
+            "Execute the derivation commands recorded in the manifest to confirm "
+            "statistics recompute exactly. Only use for manifests you trust."
+        ),
+    )
+
+    p_idx = sub.add_parser(
+        "index",
+        help="Add a published run to the static public registry (no scores or rankings)",
+    )
+    p_idx.add_argument(
+        "--registry",
+        required=True,
+        help="Registry markdown, JSON, or directory (writes index.md + registry.json)",
+    )
+    p_idx.add_argument("--run-dir", help="Run directory to add")
+    p_idx.add_argument("--campaign", help="Campaign to add (one row per child run)")
+    p_idx.add_argument("--name", help="Experiment name override")
+    p_idx.add_argument(
+        "--claim",
+        dest="claim_level",
+        help="Claim level override (bytes, derived, bitwise, bitwise+derived)",
+    )
+
+    p_ver.add_argument(
+        "--campaign",
+        help="Path to campaign.json (or its directory) instead of a single-run manifest",
+    )
+    p_ver.add_argument(
+        "--require-local",
+        action="store_true",
+        help="When verifying a campaign, fail if a child run directory is not present",
     )
 
     return parser
@@ -255,20 +361,32 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
 
 def _cmd_anchor(args: argparse.Namespace) -> int:
     run_dir = Path(args.run_dir)
+    writer = write_manifest
     manifest_path = run_dir / MANIFEST_NAME
-    if not manifest_path.is_file():
-        print(
-            f"error: {manifest_path} not found; run `farm-notary manifest --run-dir {run_dir}` first",
-            file=sys.stderr,
-        )
-        return 2
+    if manifest_path.is_file():
+        try:
+            manifest = load_manifest(manifest_path)
+        except (ValueError, OSError) as exc:
+            print(f"error: could not load manifest: {exc}", file=sys.stderr)
+            return 2
+    else:
+        from farm_notary.campaign import CAMPAIGN_NAME, load_campaign, write_campaign
+
+        campaign_path = run_dir / CAMPAIGN_NAME
+        if not campaign_path.is_file():
+            print(
+                f"error: {manifest_path} not found; run `farm-notary manifest --run-dir {run_dir}` first",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            manifest = load_campaign(campaign_path)
+        except (ValueError, OSError) as exc:
+            print(f"error: could not load campaign: {exc}", file=sys.stderr)
+            return 2
+        writer = write_campaign
     try:
-        manifest = load_manifest(manifest_path)
-    except (ValueError, OSError) as exc:
-        print(f"error: could not load manifest: {exc}", file=sys.stderr)
-        return 2
-    try:
-        require_clean_identity(manifest.git_dirty, allow_dirty=args.allow_dirty)
+        require_clean_identity(getattr(manifest, "git_dirty", None), allow_dirty=args.allow_dirty)
     except DirtyTreeError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -282,7 +400,10 @@ def _cmd_anchor(args: argparse.Namespace) -> int:
         from farm_notary.ipfs import IpfsClient, check_gateway_reachability
 
         client = IpfsClient(api_url=args.ipfs_api)
-        cid = client.add_run_dir(run_dir, list(manifest.artifacts) + [MANIFEST_NAME])
+        artifacts = list(getattr(manifest, "artifacts", []) or [])
+        record_name = MANIFEST_NAME if (run_dir / MANIFEST_NAME).is_file() else "campaign.json"
+        pin_names = artifacts + [record_name]
+        cid = client.add_run_dir(run_dir, pin_names)
         manifest.cid = cid
         manifest.cid_reachable = None
         manifest.cid_reachable_checked_utc = None
@@ -326,7 +447,7 @@ def _cmd_anchor(args: argparse.Namespace) -> int:
 
     no_write = getattr(args, "no_write", False)
     if not no_write:
-        write_manifest(manifest, run_dir)
+        writer(manifest, run_dir)
 
     out = receipt.to_dict()
     if receipt.attestation_uid and args.backend == "eas":
@@ -342,14 +463,20 @@ def _cmd_anchor(args: argparse.Namespace) -> int:
 def _cmd_verify(args: argparse.Namespace) -> int:
     import warnings
 
+    if getattr(args, "campaign", None):
+        return _cmd_verify_campaign(args)
+
     if args.manifest:
         manifest_path = Path(args.manifest)
         run_dir = manifest_path.parent
     elif args.run_dir:
         run_dir = Path(args.run_dir)
         manifest_path = run_dir / MANIFEST_NAME
+        if not manifest_path.is_file() and (run_dir / "campaign.json").is_file():
+            args.campaign = str(run_dir)
+            return _cmd_verify_campaign(args)
     else:
-        print("error: pass --run-dir or --manifest", file=sys.stderr)
+        print("error: pass --run-dir, --manifest, or --campaign", file=sys.stderr)
         return 2
     try:
         manifest = load_manifest(manifest_path, validate=False)
@@ -362,17 +489,31 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         card = evaluate_claims(manifest, run_dir)
     for w in caught:
         print(f"warning: {w.message}", file=sys.stderr)
+    problems = []
+    problems += verify_derived_artifacts(manifest, run_dir, allow_execute=getattr(args, "verify_derived", False))
+    problems += verify_identity_record(manifest, run_dir)
 
     print(card.render(), end="")
     if card.notes:
         print()
         for note in card.notes:
             print(note)
-    if card.problems:
+    all_problems = list(card.problems)
+    for problem in problems:
+        if problem not in all_problems:
+            all_problems.append(problem)
+    if all_problems:
         print()
-        for problem in card.problems:
+        for problem in all_problems:
             print("FAIL", problem)
         return 1
+    print("OK", manifest.content_hash())
+    if getattr(manifest, "derived_from", None):
+        print("claim: statistics recompute exactly from recorded sources")
+    if getattr(manifest, "identity", None):
+        scheme = manifest.identity.get("scheme")
+        principal = manifest.identity.get("principal") or "lab key"
+        print(f"identity: {scheme} signature by {principal} verified")
     return 0
 
 
@@ -515,6 +656,197 @@ def _cmd_register_schema(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_verify_campaign(args: argparse.Namespace) -> int:
+    from farm_notary.campaign import load_campaign, verify_campaign
+
+    campaign_arg = Path(args.campaign)
+    campaign_dir = campaign_arg if campaign_arg.is_dir() else campaign_arg.parent
+    try:
+        campaign = load_campaign(campaign_arg, validate=False)
+    except (ValueError, OSError) as exc:
+        print(f"error: could not load campaign: {exc}", file=sys.stderr)
+        return 2
+    problems = verify_campaign(
+        campaign,
+        campaign_dir,
+        require_local=getattr(args, "require_local", False),
+    )
+    problems += verify_anchor(campaign, campaign_dir)
+    problems += verify_identity_record(campaign, campaign_dir)
+    if problems:
+        for problem in problems:
+            print("FAIL", problem)
+        return 1
+    print("OK", campaign.content_hash())
+    print(f"campaign: {len(campaign.runs)} child run(s)")
+    if campaign.config_hash:
+        print("config_hash", campaign.config_hash)
+    if campaign.identity:
+        scheme = campaign.identity.get("scheme")
+        principal = campaign.identity.get("principal") or "lab key"
+        print(f"identity: {scheme} signature by {principal} verified")
+    return 0
+
+
+def _cmd_campaign(args: argparse.Namespace) -> int:
+    from farm_notary.campaign import build_campaign, write_campaign
+
+    run_dirs = [Path(p) for p in args.run_dirs]
+    missing = [p for p in run_dirs if not (p / MANIFEST_NAME).is_file()]
+    if missing:
+        print(
+            "error: child run is missing manifest.json: "
+            + ", ".join(str(p) for p in missing),
+            file=sys.stderr,
+        )
+        return 2
+    out = Path(args.out)
+    campaign_dir = out if out.suffix == "" or out.is_dir() else out.parent
+    try:
+        campaign = build_campaign(
+            run_dirs,
+            name=args.name,
+            config=_load_json_arg(args.config),
+            git_sha=args.git_sha,
+            command=args.command,
+            lockfile=Path(args.lockfile) if args.lockfile else None,
+            campaign_dir=campaign_dir,
+        )
+    except (ValueError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    hashes = {run.get("config_hash") for run in campaign.runs}
+    if len(hashes) > 1:
+        print(
+            "warning: child runs do not share a seed-excluded config hash; "
+            "the campaign records per-run hashes",
+            file=sys.stderr,
+        )
+    path = write_campaign(campaign, out)
+    print(path)
+    print("runs", len(campaign.runs))
+    if campaign.config_hash:
+        print("config_hash", campaign.config_hash)
+    print("content_hash", campaign.content_hash())
+    return 0
+
+
+def _load_signable(args: argparse.Namespace):
+    """Return (record, directory, writer) for a manifest or campaign."""
+    if getattr(args, "campaign", None):
+        from farm_notary.campaign import load_campaign, write_campaign
+
+        path = Path(args.campaign)
+        directory = path if path.is_dir() else path.parent
+        return load_campaign(path), directory, write_campaign
+    run_dir = Path(args.run_dir) if getattr(args, "run_dir", None) else None
+    if run_dir is None:
+        raise SystemExit("error: pass --run-dir or --campaign")
+    if (run_dir / MANIFEST_NAME).is_file():
+        return load_manifest(run_dir), run_dir, write_manifest
+    from farm_notary.campaign import CAMPAIGN_NAME, load_campaign, write_campaign
+
+    if (run_dir / CAMPAIGN_NAME).is_file():
+        return load_campaign(run_dir), run_dir, write_campaign
+    raise SystemExit(f"error: no manifest.json or campaign.json in {run_dir}")
+
+
+def _cmd_sign(args: argparse.Namespace) -> int:
+    from farm_notary.identity import IdentityError, sign_record
+
+    try:
+        record, directory, writer = _load_signable(args)
+    except (ValueError, OSError) as exc:
+        print(f"error: could not load record: {exc}", file=sys.stderr)
+        return 2
+    before = record.content_hash()
+    try:
+        identity = sign_record(
+            record,
+            scheme=args.scheme,
+            key_path=Path(args.key),
+            principal=args.principal,
+        )
+    except IdentityError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if record.content_hash() != before:
+        print("error: signing must not change the content hash", file=sys.stderr)
+        return 1
+    writer(record, directory)
+    print("scheme", identity["scheme"])
+    if identity.get("principal"):
+        print("principal", identity["principal"])
+    print("content_hash", before)
+    return 0
+
+
+def _cmd_paper_pack(args: argparse.Namespace) -> int:
+    from farm_notary.paper import build_paper_pack, write_paper_pack
+
+    try:
+        record, directory, _writer = _load_signable(args)
+    except (ValueError, OSError) as exc:
+        print(f"error: could not load record: {exc}", file=sys.stderr)
+        return 2
+    derived_ok = None
+    if getattr(record, "derived_from", None):
+        derived_problems = verify_derived_artifacts(record, directory, allow_execute=getattr(args, "verify_derived", False))
+        derived_ok = not derived_problems if getattr(args, "verify_derived", False) else None
+    markdown = build_paper_pack(
+        record,
+        directory,
+        derived_ok=derived_ok,
+        experiment=args.name,
+    )
+    dest = Path(args.out) if args.out else directory
+    path = write_paper_pack(markdown, dest)
+    print(path)
+    print(markdown, end="" if markdown.endswith("\n") else "\n")
+    return 0
+
+
+def _cmd_index(args: argparse.Namespace) -> int:
+    from farm_notary.registry import (
+        RegistryError,
+        add_to_registry,
+        entries_from_campaign,
+        entry_from_manifest,
+    )
+
+    incoming = []
+    try:
+        if args.campaign:
+            from farm_notary.campaign import load_campaign
+
+            campaign = load_campaign(Path(args.campaign))
+            incoming = entries_from_campaign(campaign, experiment=args.name)
+            if args.claim_level:
+                for row in incoming:
+                    row["claim_level"] = args.claim_level
+        elif args.run_dir:
+            run_dir = Path(args.run_dir)
+            manifest = load_manifest(run_dir)
+            incoming = [
+                entry_from_manifest(
+                    manifest,
+                    run_dir,
+                    experiment=args.name,
+                    claim_level=args.claim_level,
+                )
+            ]
+        else:
+            print("error: pass --run-dir or --campaign", file=sys.stderr)
+            return 2
+        md_path, _json_path, added = add_to_registry(Path(args.registry), incoming)
+    except (ValueError, OSError, RegistryError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(md_path)
+    print("added", added)
+    return 0
+
+
 def main(argv: Optional[list] = None) -> int:
     args = _build_parser().parse_args(argv)
     handlers = {
@@ -525,6 +857,10 @@ def main(argv: Optional[list] = None) -> int:
         "reproduce": _cmd_reproduce,
         "precommit": _cmd_precommit,
         "register-schema": _cmd_register_schema,
+        "campaign": _cmd_campaign,
+        "sign": _cmd_sign,
+        "paper-pack": _cmd_paper_pack,
+        "index": _cmd_index,
     }
     return handlers[args.cmd](args)
 

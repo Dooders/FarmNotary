@@ -17,8 +17,23 @@ MANIFEST_NAME = "manifest.json"
 RECEIPT_NAME = "reproduction.json"
 
 # Notary metadata written next to the artifacts, never treated as artifacts.
-NOTARY_FILE_NAMES = frozenset({MANIFEST_NAME, RECEIPT_NAME, "precommit.json"})
+NOTARY_FILE_NAMES = frozenset(
+    {MANIFEST_NAME, RECEIPT_NAME, "precommit.json", "campaign.json", "appendix.md"}
+)
 NOTARY_FILE_SUFFIXES = (".ots",)
+
+# Seed keys stripped when hashing a sweep's shared config.
+SEED_KEYS = ("seed", "rng_seed", "random_seed")
+
+# Stamp fields that may be added after content_hash is computed.
+_STAMP_KEYS = (
+    "cid",
+    "cid_reachable",
+    "cid_reachable_checked_utc",
+    "pin_service",
+    "anchor",
+    "identity",
+)
 
 
 def hash_file(path: Path) -> str:
@@ -169,11 +184,15 @@ def resolve_git_identity(
 def capture_environment(lockfile: Optional[Path] = None) -> dict:
     """Snapshot the execution environment for the provenance record.
 
-    packages_hash is the SHA-256 of the sorted `name==version` list of every
-    installed distribution: two environments with the same hash have the same
-    package set. A lockfile hash is recorded when one is provided.
+    First-class fingerprint fields (os, arch, python, optional numpy/BLAS)
+    sit alongside the package-set hash and optional lockfile hash.  Two
+    environments with the same packages_hash can still differ by OS, arch,
+    or BLAS; the fingerprint keeps a bitwise claim scoped to the machine
+    class that earned it.
     """
     from importlib import metadata
+
+    from farm_notary.fingerprint import fingerprint_fields, numpy_build_info
 
     dists = set()
     for dist in metadata.distributions():
@@ -181,7 +200,7 @@ def capture_environment(lockfile: Optional[Path] = None) -> dict:
         if name:
             dists.add(f"{name}=={dist.version}")
     env = {
-        "python": platform.python_version(),
+        **fingerprint_fields(),
         "platform": platform.platform(),
         "system": platform.system(),
         "machine": platform.machine(),
@@ -190,6 +209,9 @@ def capture_environment(lockfile: Optional[Path] = None) -> dict:
         ).hexdigest(),
         "package_count": len(dists),
     }
+    numpy_info = numpy_build_info()
+    if numpy_info is not None:
+        env["numpy"] = numpy_info
     if lockfile is not None:
         env["lockfile"] = Path(lockfile).name
         env["lockfile_sha256"] = hash_file(Path(lockfile))
@@ -220,6 +242,10 @@ class Manifest:
     publish_profile: Optional[str] = None
     unmatched_count: int = 0
     official_record: dict = field(default_factory=dict)
+    # Optional derivation rules copied from the experiment profile
+    # (config.notary.derived_from).  Omitted from serialization when empty
+    # so older manifests keep a stable content hash.
+    derived_from: list = field(default_factory=list)
     precommit_hash: Optional[str] = None
     cid: Optional[str] = None
     cid_reachable: Optional[bool] = None
@@ -228,6 +254,9 @@ class Manifest:
     # (pinata, web3.storage, …) when --pin-remote was used. Stamp field.
     pin_service: Optional[str] = None
     anchor: Optional[dict] = None
+    # Optional minisign / SSH signature of content_hash.  Excluded from
+    # content_hash itself (same as cid/anchor) so it can be stamped after.
+    identity: Optional[dict] = None
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -243,8 +272,15 @@ class Manifest:
             "cid_reachable_checked_utc",
             "pin_service",
             "anchor",
+            "identity",
         }
-        return {k: v for k, v in d.items() if not (k in _OMIT_IF_NONE and v is None)}
+        _OMIT_IF_EMPTY = {"derived_from"}
+        return {
+            k: v
+            for k, v in d.items()
+            if not (k in _OMIT_IF_NONE and v is None)
+            and not (k in _OMIT_IF_EMPTY and not v)
+        }
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "Manifest":
@@ -252,17 +288,15 @@ class Manifest:
         return cls(**{k: v for k, v in data.items() if k in known})
 
     def content_hash(self) -> str:
-        """Hash of the manifest body, excluding cid and anchor receipt.
+        """Hash of the manifest body, excluding stamp fields.
 
-        Excluding those fields lets the manifest be stamped with upload and
-        anchor results after the fact without changing what was anchored.
+        ``cid``, ``anchor``, and ``identity`` are applied after the hash is
+        computed (upload, OTS, optional lab signature) and must not feed back
+        into it.
         """
         body = self.to_dict()
-        body.pop("cid", None)
-        body.pop("cid_reachable", None)
-        body.pop("cid_reachable_checked_utc", None)
-        body.pop("pin_service", None)
-        body.pop("anchor", None)
+        for key in _STAMP_KEYS:
+            body.pop(key, None)
         return hash_json(body)
 
     def validate(self) -> None:
@@ -300,6 +334,7 @@ def build_manifest(
     lockfile: Optional[Path] = None,
     official_record: Optional[Mapping[str, Any]] = None,
     precommit_path: Optional[Path] = None,
+    derived_from: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> Manifest:
     """Build a :class:`Manifest` for *run_dir*.
 
@@ -368,6 +403,13 @@ def build_manifest(
         )
 
     git_sha, git_dirty = resolve_git_identity(git_sha, git_dirty)
+    rules: list = []
+    if derived_from:
+        rules = [dict(rule) for rule in derived_from]
+    else:
+        from farm_notary.derive import extract_derived_from
+
+        rules = extract_derived_from(config)
     manifest = Manifest(
         farm_notary_version=TOOL_VERSION,
         created_utc=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -383,6 +425,7 @@ def build_manifest(
         publish_profile=resolved_profile,
         unmatched_count=unmatched,
         official_record=dict(official_record or {}),
+        derived_from=rules,
     )
     if precommit_path is not None:
         import shutil

@@ -16,6 +16,25 @@ from farm_notary.manifest import RECEIPT_NAME, Manifest, hash_file
 from farm_notary.schema import MANIFEST_VERSION
 
 
+def verify_derived_artifacts(manifest: Manifest, run_dir: Path, *, allow_execute: bool = False) -> List[str]:
+    """Run ``derived_from`` rules if the manifest (or profile) declares them.
+
+    ``allow_execute`` must be *True* to permit running manifest-supplied
+    commands; the default *False* protects against executing untrusted input
+    from downloaded manifests.
+    """
+    from farm_notary.derive import verify_derived
+
+    return verify_derived(manifest, run_dir, allow_execute=allow_execute)
+
+
+def verify_identity_record(record, _run_dir: Path) -> List[str]:
+    """Check an optional minisign / SSH signature of the content hash."""
+    from farm_notary.identity import verify_identity
+
+    return verify_identity(getattr(record, "identity", None), record.content_hash())
+
+
 def _schema_version_number(schema: str) -> int:
     """Extract the integer version from 'farmnotary.manifest.vN'. Returns 0 for unrecognised strings."""
     prefix = "farmnotary.manifest.v"
@@ -289,7 +308,6 @@ def _bitwise_status(
     manifest: Manifest, run_dir: Path, receipt_problems: List[str]
 ) -> str:
     """CLAIMS.md 'bitwise reproducible (scoped)': N/M plus the allowed sentence."""
-    from farm_notary.manifest import RECEIPT_NAME
     from farm_notary.reproduce import load_receipt
     from farm_notary.scope import format_bitwise_status
 
@@ -353,4 +371,3 @@ def evaluate_claims(manifest: Manifest, run_dir: Path) -> ClaimCard:
         + precommit_problems,
         notes=notes,
     )
-

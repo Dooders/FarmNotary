@@ -13,6 +13,12 @@ Immutability is not correctness. Re-run from the committed seed to check the sci
 **In**
 
 - Canonical `manifest.json` schema (recursive artifact discovery, SHA-256 map)
+- Campaign / sweep parent manifests (child CIDs, seeds, shared config hash)
+- Derivation claims (`notary.derived_from` in the experiment profile)
+- Environment fingerprint (OS, arch, Python, optional numpy/BLAS build)
+- Optional minisign / SSH identity on the content hash (no protocol token)
+- Paper-pack appendix snippet and a static public index (no scores)
+- Reusable GitHub Action (`dooders/farm-notary-action`)
 - Optional IPFS upload via the Kubo HTTP API (stdlib only, no extra needed)
 - Anchoring via OpenTimestamps: no contract, no keys, no gas
 - Verify: rehash artifacts locally, check the proof commits to the manifest hash
@@ -22,7 +28,8 @@ Immutability is not correctness. Re-run from the committed seed to check the sci
 - Running our own anchoring infrastructure (contracts, chains, servers) — that layer is outsourced
 - Running simulations inside the EVM
 - Publishing individual voter or agent ballots
-- Social scores as a product
+- Social scores, rankings, or reputation as a product
+- A public index that is anything other than a directory of published manifests
 
 ## Official record vs private choice
 
@@ -87,7 +94,7 @@ Extras:
 
 Every manifest records the tool version that created it (`farm_notary_version`) and the schema identifier (`schema`).
 
-**Promise:** within the `0.x` line, schema changes are **minor-version bumps** (e.g. `0.1 → 0.2`). The `verify` command stays backward-compatible with all older manifests: fields added in a later version are simply ignored when reading an older manifest. Reading a manifest produced by a *newer* tool emits a warning and still attempts verification.
+**Promise:** within the `0.x` line, schema changes are **minor-version bumps** (e.g. `0.1 → 0.2`). The `verify` command stays backward-compatible with all older manifests: fields added in a later version are simply ignored when reading an older manifest. Reading a manifest produced by a *newer* tool emits a warning and still attempts verification. Optional fields (`derived_from`, `identity`) are omitted when empty so a v1 body keeps a stable content hash.
 
 Breaking changes (new required fields, renamed keys, removed fields) are reserved for a `1.0` bump and will be communicated in the changelog with a migration guide.
 
@@ -201,6 +208,71 @@ cross-hardware claim. See [docs/CLAIMS.md](docs/CLAIMS.md).
 
 See [docs/CLAIMS.md](docs/CLAIMS.md) for exactly which claim each check earns.
 
+## Campaigns, paper pack, and the public index
+
+A sweep is a parent record, not a pile of folders:
+
+```bash
+farm-notary campaign --name consensus-sweep \
+  --run-dir runs/seed-0 --run-dir runs/seed-1 \
+  --out sweep/
+farm-notary verify --campaign sweep/
+farm-notary paper-pack --campaign sweep/ --out sweep/appendix.md
+farm-notary index --registry docs/registry.md --campaign sweep/
+```
+
+`paper-pack` writes the appendix snippet this audience puts in a PDF: CID,
+content hash, Bitcoin attestation (or pending), publish allowlist, unmatched
+count, precommit hash, and a reproducibility sentence scoped to OS / arch /
+Python / BLAS. The index is a static directory — experiment, seed, CID, claim
+level, date — not a scoreboard. See [docs/registry.md](docs/registry.md).
+
+Optional lab identity (still no protocol token):
+
+```bash
+farm-notary sign --run-dir path/to/run --scheme ssh --key ~/.ssh/id_ed25519
+```
+
+Reviewers who know the key can attribute the publication; everyone else still
+has OpenTimestamps. EAS remains experimental.
+
+Derivation claims live in the experiment profile so statistics can recompute
+exactly when a PNG is renderer-dependent:
+
+```json
+{
+  "notary": {
+    "publish": ["*.csv", "*.png", "REPORT.md"],
+    "derived_from": [
+      {
+        "outputs": ["summary.csv", "allocation_means.csv", "REPORT.md"],
+        "sources": ["trials.csv"],
+        "command": "python run_experiment.py verify-report --results {run_dir}",
+        "mode": "verify"
+      }
+    ]
+  }
+}
+```
+
+## GitHub Action
+
+Labs adopt this without reading DESIGN.md:
+
+```yaml
+- uses: dooders/FarmNotary@v0.2
+  with:
+    phase: notarize
+    run-dir: results
+    publish: "*.csv,REPORT.md"
+    pin-remote: pinata
+    backend: ots
+```
+
+Precommit on workflow start (`phase: precommit`), notarize + pin-remote on
+success, upload `manifest.json` + `manifest.ots`, fail the job if verify
+fails. Full contract: [docs/ACTION.md](docs/ACTION.md).
+
 ## Verifying someone else's claim
 
 1. Fetch the CID (`ipfs get <cid>`), or obtain the run directory some other way. If `ipfs get` hangs, the CID may not be pinned on any reachable node — check `pin_service` (a local-only pin is not archival), `cid_reachable`, and `cid_reachable_checked_utc`, and try the public gateway: `https://ipfs.io/ipfs/<cid>`.
@@ -228,4 +300,4 @@ python3 -m venv .venv
 
 ## Status
 
-MVP. Manifest, hashing, IPFS pinning, OpenTimestamps anchoring (dry-run default), proof upgrade, verification, and EAS attestation on Base/Base Sepolia are implemented and tested. The anchoring layer is deliberately outsourced — earlier revisions carried a custom `SimulationRegistry` contract, which was removed in favor of existing public infrastructure.
+0.2. Manifest, campaigns, derivation claims, environment fingerprints, optional identity, paper pack, public index, hashing, IPFS pinning, OpenTimestamps anchoring (dry-run default), proof upgrade, verification, a reusable GitHub Action, and EAS attestation on Base/Base Sepolia (experimental) are implemented and tested. The anchoring layer is deliberately outsourced — earlier revisions carried a custom `SimulationRegistry` contract, which was removed in favor of existing public infrastructure.

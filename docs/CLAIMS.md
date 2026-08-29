@@ -27,6 +27,10 @@ That is the difference between a hash tool and a research notary.
 | Pre-specified design | Precommit proof (config, command, git SHA anchored before the run); manifest's `precommit_hash` binds the two phases | `farm-notary precommit --config ... --command ... --backend ots`, then `farm-notary manifest --precommit precommit.json`; `farm-notary verify` reports `precommit bound` |
 | Bitwise reproducible (scoped) | A reproduction receipt produced by re-running the recorded command and comparing every listed artifact; what was excluded is noted in the receipt | `farm-notary reproduce`; with `--ignore` globs for legitimately nondeterministic artifacts |
 | Independently reproduced | A reproduction receipt produced on another machine, optionally timestamped | `farm-notary reproduce --anchor` |
+| Statistics recompute exactly | `derived_from` rules in the experiment profile recompute named artifacts from their sources | `farm-notary verify` (prints the derivation claim when rules pass) |
+| Sweep / paper figure | Parent campaign lists child CIDs, seeds, and a shared config hash | `farm-notary campaign`, then `farm-notary verify --campaign` |
+| Signed publication (optional) | minisign or SSH signature of the content hash, recorded on the manifest | `farm-notary sign --scheme ssh\|minisign --key PATH` |
+| Paper appendix | CID, content hash, Bitcoin attestation or pending, allowlist, unmatched count, precommit hash, scoped sentence | `farm-notary paper-pack` |
 
 Never claimable by tooling: **correctness of the science**. Immutability is
 not correctness; a manifest can perfectly notarize a wrong result. Re-run the
