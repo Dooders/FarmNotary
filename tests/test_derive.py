@@ -73,13 +73,13 @@ def test_build_manifest_copies_derived_from(tmp_path):
 
 def test_verify_derived_recomputes_exactly(tmp_path):
     run, manifest, _ = _run_dir_with_derived(tmp_path)
-    assert verify_derived(manifest, run) == []
+    assert verify_derived(manifest, run, allow_execute=True) == []
 
 
 def test_verify_derived_detects_stale_summary(tmp_path):
     run, manifest, _ = _run_dir_with_derived(tmp_path)
     (run / "summary.csv").write_text("metric,value\nmean,9.9\n", encoding="utf-8")
-    problems = verify_derived(manifest, run)
+    problems = verify_derived(manifest, run, allow_execute=True)
     assert any("recompute mismatch: summary.csv" in p for p in problems)
 
 
@@ -103,15 +103,23 @@ def test_verify_mode_uses_exit_code(tmp_path):
             }
         ],
     )
-    assert verify_derived(manifest, run) == []
+    assert verify_derived(manifest, run, allow_execute=True) == []
     script.write_text("import sys; sys.exit(3)\n", encoding="utf-8")
-    problems = verify_derived(manifest, run)
+    problems = verify_derived(manifest, run, allow_execute=True)
     assert any("verify command failed" in p for p in problems)
+
+
+def test_verify_derived_disallowed_by_default(tmp_path):
+    """verify_derived must not execute commands without allow_execute=True."""
+    run, manifest, _ = _run_dir_with_derived(tmp_path)
+    problems = verify_derived(manifest, run)
+    assert len(problems) == 1
+    assert "allow_execute" in problems[0]
 
 
 def test_cli_verify_reports_derivation_claim(tmp_path, capsys):
     run, _, _ = _run_dir_with_derived(tmp_path)
-    assert main(["verify", "--run-dir", str(run)]) == 0
+    assert main(["verify", "--run-dir", str(run), "--verify-derived"]) == 0
     out = capsys.readouterr().out
     assert "OK" in out
     assert "statistics recompute exactly" in out
@@ -120,5 +128,5 @@ def test_cli_verify_reports_derivation_claim(tmp_path, capsys):
 def test_cli_verify_fails_on_bad_derivation(tmp_path, capsys):
     run, _, _ = _run_dir_with_derived(tmp_path)
     (run / "summary.csv").write_text("metric,value\nmean,0\n", encoding="utf-8")
-    assert main(["verify", "--run-dir", str(run)]) == 1
+    assert main(["verify", "--run-dir", str(run), "--verify-derived"]) == 1
     assert "recompute mismatch" in capsys.readouterr().out

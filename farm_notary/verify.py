@@ -16,11 +16,16 @@ from farm_notary.manifest import RECEIPT_NAME, Manifest, hash_file
 from farm_notary.schema import MANIFEST_VERSION
 
 
-def verify_derived_artifacts(manifest: Manifest, run_dir: Path) -> List[str]:
-    """Run ``derived_from`` rules if the manifest (or profile) declares them."""
+def verify_derived_artifacts(manifest: Manifest, run_dir: Path, *, allow_execute: bool = False) -> List[str]:
+    """Run ``derived_from`` rules if the manifest (or profile) declares them.
+
+    ``allow_execute`` must be *True* to permit running manifest-supplied
+    commands; the default *False* protects against executing untrusted input
+    from downloaded manifests.
+    """
     from farm_notary.derive import verify_derived
 
-    return verify_derived(manifest, run_dir)
+    return verify_derived(manifest, run_dir, allow_execute=allow_execute)
 
 
 def verify_identity_record(record, _run_dir: Path) -> List[str]:

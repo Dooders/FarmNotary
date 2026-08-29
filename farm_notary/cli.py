@@ -176,6 +176,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_ver.add_argument("--run-dir", help="Run directory containing manifest.json")
     p_ver.add_argument("--manifest", help=f"Path to a {MANIFEST_NAME} (artifacts checked next to it)")
+    p_ver.add_argument(
+        "--verify-derived",
+        action="store_true",
+        help=(
+            "Execute the derivation commands recorded in the manifest. "
+            "Only use this flag for manifests you trust, since commands "
+            "are run as-is via the shell."
+        ),
+    )
 
     p_upg = sub.add_parser(
         "upgrade", help="Complete a pending OpenTimestamps proof with Bitcoin attestations"
@@ -265,6 +274,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output markdown path (default: <dir>/appendix.md)",
     )
     p_paper.add_argument("--name", help="Experiment name override for the appendix heading")
+    p_paper.add_argument(
+        "--verify-derived",
+        action="store_true",
+        help=(
+            "Execute the derivation commands recorded in the manifest to confirm "
+            "statistics recompute exactly. Only use for manifests you trust."
+        ),
+    )
 
     p_idx = sub.add_parser(
         "index",
@@ -473,7 +490,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     for w in caught:
         print(f"warning: {w.message}", file=sys.stderr)
     problems = []
-    problems += verify_derived_artifacts(manifest, run_dir)
+    problems += verify_derived_artifacts(manifest, run_dir, allow_execute=getattr(args, "verify_derived", False))
     problems += verify_identity_record(manifest, run_dir)
 
     print(card.render(), end="")
@@ -774,8 +791,8 @@ def _cmd_paper_pack(args: argparse.Namespace) -> int:
         return 2
     derived_ok = None
     if getattr(record, "derived_from", None):
-        derived_problems = verify_derived_artifacts(record, directory)
-        derived_ok = not derived_problems
+        derived_problems = verify_derived_artifacts(record, directory, allow_execute=getattr(args, "verify_derived", False))
+        derived_ok = not derived_problems if getattr(args, "verify_derived", False) else None
     markdown = build_paper_pack(
         record,
         directory,

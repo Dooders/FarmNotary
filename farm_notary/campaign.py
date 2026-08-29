@@ -67,6 +67,7 @@ class Campaign:
     cid_reachable_checked_utc: Optional[str] = None
     anchor: Optional[dict] = None
     identity: Optional[dict] = None
+    pin_service: Optional[str] = None
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -81,6 +82,7 @@ class Campaign:
             "cid_reachable_checked_utc",
             "anchor",
             "identity",
+            "pin_service",
         }
         return {k: v for k, v in d.items() if not (k in omit_if_none and v is None)}
 
@@ -96,6 +98,7 @@ class Campaign:
         body.pop("cid_reachable_checked_utc", None)
         body.pop("anchor", None)
         body.pop("identity", None)
+        body.pop("pin_service", None)
         return hash_json(body)
 
     def validate(self) -> None:
@@ -143,11 +146,21 @@ def child_entry(manifest: Manifest, run_dir: Path, *, campaign_dir: Optional[Pat
 def _relative_child_path(run_dir: Path, campaign_dir: Optional[Path]) -> Optional[str]:
     if campaign_dir is None:
         return None
+    run_resolved = Path(run_dir).resolve()
+    camp_resolved = Path(campaign_dir).resolve()
     try:
-        rel = Path(run_dir).resolve().relative_to(Path(campaign_dir).resolve())
+        rel = run_resolved.relative_to(camp_resolved)
+        return rel.as_posix()
     except ValueError:
-        return None
-    return rel.as_posix()
+        pass
+    # run_dir is not under campaign_dir (e.g. a sibling); compute a relative
+    # path using the common ancestor so the stored path is resolvable.
+    try:
+        rel = run_resolved.relative_to(camp_resolved.parent)
+        return (".." / rel).as_posix()
+    except ValueError:
+        pass
+    return None
 
 
 def build_campaign(
@@ -192,6 +205,13 @@ def build_campaign(
     unique_hashes = set(child_config_hashes)
     shared_hash = child_config_hashes[0] if len(unique_hashes) == 1 else None
     campaign_config = dict(config) if config is not None else {}
+    if campaign_config and shared_hash is not None:
+        supplied_hash = config_hash_excluding_seed(campaign_config)
+        if supplied_hash != shared_hash:
+            raise ValueError(
+                f"supplied --config seed-excluded hash {supplied_hash} does not match "
+                f"children's shared config hash {shared_hash}"
+            )
     if shared_hash is None and not campaign_config:
         # Still record the first child's config (minus seed) so the parent
         # is inspectable; verify will flag the hash disagreement.
@@ -294,6 +314,13 @@ def verify_campaign(
             problems.append(
                 f"runs[{i}] cid mismatch: campaign records {run['cid']}, child is {manifest.cid}"
             )
+        # Rehash every artifact in the child run directory so that tampering
+        # with artifacts (without rewriting the child manifest) is caught.
+        from farm_notary.verify import verify_run_dir
+
+        artifact_problems = verify_run_dir(manifest, local)
+        for p in artifact_problems:
+            problems.append(f"runs[{i}] {p}")
     return problems
 
 
@@ -302,8 +329,11 @@ def _resolve_child_dir(run: Mapping[str, Any], campaign_dir: Path) -> Optional[P
     if not rel:
         return None
     candidate = (campaign_dir / rel).resolve()
+    # Guard against traversal attacks: the resolved path must be within the
+    # campaign directory's parent (siblings are allowed, but not arbitrary
+    # absolute paths or deep escapes).
     try:
-        candidate.relative_to(campaign_dir.resolve())
+        candidate.relative_to(campaign_dir.resolve().parent)
     except ValueError:
         return None
     if (candidate / MANIFEST_NAME).is_file():

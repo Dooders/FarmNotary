@@ -91,17 +91,23 @@ def sign_content_hash(
         raise IdentityError(f"key not found: {key_path}")
 
     public_key = _public_key_text(key_path, scheme)
-    payload = content_hash.lower().encode("ascii")
+    ident = _ssh_principal(public_key, principal) if scheme == SCHEME_SSH else principal
+    # Build the payload from both content_hash and principal so that the
+    # signature covers both fields and cannot be repurposed for a different
+    # principal after signing.
+    payload_dict = {"content_hash": content_hash.lower()}
+    if ident:
+        payload_dict["principal"] = ident
+    import json as _json
+    payload = _json.dumps(payload_dict, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
     with tempfile.TemporaryDirectory(prefix="farm-notary-sign-") as tmp:
         message = Path(tmp) / "content_hash"
         message.write_bytes(payload)
         if scheme == SCHEME_SSH:
             signature = _sign_ssh(message, key_path)
-            ident = _ssh_principal(public_key, principal)
         else:
             signature = _sign_minisign(message, key_path)
-            ident = principal
         record = {
             "scheme": scheme,
             "public_key": public_key,
@@ -153,6 +159,20 @@ def _sign_minisign(message: Path, key_path: Path) -> str:
     return sig_path.read_text(encoding="utf-8")
 
 
+def _build_signed_payload(content_hash: str, principal: Optional[str]) -> bytes:
+    """Canonical JSON payload that is actually signed / verified.
+
+    Binding ``principal`` into the payload prevents someone from changing the
+    ``principal`` field in the identity record after signing.
+    """
+    import json as _json
+
+    d: dict = {"content_hash": content_hash.lower()}
+    if principal:
+        d["principal"] = principal
+    return _json.dumps(d, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
 def verify_identity(identity: Optional[dict], content_hash: str) -> List[str]:
     """Check that ``identity`` is a valid signature of ``content_hash``.
 
@@ -175,11 +195,13 @@ def verify_identity(identity: Optional[dict], content_hash: str) -> List[str]:
     if not signature or not public_key:
         return ["identity record is missing signature or public_key"]
 
+    principal = identity.get("principal") or None
+
     try:
         if scheme == SCHEME_SSH:
-            _verify_ssh(content_hash, signature, public_key, identity.get("principal"))
+            _verify_ssh(content_hash, signature, public_key, principal)
         else:
-            _verify_minisign(content_hash, signature, public_key)
+            _verify_minisign(content_hash, signature, public_key, principal)
     except IdentityError as exc:
         return [f"identity: {exc}"]
     return []
@@ -188,15 +210,12 @@ def verify_identity(identity: Optional[dict], content_hash: str) -> List[str]:
 def _verify_ssh(content_hash: str, signature: str, public_key: str, principal: Optional[str]) -> None:
     ssh_keygen = _require_tool("ssh-keygen")
     ident = principal or _ssh_principal(public_key, None)
+    payload = _build_signed_payload(content_hash, principal)
     # allowed_signers: principal <key-type> <base64> [comment]
-    pub_line = public_key.strip()
-    if pub_line.startswith("ssh-") or pub_line.startswith("ecdsa-") or pub_line.startswith("sk-"):
-        allowed_line = f"{ident} {pub_line}"
-    else:
-        allowed_line = f"{ident} {pub_line}"
+    allowed_line = f"{ident} {public_key.strip()}"
     with tempfile.TemporaryDirectory(prefix="farm-notary-id-") as tmp:
         message = Path(tmp) / "content_hash"
-        message.write_bytes(content_hash.lower().encode("ascii"))
+        message.write_bytes(payload)
         sig_path = Path(tmp) / "content_hash.sig"
         sig_path.write_text(signature, encoding="utf-8")
         allowed = Path(tmp) / "allowed_signers"
@@ -215,7 +234,7 @@ def _verify_ssh(content_hash: str, signature: str, public_key: str, principal: O
                 "-s",
                 str(sig_path),
             ],
-            input=content_hash.lower(),
+            input=payload.decode("utf-8"),
             capture_output=True,
             text=True,
             check=False,
@@ -224,11 +243,12 @@ def _verify_ssh(content_hash: str, signature: str, public_key: str, principal: O
             raise IdentityError(result.stderr.strip() or result.stdout.strip() or "SSH signature rejected")
 
 
-def _verify_minisign(content_hash: str, signature: str, public_key: str) -> None:
+def _verify_minisign(content_hash: str, signature: str, public_key: str, principal: Optional[str] = None) -> None:
     minisign = _require_tool("minisign")
+    payload = _build_signed_payload(content_hash, principal)
     with tempfile.TemporaryDirectory(prefix="farm-notary-id-") as tmp:
         message = Path(tmp) / "content_hash"
-        message.write_bytes(content_hash.lower().encode("ascii"))
+        message.write_bytes(payload)
         sig_path = Path(tmp) / "content_hash.minisig"
         sig_path.write_text(signature, encoding="utf-8")
         pub_path = Path(tmp) / "minisign.pub"

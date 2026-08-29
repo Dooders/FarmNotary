@@ -83,6 +83,21 @@ def _public_entry(item: Mapping[str, Any]) -> dict:
     return entry
 
 
+def _escape_md_cell(value: Any) -> str:
+    """Escape a value for safe insertion into a Markdown table cell."""
+    text = "—" if value is None or value == "" else str(value)
+    # Replace pipe characters and newlines that would break the table structure.
+    text = text.replace("\\", "\\\\")
+    text = text.replace("|", "\\|")
+    text = text.replace("\n", " ").replace("\r", " ")
+    # Escape backticks to avoid inline-code injection.
+    text = text.replace("`", "\\`")
+    # Strip a leading < that could start an HTML tag.
+    if text.startswith("<"):
+        text = "\\<" + text[1:]
+    return text
+
+
 def render_index(entries: Sequence[Mapping[str, Any]]) -> str:
     """Markdown directory.  No scores, ranks, or reputation columns."""
     lines = [
@@ -109,11 +124,11 @@ def render_index(entries: Sequence[Mapping[str, Any]]) -> str:
         cid = item.get("cid") or "—"
         lines.append(
             "| {experiment} | {seed} | `{cid}` | {claim} | {date} |".format(
-                experiment=item.get("experiment") or "—",
-                seed=_display(item.get("seed")),
-                cid=cid,
-                claim=item.get("claim_level") or "bytes",
-                date=item.get("date") or "—",
+                experiment=_escape_md_cell(item.get("experiment")),
+                seed=_escape_md_cell(item.get("seed")),
+                cid=_escape_md_cell(cid),
+                claim=_escape_md_cell(item.get("claim_level") or "bytes"),
+                date=_escape_md_cell(item.get("date")),
             )
         )
     lines.append("")

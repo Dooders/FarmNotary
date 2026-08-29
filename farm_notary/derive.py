@@ -27,7 +27,7 @@ MODE_VERIFY = "verify"
 VALID_MODES = (MODE_RECOMPUTE, MODE_VERIFY)
 
 
-class DeriveError(RuntimeError):
+class DeriveError(ValueError):
     pass
 
 
@@ -119,8 +119,16 @@ def verify_derived(
     run_dir: Path,
     *,
     timeout: Optional[float] = None,
+    allow_execute: bool = False,
 ) -> List[str]:
-    """Run each ``derived_from`` rule.  Empty list means the claim holds."""
+    """Run each ``derived_from`` rule.  Empty list means the claim holds.
+
+    ``allow_execute`` must be set to *True* to permit running the
+    manifest-supplied derivation commands.  Leaving it *False* (the default)
+    skips execution and returns a warning instead, protecting callers (e.g.
+    ``farm-notary verify``) from executing untrusted commands found in a
+    downloaded manifest.
+    """
     run_dir = Path(run_dir)
     raw = getattr(manifest, "derived_from", None)
     if not raw:
@@ -135,6 +143,12 @@ def verify_derived(
         return [str(exc)]
     if not rules:
         return []
+
+    if not allow_execute:
+        return [
+            "derivation rules are declared but execution is disabled by default; "
+            "pass allow_execute=True (or --verify-derived on the CLI) to run them"
+        ]
 
     problems: List[str] = []
     for i, rule in enumerate(rules):
