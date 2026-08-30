@@ -123,6 +123,23 @@ def test_private_hidden_and_manifest_files_are_skipped(tmp_path: Path):
     assert manifest.artifacts == ["metrics/round_1.json", "summary.csv"]
 
 
+def test_symlink_to_outside_file_is_skipped_with_warning(tmp_path: Path):
+    make_run_dir(tmp_path)
+    outside = tmp_path.parent / "outside.csv"
+    outside.write_text("secret\n", encoding="utf-8")
+    link = tmp_path / "outside_link.csv"
+    try:
+        link.symlink_to(outside)
+    except OSError:
+        pytest.skip("symlinks not supported in this environment")
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        manifest = build_manifest(tmp_path, publish_patterns=["*"])
+    assert "outside_link.csv" not in manifest.artifacts
+    assert any("symlink" in str(w.message).lower() for w in caught)
+
+
 def test_manifest_round_trip(tmp_path: Path):
     make_run_dir(tmp_path)
     manifest = build_manifest(tmp_path, publish_patterns=["*.csv", "**/*.json"], git_sha="abc", runner="consensus", config={"n": 3})
