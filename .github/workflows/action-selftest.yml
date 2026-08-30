@@ -3,8 +3,8 @@ name: Action self-test
 # Smoke-test the composite action (action.yml) against a synthetic run
 # directory so it cannot silently break without CI catching it.
 #
-# Uses `uses: ./` (local action reference) with `backend: dry-run` so no
-# network calls are made and no OTS calendars are contacted.
+# Uses `uses: ./` (local action reference) with `backend: dry-run` so no OTS
+# calendars are contacted. (Note: the action still installs deps via pip.)
 
 on:
   push:
