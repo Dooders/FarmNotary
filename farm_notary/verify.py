@@ -194,6 +194,11 @@ def verify_anchor(manifest: Manifest, run_dir: Path) -> List[str]:
 
     For OpenTimestamps anchors this also validates that the proof file next
     to the manifest commits to the recomputed manifest content hash.
+
+    When a CID is recorded and ``manifest.cid.ots`` is present next to the
+    manifest, the CID binding proof is also verified: it must commit to
+    ``SHA-256(content_hash_bytes || cid_utf8_bytes)``.  A swapped CID causes
+    the binding digest to mismatch and will be reported as a problem.
     """
     problems: List[str] = []
     if manifest.anchor is None:
@@ -205,15 +210,33 @@ def verify_anchor(manifest: Manifest, run_dir: Path) -> List[str]:
             f"anchored hash {anchored_hash} does not match manifest content hash {manifest_hash}"
         )
     if manifest.anchor.get("backend") == "opentimestamps":
-        from farm_notary.ots import PROOF_NAME, verify_proof
+        from farm_notary.ots import CID_BINDING_PROOF_NAME, PROOF_NAME, verify_proof
 
-        proof_path = Path(run_dir) / manifest.anchor.get("detail", {}).get(
+        detail = manifest.anchor.get("detail")
+        if not isinstance(detail, dict):
+            detail = {}
+        proof_path = Path(run_dir) / detail.get(
             "proof", PROOF_NAME
         )
         if not proof_path.is_file():
             problems.append(f"missing anchor proof: {proof_path.name}")
         else:
             problems += verify_proof(proof_path.read_bytes(), manifest_hash)
+
+        if manifest.cid:
+            from farm_notary.ots import verify_cid_binding_proof
+
+            binding_proof_name = detail.get("cid_binding_proof")
+            binding_required = bool(binding_proof_name)
+            binding_path = Path(run_dir) / (
+                binding_proof_name if isinstance(binding_proof_name, str) else CID_BINDING_PROOF_NAME
+            )
+            if binding_path.is_file():
+                problems += verify_cid_binding_proof(
+                    binding_path.read_bytes(), manifest_hash, manifest.cid
+                )
+            elif binding_required:
+                problems.append(f"missing CID binding proof: {binding_path.name}")
     return problems
 
 

@@ -2,9 +2,19 @@
 
 The anchoring layer is outsourced to existing public infrastructure; FarmNotary
 only decides *what* gets anchored (the manifest content hash). Default is
-dry-run: return the payload that *would* be submitted. The real backends are
-OpenTimestamps (farm_notary.ots), which anchors into Bitcoin via free public
-calendar servers, and EAS (farm_notary.eas), which anchors on Base / Base Sepolia.
+dry-run: return the payload that *would* be submitted. The recommended backend
+is OpenTimestamps (farm_notary.ots), which anchors into Bitcoin via free public
+calendar servers.
+
+When an IPFS CID is present, ``notarize_run`` also stamps
+``SHA-256(manifest_hash_bytes || cid_utf8_bytes)`` via OTS and writes
+``manifest.cid.ots`` next to the manifest.  This binding proof attests the
+manifest-to-CID relationship without requiring keys, gas, or a trusted
+attester address.
+
+EAS (farm_notary.eas) is retained for compatibility but is deprecated: it
+requires a funded key, costs gas, and introduces an attester-address trust
+assumption.  Use ``--backend ots`` instead.
 """
 
 from __future__ import annotations
@@ -86,6 +96,33 @@ def write_proof(receipt: AnchorReceipt, run_dir: Path) -> Optional[Path]:
 
     dest = Path(run_dir) / PROOF_NAME
     dest.write_bytes(receipt.proof)
+    return dest
+
+
+def write_cid_binding_proof(
+    manifest_hash: str,
+    cid: str,
+    run_dir: Path,
+    receipt: AnchorReceipt,
+) -> Optional[Path]:
+    """Stamp H(manifest_hash || cid) via OTS and write manifest.cid.ots.
+
+    Uses the same calendar list that produced the manifest anchor proof so
+    the binding stamp is consistent with the main proof.  Errors are
+    swallowed (the function returns None) so a calendar outage does not
+    abort the notarization: the operator can re-stamp manually.
+    """
+    from farm_notary.ots import CID_BINDING_PROOF_NAME, OtsError, cid_binding_digest, stamp_digest
+
+    digest = cid_binding_digest(manifest_hash, cid)
+    calendars = receipt.detail.get("calendars") or None
+    try:
+        proof_bytes, _ = stamp_digest(digest, calendars)
+    except OtsError:
+        return None
+    dest = Path(run_dir) / CID_BINDING_PROOF_NAME
+    dest.write_bytes(proof_bytes)
+    receipt.detail["cid_binding_proof"] = CID_BINDING_PROOF_NAME
     return dest
 
 
@@ -187,5 +224,7 @@ def notarize_run(
 
     receipt = anchor_run(manifest, cid=cid, backend=backend, allow_dirty=allow_dirty)
     write_proof(receipt, run_dir)
+    if cid is not None and receipt.backend == "opentimestamps":
+        write_cid_binding_proof(manifest.content_hash(), cid, run_dir, receipt)
     write_manifest(manifest, run_dir)
     return manifest, receipt
