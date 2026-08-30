@@ -273,8 +273,10 @@ def test_verify_distinguishes_public_and_user_supplied_pending_calendars(tmp_pat
     )
     assert main(["verify", "--run-dir", str(run_dir)]) == 0
     out = capsys.readouterr().out
-    assert "pending at user-supplied calendar:" in out
-    assert "https://example.com" in out
+    assert (
+        "•  existed by time T             — pending at user-supplied calendar: "
+        "https://example.com (untrusted until Bitcoin)"
+    ) in out
 
     (run_dir / PROOF_NAME).write_bytes(
         serialize_proof(
@@ -283,8 +285,11 @@ def test_verify_distinguishes_public_and_user_supplied_pending_calendars(tmp_pat
     )
     assert main(["verify", "--run-dir", str(run_dir)]) == 0
     out = capsys.readouterr().out
-    assert "pending on public OpenTimestamps calendar:" in out
-    assert "user-supplied calendar: https://example.com (untrusted until Bitcoin)" in out
+    assert (
+        "•  existed by time T             — pending on public OpenTimestamps calendar: "
+        f"{DEFAULT_CALENDARS[0]}; user-supplied calendar: https://example.com "
+        "(untrusted until Bitcoin)"
+    ) in out
 
 
 def test_anchor_pin_gateway_reachable_recorded(tmp_path: Path, monkeypatch, capsys):
