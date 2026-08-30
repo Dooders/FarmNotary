@@ -17,8 +17,9 @@ Both tools manage an isolated environment automatically.  `uvx` is part of
 [uv](https://docs.astral.sh/uv/); `pipx` is available via `pip install pipx`.
 Neither requires you to create or activate a venv.
 
-The command reads `manifest.json` and — when `manifest.ots` sits in the same
-directory — verifies that the proof commits to the content hash.
+The command reads `manifest.json` and reports anchor status. When
+`manifest.ots` sits in the same directory, proof verification requires the
+optional `[ots]` extra.
 
 ## Example output
 
@@ -43,8 +44,8 @@ rehash, no network call):
 |---|---|
 | `bytes` | Content hash declared; no receipt or derivation rules |
 | `derived_declared` | Derivation rules recorded but not confirmed here |
-| `bitwise_declared` | Reproduction receipt present but not validated here |
-| `bitwise+derived_declared` | Both receipt and derivation rules declared |
+| *(not emitted by `check`)* `bitwise_declared` | Reproduction receipt status requires `verify` |
+| *(not emitted by `check`)* `bitwise+derived_declared` | Receipt + derivation status requires `verify` |
 
 To **validate** artifact hashes and receipts, use the full `verify` command
 (requires the artifact files):
@@ -84,9 +85,9 @@ uvx farm-notary check --manifest path/to/run/manifest.json
 # OTS proof check is local (no network needed once proof is Bitcoin-attested)
 ```
 
-The hash check and claim-level display are fully offline.  The OTS proof check
-reads the `.ots` file locally; Bitcoin headers are embedded in the proof and
-require no network after the timestamp was upgraded.
+The hash check and claim-level display are fully offline. The OTS proof check
+reads the `.ots` file locally, but OpenTimestamps proofs do not embed Bitcoin
+headers and `check` does not validate attestations against the Bitcoin chain.
 
 ## Full verify (for archival / deeper review)
 

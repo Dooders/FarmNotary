@@ -1291,6 +1291,10 @@ def _check_ots_anchor(
     problems: list,
 ) -> None:
     """Print OTS anchor status; append to *problems* on hard failures."""
+    missing_ots_msg = (
+        "anchor:       OTS proof present but farm-notary[ots] not installed; "
+        "install it to verify the proof commits to this hash"
+    )
     try:
         from farm_notary.ots import OtsError, PROOF_NAME, proof_status, verify_proof
     except ImportError:
@@ -1298,10 +1302,7 @@ def _check_ots_anchor(
         proof_name = detail.get("proof", "manifest.ots") if isinstance(detail, dict) else "manifest.ots"
         proof_path = run_dir / proof_name
         if proof_path.is_file():
-            print(
-                "anchor:       OTS proof present but farm-notary[ots] not installed; "
-                "install it to verify the proof commits to this hash"
-            )
+            print(missing_ots_msg)
         else:
             print("anchor:       OTS proof file absent (install farm-notary[ots] to verify)")
         return
@@ -1314,13 +1315,14 @@ def _check_ots_anchor(
         return
 
     proof_bytes = proof_path.read_bytes()
-    proof_problems = verify_proof(proof_bytes, content_hash)
+    try:
+        proof_problems = verify_proof(proof_bytes, content_hash)
+    except ImportError:
+        print(missing_ots_msg)
+        return
     if proof_problems:
         if all("install farm-notary[ots]" in problem for problem in proof_problems):
-            print(
-                "anchor:       OTS proof present but farm-notary[ots] not installed; "
-                "install it to verify the proof commits to this hash"
-            )
+            print(missing_ots_msg)
             return
         problems.extend(proof_problems)
         print("anchor:       FAIL (proof does not commit to this hash)")
@@ -1328,6 +1330,9 @@ def _check_ots_anchor(
 
     try:
         status = proof_status(proof_bytes)
+    except ImportError:
+        print(missing_ots_msg)
+        return
     except (OtsError, ValueError, OSError) as exc:
         print(f"anchor:       OTS proof present (status unknown: {exc})", file=sys.stderr)
         print("anchor:       OTS proof present (status unknown)")

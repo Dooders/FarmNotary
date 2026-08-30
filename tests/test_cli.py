@@ -499,6 +499,27 @@ def test_check_ots_proof_present_without_ots_dependency(tmp_path: Path, capsys, 
     assert "OTS proof present but farm-notary[ots] not installed" in out
 
 
+def test_check_ots_proof_import_error_without_ots_dependency(tmp_path: Path, capsys, monkeypatch):
+    """check exits 0 when lazy OTS imports fail during proof verification."""
+    run_dir = make_run_dir(tmp_path)
+    assert main(["manifest", "--run-dir", str(run_dir), "--publish", "*.csv"]) == 0
+    manifest = load_manifest(run_dir)
+    content_hash = manifest.content_hash()
+    data = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    data["anchor"] = {"backend": "opentimestamps", "manifest_hash": content_hash}
+    (run_dir / "manifest.json").write_text(json.dumps(data), encoding="utf-8")
+    (run_dir / PROOF_NAME).write_bytes(b"dummy-proof")
+    monkeypatch.setattr(
+        "farm_notary.ots.verify_proof",
+        lambda *_: (_ for _ in ()).throw(ModuleNotFoundError("No module named 'opentimestamps'")),
+    )
+
+    rc = main(["check", "--manifest", str(run_dir / "manifest.json")])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "OTS proof present but farm-notary[ots] not installed" in out
+
+
 def test_check_with_ots_proof(tmp_path: Path, capsys):
     """check verifies OTS proof when farm-notary[ots] is installed."""
     run_dir = make_run_dir(tmp_path)
@@ -550,6 +571,28 @@ def test_check_rejects_invalid_manifest(tmp_path: Path, capsys):
     """check exits 2 for invalid manifests instead of coercing defaults."""
     manifest_path = tmp_path / "manifest.json"
     manifest_path.write_text("{}", encoding="utf-8")
+    rc = main(["check", "--manifest", str(manifest_path)])
+    assert rc == 2
+    assert "error: could not load manifest" in capsys.readouterr().err
+
+
+def test_check_rejects_invalid_manifest_field_types(tmp_path: Path, capsys):
+    """check exits 2 when key manifest fields have invalid types."""
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "schema": "farmnotary.manifest.v1",
+                "created_utc": "2026-01-01T00:00:00Z",
+                "artifacts": None,
+                "artifact_hashes": {},
+                "publish_patterns": ["*.csv"],
+                "unmatched_count": 0,
+                "anchor": "invalid",
+            }
+        ),
+        encoding="utf-8",
+    )
     rc = main(["check", "--manifest", str(manifest_path)])
     assert rc == 2
     assert "error: could not load manifest" in capsys.readouterr().err

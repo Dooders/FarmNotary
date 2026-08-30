@@ -393,6 +393,27 @@ class Manifest:
             raise ValueError(
                 f"unsupported manifest schema {data['schema']!r}, expected {MANIFEST_VERSION!r}"
             )
+        if not isinstance(self.artifacts, list) or any(
+            not isinstance(path, str) for path in self.artifacts
+        ):
+            raise ValueError("manifest field 'artifacts' must be a list of strings")
+        if not isinstance(self.artifact_hashes, dict) or any(
+            not isinstance(path, str) or not isinstance(digest, str)
+            for path, digest in self.artifact_hashes.items()
+        ):
+            raise ValueError("manifest field 'artifact_hashes' must be an object of string values")
+        if self.anchor is not None:
+            if not isinstance(self.anchor, dict):
+                raise ValueError("manifest field 'anchor' must be an object when present")
+            detail = self.anchor.get("detail")
+            if detail is not None:
+                if not isinstance(detail, dict):
+                    raise ValueError("manifest field 'anchor.detail' must be an object when present")
+                proof = detail.get("proof")
+                if proof is not None and not isinstance(proof, str):
+                    raise ValueError("manifest field 'anchor.detail.proof' must be a string when present")
+        if self.identity is not None and not isinstance(self.identity, dict):
+            raise ValueError("manifest field 'identity' must be an object when present")
         listed = set(self.artifacts)
         hashed = set(self.artifact_hashes)
         if listed != hashed:
