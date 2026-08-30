@@ -273,6 +273,45 @@ The action lives at the repo root (`action.yml`). There is no `v0.2` tag yet; pi
 
 `phase: precommit` at job start, `phase: notarize` after success (binds `precommit.json` when present, anchors, runs `verify`, uploads `manifest.json` + `manifest.ots`). `phase: all` is notarize-only for an already-finished run. Verify failure fails the job; artifacts are still uploaded. The Action does not pass `--verify-derived`. Full contract: [docs/ACTION.md](docs/ACTION.md).
 
+### CI provenance
+
+When `farm-notary manifest` runs inside GitHub Actions, the tool automatically reads `GITHUB_SHA`, `GITHUB_REPOSITORY`, `GITHUB_REF`, `GITHUB_WORKFLOW`, and `GITHUB_RUN_ID` and records them in a `ci_provenance` block in the manifest:
+
+```json
+"ci_provenance": {
+  "kind": "github_actions",
+  "sha": "<GITHUB_SHA>",
+  "repository": "Dooders/FarmNotary",
+  "ref": "refs/heads/main",
+  "workflow": "CI",
+  "run_id": "123456",
+  "run_url": "https://github.com/Dooders/FarmNotary/actions/runs/123456"
+}
+```
+
+`ci_provenance` is included in the content hash so the anchor commits to both the artifacts and the attested CI context.  `verify` checks that `git_sha` agrees with `ci_provenance.sha`; a disagreement is a hard failure.  Local / developer runs that have no `ci_provenance` remain valid at a lower claim level — the field is optional and additive.
+
+**Documented path** (checkout → run → notarize with provenance attached):
+
+```yaml
+jobs:
+  notarize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4        # sets GITHUB_SHA
+      - run: python run.py --out results  # produce artifacts
+      - uses: dooders/FarmNotary@dev
+        with:
+          phase: notarize
+          run-dir: results
+          profile: consensus
+          backend: ots
+          # No git-sha override needed: farm-notary reads GITHUB_SHA
+          # automatically and cross-checks it against git rev-parse HEAD.
+```
+
+The `identity` field (minisign / SSH optional signature) labels local signatures as "holder of key K asserts this" — it is never interpreted as CI provenance.
+
 ## Python API
 
 AgentFarm should depend on a 0.2 pin (`farm-notary>=0.2,<0.3`) via an extra such as `farm[notary]`:
@@ -298,7 +337,7 @@ manifest, receipt = notarize_run(
 
 Every manifest records `farm_notary_version` (currently `0.2.0`) and `schema` (`farmnotary.manifest.v1`).
 
-**Promise:** within the `0.x` line, schema changes are **minor-version bumps**. `verify` stays backward-compatible with older manifests: new fields are ignored when reading an older body. A newer schema emits a warning and still attempts verification. Optional fields (`derived_from`, `identity`, `publish_profile`, …) are omitted when empty so a v1 body keeps a stable content hash.
+**Promise:** within the `0.x` line, schema changes are **minor-version bumps**. `verify` stays backward-compatible with older manifests: new fields are ignored when reading an older body. A newer schema emits a warning and still attempts verification. Optional fields (`derived_from`, `identity`, `ci_provenance`, `publish_profile`, …) are omitted when empty so a v1 body keeps a stable content hash.
 
 Required on every v1 body: `schema`, `created_utc`, `git_sha`, `config`, `artifacts`, `artifact_hashes`, `publish_patterns`, `unmatched_count`.
 
@@ -337,7 +376,7 @@ CI runs pytest on Python 3.9–3.12.
 | [docs/EAS.md](docs/EAS.md) | Experimental EAS backend |
 | [docs/registry.md](docs/registry.md) | Generated public index (no scores) |
 | [docs/demo/](docs/demo/) | Live notebook: claim card, allowlist, scoped re-run |
-| [docs/slides/](docs/slides/) | Intro deck for researchers and labs |
+| [docs/slides/](docs/slides/) | Intro deck ([PDF](docs/slides/farmnotary.pdf)) and consensus walkthrough ([PDF](docs/slides/consensus.pdf)) |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
 | [integration/agentfarm/README.md](integration/agentfarm/README.md) | AgentFarm provenance patch |
 

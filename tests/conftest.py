@@ -1,7 +1,26 @@
+import os
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
+
+_GITHUB_ENV_VARS = [
+    "GITHUB_ACTIONS",
+    "GITHUB_SHA",
+    "GITHUB_REPOSITORY",
+    "GITHUB_REF",
+    "GITHUB_WORKFLOW",
+    "GITHUB_RUN_ID",
+    "GITHUB_SERVER_URL",
+]
+
+
+@pytest.fixture(autouse=True)
+def _clear_github_env(monkeypatch):
+    """Clear GitHub Actions env vars so tests using fake git SHAs don't trip
+    the ci_provenance check when the test suite itself runs inside CI."""
+    for var in _GITHUB_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
 
 
 class StubServer:
