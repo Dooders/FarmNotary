@@ -103,6 +103,7 @@ artifacts. It does not invent a precommit after the fact.
 | `sign-receipt` | `false` | After notarize, `farm-notary reproduce --sign`. Caller must set `permissions.id-token: write`. Token never on argv. Cosign pin `v2.5.3`. Not independently reproduced |
 | `reproduce-cwd` | | Working directory for `reproduce --sign` |
 | `artifact-name` | `farm-notary` | Uploaded Actions artifact name |
+| `allow-dirty` | `false` | Allow a dirty git working tree. The recorded SHA will not identify the exact code that ran. Use only in smoke tests or when the tree is intentionally unclean |
 
 `manifest` still requires a profile, `publish` globs, or `notary.profile` /
 `notary.publish` in the config. Prefer `profile`.
@@ -166,6 +167,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install --requirement requirements.lock
+          pip install -e .
 
       # Optional: pre-specify the run before it executes
       - name: Pre-specify (precommit)

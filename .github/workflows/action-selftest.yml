@@ -28,8 +28,9 @@ jobs:
           python-version: "3.12"
 
       # ── Synthetic run directory ────────────────────────────────────────────
-      # Matches the `consensus` profile: REPORT.md + run_config.json suffice.
-      # The denylist check is exercised by naming the sentinel correctly.
+      # Matches the `consensus` profile allowlist: REPORT.md + run_config.json
+      # are the expected artifacts. The allowlist check verifies these files
+      # are present in the manifest.
       - name: Create synthetic run directory
         run: |
           mkdir -p run
