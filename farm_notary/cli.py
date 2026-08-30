@@ -869,8 +869,16 @@ def _cmd_reproduce(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    if trust_note is not None:
-        print(f"warning: trusted context matched: {trust_note}", file=sys.stderr)
+    if trust_note == "ci":
+        print(
+            "warning: trusted context matched the current GitHub Actions repo/SHA.",
+            file=sys.stderr,
+        )
+    elif trust_note == "local":
+        print(
+            "warning: trusted context matched the local checkout git_sha.",
+            file=sys.stderr,
+        )
     else:
         print(
             "warning: proceeding only because --i-accept-untrusted-command was "
@@ -956,7 +964,7 @@ def _trusted_reproduce_source(
         and current_repo
         and current_sha
     ):
-        return "current GitHub Actions repo/SHA"
+        return "ci"
     probe_dirs = [cwd] if cwd is not None else []
     if cwd is None:
         try:
@@ -970,7 +978,7 @@ def _trusted_reproduce_source(
         except OSError:
             continue
         if manifest.git_sha and local_sha and manifest.git_sha == local_sha:
-            return "local checkout git_sha"
+            return "local"
     return None
 
 
