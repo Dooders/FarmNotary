@@ -137,6 +137,68 @@ Cosign is installed at `v2.5.3`. The identity token is never passed on argv.
 - `cid` — set when pinning succeeded
 - `precommit-hash` — set on the precommit phase, or when a precommit was bound
 
+## AgentFarm integration example (copy-pasteable)
+
+This is the minimal workflow to drop into any repo that runs AgentFarm
+consensus experiments. Change `run-dir`, `config`, `command`, and
+`lockfile` to match your repository layout; keep everything else as-is.
+
+```yaml
+# .github/workflows/notarize.yml
+name: Notarize AgentFarm run
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Pin to a commit SHA or a stable tag once v0.2.0 is released.
+# @dev is a mutable ref — replace it with a SHA for production use.
+# e.g.  uses: dooders/FarmNotary@<commit-sha>
+
+jobs:
+  notarize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4         # sets GITHUB_SHA automatically
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Optional: pre-specify the run before it executes
+      - name: Pre-specify (precommit)
+        uses: dooders/FarmNotary@dev  # pin to a SHA in production
+        with:
+          phase: precommit
+          run-dir: results
+          config: experiments/consensus/config.json
+          command: "python run_experiment.py --seed 0 --out {run_dir}"
+          lockfile: requirements.lock
+
+      # Your experiment goes here
+      - name: Run experiment
+        run: python run_experiment.py --seed 0 --out results
+
+      # Notarize, anchor via OpenTimestamps, run verify, upload manifest
+      - name: Notarize + verify
+        uses: dooders/FarmNotary@dev  # pin to a SHA in production
+        with:
+          phase: notarize
+          run-dir: results
+          config: experiments/consensus/config.json
+          command: "python run_experiment.py --seed 0 --out {run_dir}"
+          profile: consensus
+          lockfile: requirements.lock
+          backend: ots
+          # pin-remote: pinata  # uncomment when a Kubo remote is registered
+```
+
+`GITHUB_SHA` is automatically picked up and recorded in `ci_provenance`;
+no `git-sha` override is needed. The precommit step is optional — omit it
+and set `phase: all` when the run has already completed.
+
 ## What this action will not do
 
 - Score, rank, or reputation-weight a lab
