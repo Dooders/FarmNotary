@@ -360,19 +360,40 @@
 
     @media print {
       @page { size: 13.333in 7.5in; margin: 0; }
-      html, body, #deck { height: auto; background: white; }
+      html, body {
+        width: 13.333in;
+        height: auto;
+        background: #241f19;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      #deck { height: auto; overflow: visible; }
       #chrome, #help, #notes { display: none !important; }
       .slide {
         position: relative;
+        inset: auto;
         opacity: 1 !important;
         visibility: visible !important;
-        print-color-adjust: exact;
-        -webkit-print-color-adjust: exact;
-        page-break-after: always;
-        break-after: page;
+        pointer-events: auto;
+        overflow: hidden;
         width: 13.333in;
         height: 7.5in;
+        page-break-after: always;
+        break-after: page;
+        page-break-inside: avoid;
+        break-inside: avoid;
       }
+      .slide:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
+      .grid-2 { grid-template-columns: 1fr 1fr; }
+      .grid-3 { grid-template-columns: repeat(3, 1fr); }
+      .path-step { grid-template-columns: 2.4rem 7.2rem minmax(0, 1fr); }
+      .path .verb { grid-column: auto; }
+      .path code { grid-column: auto; }
+      .rung { grid-template-columns: 3.6rem minmax(0, 1.4fr) minmax(0, 1fr); }
+      .rung .not { grid-column: auto; }
     }
   </style>
 </head>

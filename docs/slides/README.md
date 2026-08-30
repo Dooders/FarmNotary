@@ -25,7 +25,13 @@ Both talks stay inside the claim card. If either starts promising scientific cor
 
 ## PDF
 
-Regenerate either PDF with Chrome or Chromium:
+Regenerate a PDF with Chrome or Chromium. For the intro deck:
+
+```bash
+python3 docs/slides/export_pdf.py --html docs/slides/index.html --pdf docs/slides/farmnotary.pdf
+```
+
+For the consensus walkthrough:
 
 ```bash
 python3 docs/slides/export_pdf.py

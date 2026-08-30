@@ -68,7 +68,9 @@ The last tagged / PyPI release is **0.1.0**. This tree is **0.2.0**.
 - Intro slide deck for researchers and labs (`docs/slides/`): four-act
   talk (Why / Record / Evidence / Start), claim card, scoped consensus
   showcase, solo/lab paths. Locked to CLAIMS.md by
-  `test_intro_deck_stays_inside_the_claim_card`.
+  `test_intro_deck_stays_inside_the_claim_card`. A 16:9 PDF
+  (`docs/slides/farmnotary.pdf`) is generated from the HTML deck via
+  `docs/slides/export_pdf.py` (headless Chrome).
 - Consensus walkthrough deck (`docs/slides/consensus.html` and
   `docs/slides/consensus.pdf`): a 15-slide worked example of the tiny
   demo experiment — official vs private files, dry-run claim card,
