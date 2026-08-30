@@ -298,5 +298,5 @@ def test_cli_reproduce_trusts_same_local_checkout(tmp_path: Path, capsys):
 
     assert main(["reproduce", "--run-dir", str(run_dir), "--cwd", str(repo)]) == 0
     captured = capsys.readouterr()
-    assert "trusted context matched: local checkout matches git_sha" in captured.err
+    assert "trusted context matched: local checkout git_sha" in captured.err
     assert "matched: 2 artifact(s) bitwise-identical" in captured.out

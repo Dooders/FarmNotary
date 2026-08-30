@@ -956,7 +956,7 @@ def _trusted_reproduce_source(
         and current_repo
         and current_sha
     ):
-        return f"current GitHub Actions run matches {current_repo}@{current_sha[:12]}"
+        return "current GitHub Actions repo/SHA"
     probe_dirs = [cwd] if cwd is not None else []
     if cwd is None:
         try:
@@ -970,7 +970,7 @@ def _trusted_reproduce_source(
         except OSError:
             continue
         if manifest.git_sha and local_sha and manifest.git_sha == local_sha:
-            return f"local checkout matches git_sha {local_sha[:12]}"
+            return "local checkout git_sha"
     return None
 
 
