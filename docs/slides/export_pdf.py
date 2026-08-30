@@ -19,8 +19,8 @@ CHROME_NAMES = (
 )
 
 SLIDES_DIR = Path(__file__).resolve().parent
-DEFAULT_HTML = SLIDES_DIR / "consensus.html"
-DEFAULT_PDF = SLIDES_DIR / "consensus.pdf"
+DEFAULT_HTML = SLIDES_DIR / "index.html"
+DEFAULT_PDF = SLIDES_DIR / "farmnotary.pdf"
 
 
 def _find_chrome(explicit: str | None) -> str:
@@ -48,7 +48,9 @@ def export_pdf(html: Path, pdf: Path, chrome: str | None) -> None:
         cmd = [
             _find_chrome(chrome),
             "--headless",
+            "--no-sandbox",
             "--disable-gpu",
+            "--disable-dev-shm-usage",
             "--no-first-run",
             "--no-default-browser-check",
             "--disable-extensions",
