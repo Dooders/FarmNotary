@@ -275,7 +275,7 @@ def test_verify_distinguishes_public_and_user_supplied_pending_calendars(tmp_pat
     out = capsys.readouterr().out
     assert (
         "•  existed by time T             — pending at user-supplied calendar: "
-        "https://example.com (untrusted until Bitcoin)"
+        "https://example.com (unverified claim; untrusted until Bitcoin)"
     ) in out
 
     (run_dir / PROOF_NAME).write_bytes(
@@ -287,8 +287,8 @@ def test_verify_distinguishes_public_and_user_supplied_pending_calendars(tmp_pat
     out = capsys.readouterr().out
     assert (
         "•  existed by time T             — pending on public OpenTimestamps calendar: "
-        f"{DEFAULT_CALENDARS[0]}; user-supplied calendar: https://example.com "
-        "(untrusted until Bitcoin)"
+        f"{DEFAULT_CALENDARS[0]} (unverified claim); user-supplied calendar: https://example.com "
+        "(unverified claim; untrusted until Bitcoin)"
     ) in out
 
 

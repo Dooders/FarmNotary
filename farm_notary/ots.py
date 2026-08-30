@@ -101,6 +101,13 @@ class ProofStatus:
 
     @property
     def public_pending_calendars(self) -> List[str]:
+        """URIs matching known public calendars.
+
+        Note: PendingAttestation is unsigned and user-constructible.  A URI
+        matching a known public calendar is an *unauthenticated claim* that the
+        digest was submitted there; it does not prove acceptance by that service.
+        Trusted status should only be attributed to Bitcoin attestations.
+        """
         public = _public_calendar_urls()
         return sorted(
             {uri for uri in self.pending_calendars if _canonical_calendar_url(uri) in public}

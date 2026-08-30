@@ -85,14 +85,14 @@ def test_bitcoin_attestation_label_distinguishes_public_and_user_supplied_pendin
     (run / PROOF_NAME).write_bytes(
         serialize_proof(pending_timestamp(digest, DEFAULT_CALENDARS[0]))
     )
-    assert bitcoin_attestation_label(manifest, run) == "Pending (public OpenTimestamps calendars)"
+    assert bitcoin_attestation_label(manifest, run) == "Pending (unverified claim; public OpenTimestamps calendars)"
 
     (run / PROOF_NAME).write_bytes(
         serialize_proof(pending_timestamp(digest, "https://example.com"))
     )
     assert bitcoin_attestation_label(manifest, run) == (
         "Pending at user-supplied calendar https://example.com "
-        "(untrusted until Bitcoin)"
+        "(unverified claim; untrusted until Bitcoin)"
     )
 
 
