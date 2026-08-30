@@ -122,6 +122,7 @@ def _write_cid_binding_proof(
         return None
     dest = Path(run_dir) / CID_BINDING_PROOF_NAME
     dest.write_bytes(proof_bytes)
+    receipt.detail["cid_binding_proof"] = CID_BINDING_PROOF_NAME
     return dest
 
 

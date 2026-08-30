@@ -378,13 +378,15 @@ def test_verify_anchor_cid_binding_proof_rejects_swapped_cid(tmp_path: Path):
     assert any("CID binding proof commits to" in p for p in problems)
 
 
-def test_verify_anchor_no_cid_binding_proof_is_not_an_error(tmp_path: Path):
-    """If manifest.cid.ots is absent, verify does not raise an error."""
+def test_verify_anchor_missing_required_cid_binding_proof_is_an_error(tmp_path: Path):
+    from farm_notary.ots import CID_BINDING_PROOF_NAME
+
     manifest = make_manifest(tmp_path)
     manifest.cid = "bafytest"
     anchor_run(manifest)
     manifest.anchor["backend"] = "opentimestamps"
+    manifest.anchor["detail"] = {"proof": PROOF_NAME, "cid_binding_proof": CID_BINDING_PROOF_NAME}
     write_proof_for(manifest, tmp_path)
 
-    # No manifest.cid.ots written – should still pass.
-    assert verify_anchor(manifest, tmp_path) == []
+    problems = verify_anchor(manifest, tmp_path)
+    assert problems == [f"missing CID binding proof: {CID_BINDING_PROOF_NAME}"]

@@ -5,7 +5,13 @@ from farm_notary import cli
 from farm_notary.anchor import AnchorReceipt
 from farm_notary.cli import main
 from farm_notary.manifest import load_manifest
-from farm_notary.ots import DEFAULT_CALENDARS, PROOF_NAME, serialize_proof
+from farm_notary.ots import (
+    CID_BINDING_PROOF_NAME,
+    DEFAULT_CALENDARS,
+    PROOF_NAME,
+    cid_binding_digest,
+    serialize_proof,
+)
 from tests.conftest import StubServer
 from tests.test_ots import (
     bitcoin_timestamp,
@@ -220,6 +226,8 @@ def test_full_pin_anchor_upgrade_verify_flow(tmp_path: Path, monkeypatch, capsys
         assert manifest.cid == "bafyroot"
         assert manifest.anchor["backend"] == "opentimestamps"
         assert (run_dir / PROOF_NAME).is_file()
+        assert (run_dir / CID_BINDING_PROOF_NAME).is_file()
+        assert manifest.anchor["detail"]["cid_binding_proof"] == CID_BINDING_PROOF_NAME
         # Private artifacts never reach the pinned upload.
         assert b"votes_ballot" not in ipfs.requests[0]["body"]
 
@@ -235,8 +243,14 @@ def test_full_pin_anchor_upgrade_verify_flow(tmp_path: Path, monkeypatch, capsys
         calendar.get_responses[f"/timestamp/{digest.hex()}"] = serialize_timestamp(
             bitcoin_timestamp(digest, 800000)
         )
+        cid_digest = cid_binding_digest(manifest.content_hash(), manifest.cid)
+        calendar.get_responses[f"/timestamp/{cid_digest.hex()}"] = serialize_timestamp(
+            bitcoin_timestamp(cid_digest, 800001)
+        )
         assert main(["upgrade", "--run-dir", str(run_dir)]) == 0
-        assert "Bitcoin block 800000" in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert "manifest.ots: anchored in Bitcoin block 800000" in out
+        assert "manifest.cid.ots: anchored in Bitcoin block 800001" in out
 
         assert main(["verify", "--run-dir", str(run_dir)]) == 0
         out = capsys.readouterr().out

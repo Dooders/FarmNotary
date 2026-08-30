@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from farm_notary.anchor import anchor_run, get_backend, write_proof
+from farm_notary.anchor import _write_cid_binding_proof, anchor_run, get_backend, write_proof
 from farm_notary.manifest import (
     MANIFEST_NAME,
     DirtyTreeError,
@@ -605,6 +605,8 @@ def _cmd_anchor(args: argparse.Namespace) -> int:
         manifest, cid=cid, backend=backend, allow_dirty=args.allow_dirty
     )
     proof_path = write_proof(receipt, run_dir)
+    if cid is not None and receipt.backend == "opentimestamps":
+        _write_cid_binding_proof(manifest.content_hash(), cid, run_dir, receipt)
 
     no_write = getattr(args, "no_write", False)
     if not no_write:
@@ -964,20 +966,31 @@ def _trusted_reproduce_source(
 
 
 def _cmd_upgrade(args: argparse.Namespace) -> int:
-    from farm_notary.ots import PROOF_NAME, upgrade_proof
+    from farm_notary.ots import CID_BINDING_PROOF_NAME, PROOF_NAME, upgrade_proof
 
     run_dir = Path(args.run_dir)
-    proof_path = run_dir / PROOF_NAME
-    if not proof_path.is_file():
-        print(f"error: {proof_path} not found; anchor with --backend ots first", file=sys.stderr)
+    manifest_proof_path = run_dir / PROOF_NAME
+    if not manifest_proof_path.is_file():
+        print(
+            f"error: {manifest_proof_path} not found; anchor with --backend ots first",
+            file=sys.stderr,
+        )
         return 2
-    upgraded, status, errors = upgrade_proof(proof_path.read_bytes())
-    proof_path.write_bytes(upgraded)
-    for line in status.summary():
-        print(line)
-    for error in errors:
-        print("note:", error, file=sys.stderr)
-    return 0 if status.confirmed else 1
+    proof_paths = [manifest_proof_path]
+    cid_binding_proof_path = run_dir / CID_BINDING_PROOF_NAME
+    if cid_binding_proof_path.is_file():
+        proof_paths.append(cid_binding_proof_path)
+
+    all_confirmed = True
+    for proof_path in proof_paths:
+        upgraded, status, errors = upgrade_proof(proof_path.read_bytes())
+        proof_path.write_bytes(upgraded)
+        for line in status.summary():
+            print(f"{proof_path.name}: {line}")
+        for error in errors:
+            print(f"note: {proof_path.name}: {error}", file=sys.stderr)
+        all_confirmed = all_confirmed and status.confirmed
+    return 0 if all_confirmed else 1
 
 
 def _cmd_register_schema(_args: argparse.Namespace) -> int:
