@@ -47,6 +47,8 @@ def test_readme_documents_verify_derived_and_missing_is_not_failure():
     assert "--verify-derived" in DESIGN
     assert "Missing is not failure" in README
     assert "Missing is not failure" in CLAIMS
+    assert "Exit 0 means the artifact hashes match" in README
+    assert "Exit code 0 means the artifact hashes match" in CLAIMS
 
 
 def test_readme_profiles_match_checked_in_names():
@@ -78,6 +80,8 @@ def test_claim_card_rows_match_the_tool():
     assert L0_MEANING in DESIGN
     assert "pending" in CLAIMS
     assert "not L0" in CLAIMS or "is not L0" in CLAIMS
+    assert "user-supplied calendars" in CLAIMS
+    assert "user-supplied calendars" in README
     assert "command was not run" in CLAIMS
     assert "command was not run" in README or "not a completed re-run" in README
     assert "Artifact label" in CLAIMS

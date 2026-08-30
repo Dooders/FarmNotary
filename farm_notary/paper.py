@@ -53,12 +53,25 @@ def bitcoin_attestation_label(record: Any, run_dir: Optional[Path] = None) -> st
                 if status.bitcoin_heights:
                     height = min(status.bitcoin_heights)
                     return f"Bitcoin block {height}"
+                if status.public_pending_calendars and not status.unknown_pending_calendars:
+                    return "Pending (unverified claim; public OpenTimestamps calendars)"
+                if status.unknown_pending_calendars and not status.public_pending_calendars:
+                    label = (
+                        "calendar"
+                        if len(status.unknown_pending_calendars) == 1
+                        else "calendars"
+                    )
+                    return (
+                        f"Pending at user-supplied {label} "
+                        f"{', '.join(status.unknown_pending_calendars)} "
+                        "(unverified claim; untrusted until Bitcoin)"
+                    )
                 if status.pending_calendars:
-                    return "pending"
-        detail = anchor.get("detail") or {}
-        if detail.get("status") == "pending" or detail.get("calendars"):
-            return "pending"
-        return "pending"
+                    return (
+                        "Pending (unverified claims; public calendars; user-supplied calendars "
+                        "remain untrusted until Bitcoin)"
+                    )
+        return "Pending (calendar attestation only)"
     return "none"
 
 

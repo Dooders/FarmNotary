@@ -315,7 +315,7 @@ class ClaimCard:
 def _existed_by_status(
     manifest: Manifest, run_dir: Path, anchor_problems: List[str]
 ) -> str:
-    """CLAIMS.md 'existed by time T': pending, Bitcoin height, missing, or fail."""
+    """CLAIMS.md 'existed by time T': Bitcoin, public pending, untrusted pending, missing, or fail."""
     if manifest.anchor is None or manifest.anchor.get("backend") != "opentimestamps":
         return "missing"
     if anchor_problems:
@@ -333,8 +333,33 @@ def _existed_by_status(
         return "fail"
     if status.bitcoin_heights:
         return f"Bitcoin height {min(status.bitcoin_heights)}"
-    if status.pending_calendars:
-        return "pending"
+    public = status.public_pending_calendars
+    unknown = status.unknown_pending_calendars
+    if public and not unknown:
+        label = "calendar" if len(public) == 1 else "calendars"
+        return (
+            f"pending on public OpenTimestamps {label}: {', '.join(public)} "
+            "(unverified claim; not yet Bitcoin-attested)"
+        )
+    if unknown and not public:
+        label = "calendar" if len(unknown) == 1 else "calendars"
+        return (
+            f"pending at user-supplied {label}: {', '.join(unknown)} "
+            "(unverified claim; untrusted until Bitcoin)"
+        )
+    if public or unknown:
+        parts = []
+        if public:
+            label = "calendar" if len(public) == 1 else "calendars"
+            parts.append(
+                f"public OpenTimestamps {label}: {', '.join(public)} (unverified claim)"
+            )
+        if unknown:
+            label = "calendar" if len(unknown) == 1 else "calendars"
+            parts.append(
+                f"user-supplied {label}: {', '.join(unknown)} (unverified claim; untrusted until Bitcoin)"
+            )
+        return "pending on " + "; ".join(parts)
     return "fail"
 
 

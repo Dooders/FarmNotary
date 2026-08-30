@@ -2,7 +2,7 @@ from pathlib import Path
 
 from farm_notary.anchor import anchor_run
 from farm_notary.manifest import build_manifest, write_manifest
-from farm_notary.ots import PROOF_NAME, serialize_proof
+from farm_notary.ots import DEFAULT_CALENDARS, PROOF_NAME, serialize_proof
 from farm_notary.precommit import PRECOMMIT_NAME, build_precommit, write_precommit
 from farm_notary.reproduce import build_receipt, write_receipt
 from farm_notary.verify import evaluate_claims, verify_anchor, verify_run_dir
@@ -20,6 +20,13 @@ def write_proof_for(manifest, run_dir: Path, digest_hex=None) -> Path:
     digest = bytes.fromhex(digest_hex or manifest.content_hash())
     path = run_dir / PROOF_NAME
     path.write_bytes(serialize_proof(pending_timestamp(digest, "https://example.com")))
+    return path
+
+
+def write_pending_proof_for(manifest, run_dir: Path, uri: str) -> Path:
+    digest = bytes.fromhex(manifest.content_hash())
+    path = run_dir / PROOF_NAME
+    path.write_bytes(serialize_proof(pending_timestamp(digest, uri)))
     return path
 
 
@@ -148,16 +155,27 @@ def test_claim_card_tamper_fails_only_that_claim(tmp_path: Path):
     assert any("hash mismatch" in p for p in card.problems)
 
 
-def test_claim_card_existed_by_pending_and_bitcoin_height(tmp_path: Path):
+def test_claim_card_existed_by_public_pending_unknown_pending_and_bitcoin_height(tmp_path: Path):
     manifest = make_manifest(tmp_path)
     write_manifest(manifest, tmp_path)
     anchor_run(manifest)
     manifest.anchor["backend"] = "opentimestamps"
     manifest.anchor["detail"] = {"proof": PROOF_NAME}
-    write_proof_for(manifest, tmp_path)
+    write_pending_proof_for(manifest, tmp_path, DEFAULT_CALENDARS[0])
     card = evaluate_claims(manifest, tmp_path)
     assert card.ok
-    assert card.existed_by == "pending"
+    assert card.existed_by == (
+        "pending on public OpenTimestamps calendar: "
+        f"{DEFAULT_CALENDARS[0]} (unverified claim; not yet Bitcoin-attested)"
+    )
+
+    write_pending_proof_for(manifest, tmp_path, "https://example.com")
+    card = evaluate_claims(manifest, tmp_path)
+    assert card.ok
+    assert card.existed_by == (
+        "pending at user-supplied calendar: https://example.com "
+        "(unverified claim; untrusted until Bitcoin)"
+    )
 
     digest = bytes.fromhex(manifest.content_hash())
     (tmp_path / PROOF_NAME).write_bytes(serialize_proof(bitcoin_timestamp(digest, 800000)))

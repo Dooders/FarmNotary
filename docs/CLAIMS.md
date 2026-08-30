@@ -6,16 +6,18 @@ whose backing command you have not run.
 `farm-notary verify` prints a stacked ladder (highest earned level, then the
 gap that blocks the next) and the orthogonal claim-card rows. Reviewers read
 the card, not the exit code. **Missing is not failure** — it means that
-claim was not earned. Exit code 0 means no attempted check failed; it does
-not mean every row is earned, and a printed `Ln` is not scientific
-correctness. Exit codes stay for scripts.
+claim was not earned. Exit code 0 means the artifact hashes match and every
+attempted proof check passed; for OTS that means the proof commits to the
+content hash, not that the time claim reached Bitcoin. It does not mean every
+row is earned, and a printed `Ln` is not scientific correctness. Exit codes
+stay for scripts.
 
 ```
 claim card
 level: none — no earned ladder level
 next:  L0 — these bytes existed by time T; Bitcoin headers not verified by this tool (missing: Bitcoin attestation)
 •  tamper-evident record           — pass
-•  existed by time T               — pending
+•  existed by time T               — pending on public OpenTimestamps calendar: https://a.pool.opentimestamps.org (not yet Bitcoin-attested)
 •  pre-specified design            — missing
 •  bitwise reproducible (scoped)   — 6/6, ignored: *.mp4; byte-identical on x86-64 Linux in a pinned environment
 •  not claimed: scientific correctness
@@ -27,8 +29,10 @@ These names are 1:1 with `farm_notary.ladder`. Unearned names are
 unprintable: do not write `FarmNotary L2` until the beacon binding checks
 pass, and do not write independently reproduced for a self-run receipt
 or a Sigstore signature whose identity is not constrained.
-Pending OTS (any calendar) is not L0. `bytes` / `bitwise` below are index
-labels, not ladder levels.
+Pending OTS (any calendar) is not L0. The `existed by time T` row must say
+whether a proof is Bitcoin-attested, pending on the known public pools, or
+submitted only to user-supplied calendars that remain untrusted until Bitcoin.
+`bytes` / `bitwise` below are index labels, not ladder levels.
 
 | Level | Meaning | Evidence | Command |
 |---|---|---|---|
@@ -49,7 +53,7 @@ That is the difference between a hash tool and a research notary.
 | Claim | Backed by | Command |
 |---|---|---|
 | Tamper-evident record | Artifact rehash against the manifest | `farm-notary verify` (claim card: pass/fail). Required for any ladder level. |
-| Existed by time T | OpenTimestamps proof, Bitcoin attestation | `farm-notary upgrade`, then `ots verify` for full independence. Only `Bitcoin height N` earns L0; `pending` does not. |
+| Existed by time T | OpenTimestamps proof, Bitcoin attestation | `farm-notary upgrade`, then `ots verify` for full independence. Only `Bitcoin height N` earns L0; pending public calendars and user-supplied calendars do not. A user-supplied pending calendar is only a scoped submission claim until Bitcoin. |
 | Verifiable provenance | Manifest records command, config, seed, git SHA, environment (packages/lockfile hash); a stranger can re-derive everything. `git_dirty` is recorded, but a dirty tree is not a code-identity claim: `precommit` and `anchor` refuse it unless `--allow-dirty`. Omitting `git_dirty` still inspects the working tree — a supplied SHA is not a bypass. | `farm-notary manifest --command ... --lockfile ...`; `farm-notary precommit` / `anchor` (fail if dirty). `command` + `git_sha` + fingerprint earn L1 once L0 is held; that is specification, not a completed re-run. |
 | Pre-specified design | Precommit proof (config, command, git SHA anchored before the run); manifest's `precommit_hash` binds the two phases | `farm-notary precommit --config ... --command ... --backend ots`, then `farm-notary manifest --precommit precommit.json`; `farm-notary verify` reports `precommit bound`. Shown on the card; not a ladder level. |
 | Bitwise reproducible (scoped) | A reproduction receipt produced by re-running the recorded command and comparing every listed artifact; what was excluded is noted in the receipt | `farm-notary reproduce`; with `--ignore` globs for legitimately nondeterministic artifacts. Does not earn L3 without a Sigstore signature. |

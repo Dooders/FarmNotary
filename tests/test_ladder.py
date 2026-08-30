@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from farm_notary.anchor import anchor_run
 from farm_notary.ladder import L0_MEANING, L2_NEXT_MEANING, LADDER_NONE, evaluate_ladder
 from farm_notary.manifest import build_manifest, write_manifest
-from farm_notary.ots import PROOF_NAME, serialize_proof
+from farm_notary.ots import DEFAULT_CALENDARS, PROOF_NAME, serialize_proof
 from farm_notary.reproduce import ReproductionResult, build_receipt, write_receipt
 from farm_notary.verify import evaluate_claims
 from tests.test_ots import bitcoin_timestamp, pending_timestamp
@@ -67,7 +67,7 @@ def attach_pending(manifest, run_dir):
     manifest.anchor["detail"] = {"proof": PROOF_NAME}
     digest = bytes.fromhex(manifest.content_hash())
     (run_dir / PROOF_NAME).write_bytes(
-        serialize_proof(pending_timestamp(digest, "https://example.com"))
+        serialize_proof(pending_timestamp(digest, DEFAULT_CALENDARS[0]))
     )
 
 
@@ -81,7 +81,12 @@ def test_bare_rehash_is_none_next_l0():
 
 
 def test_pending_ots_is_not_l0():
-    card = _card(existed_by="pending")
+    card = _card(
+        existed_by=(
+            "pending on public OpenTimestamps calendar: "
+            f"{DEFAULT_CALENDARS[0]} (unverified claim; not yet Bitcoin-attested)"
+        )
+    )
     result = evaluate_ladder(card, _l1_manifest())
     assert result.level == LADDER_NONE
     assert "Bitcoin attestation" in result.next_gaps[0]
@@ -157,7 +162,7 @@ def test_evaluate_claims_pending_is_not_l0(tmp_path):
     manifest = make_run(tmp_path, command="python run.py {run_dir}")
     attach_pending(manifest, tmp_path)
     card = evaluate_claims(manifest, tmp_path)
-    assert card.existed_by == "pending"
+    assert "pending on public OpenTimestamps calendar:" in card.existed_by
     assert card.ladder.level == LADDER_NONE
 
 
