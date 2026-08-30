@@ -3,7 +3,6 @@ from __future__ import annotations
 import fnmatch
 import hashlib
 import json
-import os
 import platform
 import subprocess
 import warnings
@@ -62,6 +61,47 @@ _STAMP_KEYS = (
     "identity",
 )
 
+# Sentinel that tells build_manifest to auto-detect CI provenance.
+# Callers that pass ``ci_provenance=None`` explicitly opt out of detection.
+_CI_PROV_AUTO = object()
+
+
+def detect_ci_provenance() -> Optional[dict]:
+    """Detect GitHub Actions CI provenance from environment variables.
+
+    Returns a dict describing the attested CI context when the process is
+    running inside GitHub Actions (``GITHUB_ACTIONS=true``), or ``None``
+    when not in CI.  The ``sha`` key carries ``GITHUB_SHA`` — the commit
+    that the runner checked out — which is later cross-checked against the
+    manifest's ``git_sha`` by :func:`farm_notary.verify.verify_ci_provenance`.
+    """
+    import os
+
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        return None
+    sha = os.environ.get("GITHUB_SHA", "").strip()
+    if not sha:
+        return None
+    prov: dict = {
+        "kind": "github_actions",
+        "sha": sha,
+    }
+    for key, var in (
+        ("repository", "GITHUB_REPOSITORY"),
+        ("ref", "GITHUB_REF"),
+        ("workflow", "GITHUB_WORKFLOW"),
+        ("run_id", "GITHUB_RUN_ID"),
+    ):
+        val = os.environ.get(var, "").strip()
+        if val:
+            prov[key] = val
+    server_url = os.environ.get("GITHUB_SERVER_URL", "https://github.com").rstrip("/")
+    run_id = prov.get("run_id", "")
+    repo = prov.get("repository", "")
+    if run_id and repo:
+        prov["run_url"] = f"{server_url}/{repo}/actions/runs/{run_id}"
+    return prov
+
 
 def hash_file(path: Path) -> str:
     h = hashlib.sha256()
@@ -102,49 +142,6 @@ def _matches_any_pattern(rel_posix: str, patterns: Sequence[str]) -> bool:
     return False
 
 
-def _iter_run_files(run_dir: Path, *, warn_on_symlink: bool = False) -> Iterator[Path]:
-    """Yield regular files inside *run_dir* without following symlinks."""
-    run_dir = Path(run_dir)
-    candidates: List[Path] = []
-    for root, dirnames, filenames in os.walk(run_dir, followlinks=False):
-        root_path = Path(root)
-        safe_dirs = []
-        for dirname in sorted(dirnames):
-            child = root_path / dirname
-            rel = child.relative_to(run_dir)
-            if any(part.startswith(".") for part in rel.parts):
-                continue
-            if child.is_symlink():
-                if warn_on_symlink:
-                    warnings.warn(
-                        f"Skipping symlinked directory from artifact discovery: {rel.as_posix()}",
-                        stacklevel=3,
-                    )
-                continue
-            safe_dirs.append(dirname)
-        dirnames[:] = safe_dirs
-
-        for filename in sorted(filenames):
-            path = root_path / filename
-            rel = path.relative_to(run_dir)
-            if any(part.startswith(".") for part in rel.parts):
-                continue
-            if path.name in NOTARY_FILE_NAMES or path.name.endswith(NOTARY_FILE_SUFFIXES):
-                continue
-            if path.is_symlink():
-                if warn_on_symlink:
-                    warnings.warn(
-                        f"Skipping symlinked file from artifact discovery: {rel.as_posix()}",
-                        stacklevel=3,
-                    )
-                continue
-            if not path.is_file():
-                continue
-            candidates.append(path)
-    for path in sorted(candidates):
-        yield path
-
-
 def iter_artifact_paths(
     run_dir: Path,
     publish_patterns: Sequence[str],
@@ -157,8 +154,14 @@ def iter_artifact_paths(
     admits.  Hidden files/directories and notary metadata are always skipped.
     """
     run_dir = Path(run_dir)
-    for path in _iter_run_files(run_dir, warn_on_symlink=True):
+    for path in sorted(run_dir.rglob("*")):
+        if not path.is_file():
+            continue
         rel = path.relative_to(run_dir)
+        if any(part.startswith(".") for part in rel.parts):
+            continue
+        if path.name in NOTARY_FILE_NAMES or path.name.endswith(NOTARY_FILE_SUFFIXES):
+            continue
         rel_posix = rel.as_posix()
         # --- allowlist (primary gate) ---
         if not _matches_any_pattern(rel_posix, publish_patterns):
@@ -323,6 +326,12 @@ class Manifest:
     # Optional minisign / SSH signature of content_hash.  Excluded from
     # content_hash itself (same as cid/anchor) so it can be stamped after.
     identity: Optional[dict] = None
+    # CI provenance captured from GitHub Actions environment variables at
+    # manifest-build time.  Included in content_hash (not a stamp) so the
+    # anchor commits to both the artifacts and the attested CI context.
+    # ``None`` on local / developer runs; those manifests remain valid at a
+    # lower claim level.
+    ci_provenance: Optional[dict] = None
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -340,6 +349,7 @@ class Manifest:
             "pin_service",
             "anchor",
             "identity",
+            "ci_provenance",
         }
         _OMIT_IF_EMPTY = {"derived_from"}
         return {
@@ -406,6 +416,7 @@ def build_manifest(
     seed_index: Optional[int] = None,
     beacon_client: Optional[Any] = None,
     seeds_path: Optional[Path] = None,
+    ci_provenance: Optional[Mapping[str, Any]] = _CI_PROV_AUTO,  # type: ignore[assignment]
 ) -> Manifest:
     """Build a :class:`Manifest` for *run_dir*.
 
@@ -446,7 +457,16 @@ def build_manifest(
         )
 
     # Collect all candidate files to compute the unmatched count.
-    all_candidates = list(_iter_run_files(run_dir))
+    all_candidates: List[Path] = []
+    for path in sorted(run_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(run_dir)
+        if any(part.startswith(".") for part in rel.parts):
+            continue
+        if path.name in NOTARY_FILE_NAMES or path.name.endswith(NOTARY_FILE_SUFFIXES):
+            continue
+        all_candidates.append(path)
 
     artifacts: list = []
     hashes: dict = {}
@@ -465,6 +485,10 @@ def build_manifest(
         )
 
     git_sha, git_dirty = resolve_git_identity(git_sha, git_dirty)
+    # Auto-detect GitHub Actions CI provenance when not explicitly supplied.
+    # Pass ``ci_provenance=None`` to opt out of auto-detection.
+    if ci_provenance is _CI_PROV_AUTO:
+        ci_provenance = detect_ci_provenance()
     rules: list = []
     if derived_from:
         rules = [dict(rule) for rule in derived_from]
@@ -489,6 +513,7 @@ def build_manifest(
         official_record=dict(official_record or {}),
         derived_from=rules,
         beacon=dict(beacon) if beacon is not None else None,
+        ci_provenance=dict(ci_provenance) if ci_provenance is not None else None,
     )
     if precommit_path is not None:
         import shutil

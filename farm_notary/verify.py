@@ -37,6 +37,48 @@ def verify_derived_artifacts(manifest: Manifest, run_dir: Path, *, allow_execute
     return verify_derived(manifest, run_dir, allow_execute=allow_execute)
 
 
+def verify_ci_provenance(manifest: Manifest) -> List[str]:
+    """Check that ``git_sha`` agrees with the CI-attested SHA in ``ci_provenance``.
+
+    When a manifest was built inside GitHub Actions, ``ci_provenance.sha``
+    carries ``GITHUB_SHA`` — the commit the runner checked out.  If the
+    manifest's ``git_sha`` disagrees with that value the claim cannot be
+    trusted; return a problem so ``verify`` fails and ``evaluate_claims``
+    downgrades the ladder.
+
+    Returns an empty list when ``ci_provenance`` is absent (local run) or
+    when both values agree.
+    """
+    problems: List[str] = []
+    prov = manifest.ci_provenance
+    if prov is None:
+        return problems
+    if not isinstance(prov, dict):
+        problems.append(
+            f"ci_provenance must be a mapping, got {type(prov).__name__!r}"
+        )
+        return problems
+    attested_sha = prov.get("sha", "")
+    if not attested_sha:
+        problems.append(
+            "ci_provenance is present but contains no attested SHA; "
+            "cannot verify provenance binding"
+        )
+        return problems
+    if not manifest.git_sha:
+        problems.append(
+            "manifest git_sha is missing but ci_provenance attests "
+            f"SHA {attested_sha!r}; cannot verify provenance binding"
+        )
+        return problems
+    if manifest.git_sha != attested_sha:
+        problems.append(
+            f"git_sha {manifest.git_sha!r} disagrees with "
+            f"CI-attested SHA {attested_sha!r}"
+        )
+    return problems
+
+
 def verify_identity_record(record, _run_dir: Path) -> List[str]:
     """Check an optional minisign / SSH signature of the content hash."""
     from farm_notary.identity import verify_identity
@@ -425,6 +467,7 @@ def evaluate_claims(
     tamper_problems = verify_run_dir(manifest, run_dir)
     anchor_problems = verify_anchor(manifest, run_dir)
     precommit_problems = verify_precommit(manifest, run_dir)
+    ci_provenance_problems = verify_ci_provenance(manifest)
     pc = dict(precommit) if precommit is not None else None
     if pc is None:
         pc_path = run_dir / PRECOMMIT_NAME
@@ -462,6 +505,18 @@ def evaluate_claims(
             notes = []
     receipt_problems = verify_receipt(manifest, run_dir, notes=notes)
     notes.extend(beacon_check.notes)
+    # Emit CI provenance note when present and not a problem.
+    prov = manifest.ci_provenance
+    if prov and not ci_provenance_problems:
+        kind = prov.get("kind", "ci")
+        repo = prov.get("repository", "")
+        run_url = prov.get("run_url", "")
+        note_parts = [f"CI-attested SHA ({kind})"]
+        if repo:
+            note_parts.append(f"repository: {repo}")
+        if run_url:
+            note_parts.append(f"run: {run_url}")
+        notes.append("; ".join(note_parts))
     tamper_evident = "pass" if not tamper_problems else "fail"
     existed_by = _existed_by_status(manifest, run_dir, anchor_problems)
     bitwise_reproducible = _bitwise_status(manifest, run_dir, receipt_problems)
@@ -504,7 +559,8 @@ def evaluate_claims(
         + anchor_problems
         + receipt_problems
         + precommit_problems
-        + beacon_check.problems,
+        + beacon_check.problems
+        + ci_provenance_problems,
         notes=notes,
         ladder=ladder,
     )
