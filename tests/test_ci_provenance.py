@@ -205,9 +205,11 @@ def test_verify_ci_provenance_disagreement():
 
 
 def test_verify_ci_provenance_empty_manifest_git_sha():
-    """No git_sha on manifest with ci_provenance → no problem (nothing to check)."""
+    """No git_sha on manifest with ci_provenance → problem (cannot verify binding)."""
     m = _manifest_with_prov(None, "a" * 40)
-    assert verify_ci_provenance(m) == []
+    problems = verify_ci_provenance(m)
+    assert len(problems) == 1
+    assert "missing" in problems[0]
 
 
 # ---------------------------------------------------------------------------

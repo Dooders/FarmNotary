@@ -53,10 +53,25 @@ def verify_ci_provenance(manifest: Manifest) -> List[str]:
     prov = manifest.ci_provenance
     if prov is None:
         return problems
+    if not isinstance(prov, dict):
+        problems.append(
+            f"ci_provenance must be a mapping, got {type(prov).__name__!r}"
+        )
+        return problems
     attested_sha = prov.get("sha", "")
     if not attested_sha:
+        problems.append(
+            "ci_provenance is present but contains no attested SHA; "
+            "cannot verify provenance binding"
+        )
         return problems
-    if manifest.git_sha and manifest.git_sha != attested_sha:
+    if not manifest.git_sha:
+        problems.append(
+            "manifest git_sha is missing but ci_provenance attests "
+            f"SHA {attested_sha!r}; cannot verify provenance binding"
+        )
+        return problems
+    if manifest.git_sha != attested_sha:
         problems.append(
             f"git_sha {manifest.git_sha!r} disagrees with "
             f"CI-attested SHA {attested_sha!r}"
