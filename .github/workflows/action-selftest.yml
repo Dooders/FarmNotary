@@ -45,6 +45,7 @@ jobs:
           run-dir: run
           profile: consensus
           backend: dry-run
+          allow-dirty: "true"
 
       # ── Confirm the action produced expected outputs ───────────────────────
       - name: Verify outputs and manifest
