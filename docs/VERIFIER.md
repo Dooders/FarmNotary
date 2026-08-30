@@ -23,7 +23,7 @@ directory — verifies that the proof commits to the content hash.
 ## Example output
 
 ```
-content_hash: sha256:a1b2c3…
+content_hash: a1b2c3…
 cid:          bafybeig…
 claim_level:  bytes
 anchor:       Bitcoin height 840000
@@ -32,7 +32,7 @@ anchor:       Bitcoin height 840000
 Or, when the timestamp is still pending:
 
 ```
-content_hash: sha256:a1b2c3…
+content_hash: a1b2c3…
 anchor:       pending on public OpenTimestamps calendars: alice.btc.calendar.opentimestamps.org (unverified claim; not yet Bitcoin-attested)
 ```
 

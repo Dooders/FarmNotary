@@ -1221,7 +1221,20 @@ def _cmd_check(args: argparse.Namespace) -> int:
     """
     manifest_path = Path(args.manifest)
     try:
-        manifest = load_manifest(manifest_path, validate=False)
+        from farm_notary.schema import MANIFEST_VERSION, REQUIRED_KEYS
+
+        raw_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if not isinstance(raw_manifest, dict):
+            raise ValueError("manifest must be a JSON object")
+        missing = [key for key in REQUIRED_KEYS if key not in raw_manifest]
+        if missing:
+            raise ValueError(f"manifest missing keys: {missing}")
+        if raw_manifest.get("schema") != MANIFEST_VERSION:
+            raise ValueError(
+                f"unsupported manifest schema {raw_manifest.get('schema')!r}, "
+                f"expected {MANIFEST_VERSION!r}"
+            )
+        manifest = load_manifest(manifest_path)
     except (ValueError, OSError) as exc:
         print(f"error: could not load manifest: {exc}", file=sys.stderr)
         return 2
@@ -1303,6 +1316,12 @@ def _check_ots_anchor(
     proof_bytes = proof_path.read_bytes()
     proof_problems = verify_proof(proof_bytes, content_hash)
     if proof_problems:
+        if all("install farm-notary[ots]" in problem for problem in proof_problems):
+            print(
+                "anchor:       OTS proof present but farm-notary[ots] not installed; "
+                "install it to verify the proof commits to this hash"
+            )
+            return
         problems.extend(proof_problems)
         print("anchor:       FAIL (proof does not commit to this hash)")
         return
