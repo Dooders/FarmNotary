@@ -114,7 +114,7 @@
       margin: 0 0 0.55rem;
     }
     h1 { font-size: clamp(3.2rem, 8vw, 5.6rem); }
-    h2 { font-size: clamp(2rem, 4.4vw, 3.15rem); max-width: 22ch; }
+    h2 { font-size: clamp(2rem, 4.4vw, 3.15rem); max-width: 28ch; }
     .lede {
       font-size: clamp(1.15rem, 2vw, 1.4rem);
       line-height: 1.38;
@@ -140,7 +140,7 @@
     }
     .grid-2 { grid-template-columns: 1fr 1fr; }
     .grid-3 { grid-template-columns: repeat(3, 1fr); }
-    @media (max-width: 860px) {
+    @media screen and (max-width: 860px) {
       .grid-2, .grid-3 { grid-template-columns: 1fr; }
     }
 
@@ -224,7 +224,7 @@
       padding: 0.7rem 0.85rem;
       overflow-x: auto;
     }
-    @media (max-width: 860px) {
+    @media screen and (max-width: 860px) {
       .path-step { grid-template-columns: 2rem 1fr; }
       .path .verb { grid-column: 2; }
       .path code { grid-column: 1 / -1; }
@@ -241,7 +241,7 @@
     .rung .lvl { margin: 0; font-size: 0.84rem; line-height: 1.3; }
     .rung .not { color: var(--muted); }
     .rung.reserved { opacity: 0.62; }
-    @media (max-width: 860px) {
+    @media screen and (max-width: 860px) {
       .rung { grid-template-columns: 3.2rem 1fr; }
       .rung .not { grid-column: 2; }
     }
@@ -359,16 +359,19 @@
     #help.show, #notes.show { display: block; }
 
     @media print {
-      @page { size: landscape; margin: 0; }
+      @page { size: 13.333in 7.5in; margin: 0; }
       html, body, #deck { height: auto; background: white; }
       #chrome, #help, #notes { display: none !important; }
       .slide {
         position: relative;
         opacity: 1 !important;
         visibility: visible !important;
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
         page-break-after: always;
         break-after: page;
-        height: 100vh;
+        width: 13.333in;
+        height: 7.5in;
       }
     }
   </style>
@@ -383,7 +386,7 @@
           <div>
             <h1>FarmNotary</h1>
             <hr class="rule">
-            <p class="lede">A research notary for published runs.<br>The simulation stays off-chain.</p>
+            <p class="lede">A notary for published simulation runs.<br>The experiment stays off-chain. The record does not.</p>
             <p class="foot">github.com/Dooders/FarmNotary</p>
           </div>
           <div class="seal" aria-hidden="true"><span>the record,<br>not the<br>result</span></div>
@@ -394,7 +397,7 @@
     <section class="slide" data-act="I · Why" data-notes="Qualification slide. If they only need a personal checksum, they can leave. If they publish, or review published runs, they are the user.">
       <div class="stage">
         <p class="kicker">I · Why &nbsp;·&nbsp; audience</p>
-        <h2>You, if a stranger has to check the run.</h2>
+        <h2>If someone else has to check the run, this is for you.</h2>
         <hr class="rule">
         <div class="grid-2">
           <div class="panel">
@@ -408,9 +411,9 @@
           <div class="panel out">
             <h3>Not the pitch</h3>
             <ul>
-              <li>Not “put the simulation on a chain.”</li>
-              <li>Not a score, rank, or lab reputation token.</li>
-              <li>Not a claim that a notarized run is scientifically correct.</li>
+              <li>This is not &#8220;put the simulation on a chain.&#8221;</li>
+              <li>Not a score, a rank, or a lab reputation token.</li>
+              <li>A notarized run is not a scientifically correct run.</li>
             </ul>
           </div>
         </div>
@@ -420,30 +423,30 @@
     <section class="slide" data-act="I · Why" data-notes="Name the failure mode they already live with. The official record currently depends on the author’s machine and manners.">
       <div class="stage">
         <p class="kicker">I · Why &nbsp;·&nbsp; the gap</p>
-        <h2>Published runs still live on someone’s laptop.</h2>
+        <h2>The official copy still lives on someone&#8217;s laptop.</h2>
         <hr class="rule">
         <div class="grid-3">
           <div class="panel out">
             <h3>Fetch</h3>
-            <p>A reviewer cannot fetch the official artifacts without asking you for a folder.</p>
+            <p>Get the official artifacts without asking the author for a folder.</p>
           </div>
           <div class="panel out">
             <h3>Rehash</h3>
-            <p>They cannot rehash those bytes against a record that is not the zip itself.</p>
+            <p>Check those bytes against a record that is not the zip itself.</p>
           </div>
           <div class="panel out">
             <h3>Date</h3>
             <p>They cannot see when that exact file was published, except by trusting the email.</p>
           </div>
         </div>
-        <p class="foot">A narrower job than “the science is right,” and a broader one than <span class="cmd">sha256sum</span>.</p>
+        <p class="foot">Narrower than &#8220;the science is right.&#8221; Broader than <span class="cmd">sha256sum</span>.</p>
       </div>
     </section>
 
     <section class="slide" data-act="I · Why" data-notes="Product distinction. Hash tools answer byte identity. A notary also answers admission, omission, time, and claim language.">
       <div class="stage">
         <p class="kicker">I · Why &nbsp;·&nbsp; hash tool vs notary</p>
-        <h2>Matching bytes is the start of the sentence.</h2>
+        <h2>A hash says the files match. A notary says what that match may mean.</h2>
         <hr class="rule">
         <div class="grid-2">
           <div class="panel">
@@ -468,16 +471,16 @@
     <section class="slide" data-act="I · Why" data-notes="One-sentence product. Anchoring is outsourced (OpenTimestamps → Bitcoin). FarmNotary’s work is domain: allowlists, privacy, honest claims.">
       <div class="stage">
         <p class="kicker">I · Why &nbsp;·&nbsp; what it is</p>
-        <h2>The official record, dated, without running a chain.</h2>
+        <h2>A dated official record. You do not run a chain.</h2>
         <hr class="rule">
         <div class="grid-3">
           <div class="panel">
             <h3>01 · Write</h3>
-            <p>A canonical <span class="cmd">manifest.json</span> — code identity, config, artifact hashes.</p>
+            <p>A canonical <span class="cmd">manifest.json</span>: code identity, config, and artifact hashes.</p>
           </div>
           <div class="panel">
             <h3>02 · Pin</h3>
-            <p>Optional remote pin so the CID is a citation, not a laptop.</p>
+            <p>Optional remote pin, so the CID cites a tree instead of a laptop.</p>
           </div>
           <div class="panel">
             <h3>03 · Stamp</h3>
@@ -499,8 +502,8 @@
             <ul>
               <li>Canonical run and campaign manifests</li>
               <li>Publish profiles and a privacy denylist</li>
-              <li>Optional remote pin (IPFS pinning service)</li>
-              <li>Keyless Bitcoin timestamp (OpenTimestamps)</li>
+              <li>Optional remote pin through an IPFS pinning service</li>
+              <li>A keyless Bitcoin timestamp via OpenTimestamps</li>
               <li>Claim card, paper-pack appendix, static index</li>
               <li>GitHub Action and a small Python API</li>
             </ul>
@@ -508,11 +511,11 @@
           <div class="panel out">
             <h3>Out</h3>
             <ul>
-              <li>Scientific correctness</li>
-              <li>Preventing the file drawer</li>
+              <li>not claimed: scientific correctness</li>
+              <li>Stopping the file drawer</li>
               <li>Publishing ballots or individual choices</li>
-              <li>Scores, rankings, protocol identity</li>
-              <li>Operating calendars, contracts, or pin services</li>
+              <li>Scores, rankings, or a protocol identity</li>
+              <li>Running calendars, contracts, or pin services</li>
               <li>Running the simulation in the EVM</li>
             </ul>
           </div>
@@ -528,11 +531,11 @@
         <div class="grid-2" style="margin-bottom:1rem">
           <div class="panel out">
             <h3>Stays private</h3>
-            <p>Voter or agent choice. Paths containing ballot, vote, voter, individual_choice, or private — even if a glob would admit them.</p>
+            <p>Any path containing ballot, vote, voter, individual_choice, or private stays out &#8212; even if a glob would have admitted it.</p>
           </div>
           <div class="panel">
             <h3>Official record</h3>
-            <p>Config, code identity, aggregate metrics, winner allocations. Named profiles so labs do not invent the allowlist.</p>
+            <p>Config, code identity, aggregate metrics, winner allocations. Named profiles so labs do not invent the allowlist from scratch.</p>
           </div>
         </div>
         <div class="path">
@@ -542,14 +545,14 @@
             <code>farm-notary manifest --run-dir path/to/run --profile consensus</code>
           </div>
         </div>
-        <p class="foot">Profiles: consensus, rl-sweep, evolution-run. Unmatched files increment a count; their names are never printed.</p>
+        <p class="foot">Unmatched files raise a count. Their names are never printed.</p>
       </div>
     </section>
 
     <section class="slide" data-act="II · Record" data-notes="Walk the three commands slowly. Dry-run is the default; live stamp is an explicit --backend ots. Publish is one-way.">
       <div class="stage">
         <p class="kicker">II · Record &nbsp;·&nbsp; solo path</p>
-        <h2>Three commands, then a card.</h2>
+        <h2>Three commands. Then a claim card.</h2>
         <hr class="rule">
         <div class="path">
           <div class="path-step">
@@ -568,7 +571,7 @@
             <code>farm-notary anchor --run-dir path/to/run --backend ots --pin-remote pinata</code>
           </div>
         </div>
-        <p class="foot">Hours later: <span class="cmd">farm-notary upgrade --run-dir path/to/run</span> completes the Bitcoin attestation. Pending calendars are not L0.</p>
+        <p class="foot">Hours later, <span class="cmd">farm-notary upgrade --run-dir path/to/run</span> finishes the Bitcoin attestation. A pending calendar is not L0.</p>
       </div>
     </section>
 
@@ -612,14 +615,14 @@
             <code>farm-notary verify --run-dir &lt;dir&gt; --verify-derived</code>
           </div>
         </div>
-        <p class="foot">Exit 0 means no attempted check failed — not that every claim was earned, and not that the science is right. Step 03 only if you trust the recorded commands.</p>
+        <p class="foot">Exit 0 means no attempted check failed &#8212; not that every claim was earned, and not that the science is right. Use step 03 only if you trust the recorded commands.</p>
       </div>
     </section>
 
     <section class="slide top" data-act="III · Evidence" data-notes="Do not let anyone cite L2 or L3. L0 is existence by time T; this tool does not check Bitcoin headers. L1 is specification, not a completed re-run.">
       <div class="stage">
         <p class="kicker">III · Evidence &nbsp;·&nbsp; reader ladder</p>
-        <h2>Earn a rung. Do not decorate one.</h2>
+        <h2>Earn a rung. Do not print one you did not earn.</h2>
         <hr class="rule">
         <ol class="rungs">
           <li class="rung">
@@ -668,14 +671,14 @@
             <code>farm-notary manifest --run-dir path/to/run --profile consensus --precommit precommit.json</code>
           </div>
         </div>
-        <p class="lede" style="margin-top:1.15rem;max-width:46rem">A timestamp taken after the result is known is not pre-registration. FarmNotary will still stamp the favorable run. It will not call that a pre-specified design.</p>
+        <p class="lede" style="margin-top:1.15rem;max-width:46rem">A timestamp taken after the result is known is not pre-registration. FarmNotary will still stamp the favorable run. It will not call that stamp a pre-specified design.</p>
       </div>
     </section>
 
     <section class="slide" data-act="III · Evidence" data-notes="Showcase carefully. 8/8 is same-machine, pinned env, x86-64 Linux. ARM and macOS ARM receipts are not ok. Do not let the room walk out thinking bitwise everywhere.">
       <div class="stage">
         <p class="kicker">III · Evidence &nbsp;·&nbsp; AgentFarm consensus</p>
-        <h2>Re-run the seed. Scope the sentence.</h2>
+        <h2>Re-run the seed. Keep the claim inside the machine that matched.</h2>
         <hr class="rule">
         <div class="grid-2">
           <div class="panel">
@@ -689,7 +692,7 @@
             <ul>
               <li>Cross-hardware bitwise identity.</li>
               <li>Linux ARM smoke cell: 6/10. macOS ARM: 2/10.</li>
-              <li>A classified byte-diff (path, timestamp, float print, video encoder) is <strong>not a science failure</strong>.</li>
+              <li>A classified byte-diff &#8212; path, timestamp, float print, video encoder &#8212; is <strong>not a science failure</strong>.</li>
             </ul>
           </div>
         </div>
@@ -699,7 +702,7 @@
     <section class="slide" data-act="III · Evidence" data-notes="Paper path: parent campaign for a multi-seed figure, appendix snippet for the PDF, static directory that is not a scoreboard. Appendix does not cite Ln.">
       <div class="stage">
         <p class="kicker">III · Evidence &nbsp;·&nbsp; sweep to appendix</p>
-        <h2>The figure is a parent record, not a folder.</h2>
+        <h2>A multi-seed figure needs a parent record, not a folder of zips.</h2>
         <hr class="rule">
         <div class="path">
           <div class="path-step">
@@ -720,10 +723,10 @@
         </div>
         <table class="mini" style="margin-top:1.1rem">
           <tr><th>CID</th><td>content-addressed run</td></tr>
-          <tr><th>Content hash</th><td>canonical body, stamps excluded</td></tr>
+          <tr><th>Content hash</th><td>canonical body; stamps excluded</td></tr>
           <tr><th>Bitcoin attestation</th><td>block N, or pending</td></tr>
-          <tr><th>Allowlist / unmatched</th><td>policy is part of the claim</td></tr>
-          <tr><th>Reader ladder</th><td>— &nbsp; do not cite Ln from the PDF</td></tr>
+          <tr><th>Allowlist / unmatched</th><td>the policy is part of the claim</td></tr>
+          <tr><th>Reader ladder</th><td>&#8212; &nbsp; do not cite Ln from the PDF</td></tr>
         </table>
       </div>
     </section>
@@ -740,11 +743,11 @@
           </div>
           <div class="panel">
             <h3>Live stamp</h3>
-            <p><span class="cmd">[ots]</span> extra. Public calendars. No key, no gas, Bitcoin-backed. EAS stays experimental.</p>
+            <p>The <span class="cmd">[ots]</span> extra. Public calendars. No key, no gas, Bitcoin-backed. EAS stays experimental.</p>
           </div>
           <div class="panel">
             <h3>Default</h3>
-            <p>CLI <span class="cmd">anchor</span> and <span class="cmd">precommit</span> are dry-run. Nothing is hashed until an allowlist is declared. A remote pin has no retract.</p>
+            <p>CLI <span class="cmd">anchor</span> and <span class="cmd">precommit</span> are dry-run. Nothing is hashed until an allowlist is declared. A remote pin cannot be pulled back.</p>
           </div>
         </div>
       </div>
@@ -753,7 +756,7 @@
     <section class="slide" data-act="IV · Start" data-notes="Lab adoption path. Action defaults to ots because adding the action is already a publish decision. It does not pass --verify-derived.">
       <div class="stage">
         <p class="kicker">IV · Start &nbsp;·&nbsp; lab path</p>
-        <h2>Drop the Action in. Fail the job if the card fails.</h2>
+        <h2>Add the Action. Fail the job if the card fails.</h2>
         <hr class="rule">
         <div class="card-frame">
           <header><span>dooders/FarmNotary@dev</span><span>phase: notarize</span></header>
@@ -778,7 +781,7 @@
           <div class="panel out">
             <h3>Refused</h3>
             <ul>
-              <li>No “verified result” badge. No treating a printed Ln as a finding.</li>
+              <li>No &#8220;verified result&#8221; badge. A printed Ln is not a finding.</li>
               <li>No scoreboard, trusted-lab registry, or protocol token.</li>
               <li>No inventory of unpublished runs.</li>
             </ul>
@@ -786,7 +789,7 @@
           <div class="panel out">
             <h3>Still true</h3>
             <ul>
-              <li>Cherry-picking is out of scope; mislabeling a post-hoc stamp is not.</li>
+              <li>Cherry-picking is out of scope. Mislabeling a post-hoc stamp is not.</li>
               <li>The author’s own reproduction is bitwise (scoped), not independently reproduced.</li>
               <li>Cross-hardware bitwise identity is not a claim.</li>
             </ul>
@@ -798,7 +801,7 @@
     <section class="slide" data-act="IV · Start" data-notes="Leave them with the install line and the first verify. Offer to walk a run directory if there is time. Q&A: file drawer, Bitcoin headers, dirty git trees, private paths.">
       <div class="stage">
         <p class="kicker">IV · Start</p>
-        <h2>Install the 0.2 line. Hash one run.</h2>
+        <h2>Install the 0.2 line. Hash one run this afternoon.</h2>
         <hr class="rule">
         <div class="path">
           <div class="path-step">
