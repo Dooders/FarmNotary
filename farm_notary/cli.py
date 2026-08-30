@@ -1279,7 +1279,7 @@ def _check_ots_anchor(
 ) -> None:
     """Print OTS anchor status; append to *problems* on hard failures."""
     try:
-        from farm_notary.ots import PROOF_NAME, proof_status, verify_proof
+        from farm_notary.ots import OtsError, PROOF_NAME, proof_status, verify_proof
     except ImportError:
         detail = manifest.anchor.get("detail", {}) or {}
         proof_name = detail.get("proof", "manifest.ots") if isinstance(detail, dict) else "manifest.ots"
@@ -1309,7 +1309,8 @@ def _check_ots_anchor(
 
     try:
         status = proof_status(proof_bytes)
-    except Exception:
+    except (OtsError, ValueError, OSError) as exc:
+        print(f"anchor:       OTS proof present (status unknown: {exc})", file=sys.stderr)
         print("anchor:       OTS proof present (status unknown)")
         return
 

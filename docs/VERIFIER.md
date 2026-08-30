@@ -33,8 +33,7 @@ Or, when the timestamp is still pending:
 
 ```
 content_hash: sha256:a1b2c3…
-anchor:       pending on public OpenTimestamps calendars: alice.btc.calendar.opentimestamps.org
-              (unverified claim; not yet Bitcoin-attested)
+anchor:       pending on public OpenTimestamps calendars: alice.btc.calendar.opentimestamps.org (unverified claim; not yet Bitcoin-attested)
 ```
 
 `claim_level` is always reported from the manifest structure alone (no artifact
