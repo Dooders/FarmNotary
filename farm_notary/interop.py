@@ -7,8 +7,9 @@ vocabularies do not need to learn ``farmnotary.manifest.v1``.
 Supported targets
 -----------------
 * **SLSA / in-toto** – ``https://slsa.dev/provenance/v1`` predicate wrapped
-  in an in-toto ``Statement``.  The FarmNotary content hash becomes the
-  ``byproducts`` digest; every artifact hash is listed as a ``subject``.
+  in an in-toto ``Statement``.  The FarmNotary content hash is placed in
+  ``buildDefinition.internalParameters.content_hash``; every artifact hash
+  is listed as a ``subject``.
 * **RO-Crate** – minimal ``ro-crate-metadata.json`` (schema.org/Dataset).
 * **C2PA** – minimal JSON representation of a C2PA-style claim (not a binary
   JUMBF; useful for tooling that consumes JSON claim summaries).

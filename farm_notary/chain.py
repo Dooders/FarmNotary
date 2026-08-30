@@ -110,8 +110,9 @@ def chain_manifests(
     stage_labels:
         Optional labels for each stage.  Defaults to ``0, 1, 2, …``.
     manifest_paths:
-        Optional relative path strings for each manifest file (for
-        human-readable cross-referencing in the chain JSON).
+        Optional path strings for each manifest file (for
+        human-readable cross-referencing in the chain JSON).  May be
+        absolute or relative paths.
 
     Returns
     -------

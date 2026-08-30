@@ -157,8 +157,6 @@ def _simple_yaml_parse(text: str) -> dict:
     for the ``stages.<name>.outs`` fields FarmNotary needs.  If a real YAML
     library is present, :func:`_parse_dvc_lock` uses it instead.
     """
-    import re
-
     result: dict = {}
     stack: list = [result]
     indent_stack: list = [-1]
@@ -178,21 +176,36 @@ def _simple_yaml_parse(text: str) -> dict:
             indent_stack.pop()
 
         # List item.
-        if line.startswith("- "):
-            content = line[2:].strip()
-            parent = current()
-            if isinstance(parent, dict):
-                # Find the last list in this dict.
-                for key in reversed(list(parent.keys())):
-                    if isinstance(parent[key], list):
-                        parent[key].append({})
-                        stack.append(parent[key][-1])
-                        indent_stack.append(indent)
-                        # Inline key: value after "- "
-                        if ":" in content:
-                            k, _, v = content.partition(":")
-                            stack[-1][k.strip()] = v.strip()
+        if line.startswith("- ") or line == "-":
+            content = line[2:].strip() if line.startswith("- ") else ""
+            # Walk up the stack to find the nearest dict whose last key holds
+            # a list (or whose last key was just set to an empty dict and
+            # should become a list).  This handles the common dvc.lock pattern
+            # where a list item appears at an indent equal to its parent key.
+            target_list: Optional[list] = None
+            for si in range(len(stack) - 1, -1, -1):
+                node = stack[si]
+                if isinstance(node, dict) and node:
+                    last_key = list(node.keys())[-1]
+                    if isinstance(node[last_key], list):
+                        target_list = node[last_key]
                         break
+                    if isinstance(node[last_key], dict) and not node[last_key]:
+                        node[last_key] = []
+                        target_list = node[last_key]
+                        break
+                elif isinstance(node, list):
+                    target_list = node
+                    break
+            if target_list is None:
+                continue
+            new_item: Dict[str, Any] = {}
+            target_list.append(new_item)
+            stack.append(new_item)
+            indent_stack.append(indent)
+            if content and ":" in content:
+                k, _, v = content.partition(":")
+                new_item[k.strip()] = v.strip()
             continue
 
         # Key: value.
@@ -210,13 +223,6 @@ def _simple_yaml_parse(text: str) -> dict:
                 cur[key] = {}
                 stack.append(cur[key])
                 indent_stack.append(indent)
-        # list marker without item
-        elif line == "-":
-            cur = current()
-            for key in reversed(list(cur.keys())):
-                if isinstance(cur[key], dict) and not cur[key]:
-                    cur[key] = []
-                    break
 
     return result
 

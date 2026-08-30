@@ -481,7 +481,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_chain.add_argument(
         "run_dirs",
-        nargs="+",
+        nargs="*",
         metavar="RUN_DIR",
         help="Run directories in pipeline order (earliest stage first)",
     )
@@ -1569,6 +1569,9 @@ def _cmd_chain(args: argparse.Namespace) -> int:
         return 0
 
     # Build mode.
+    if not args.run_dirs:
+        print("error: at least one RUN_DIR is required when not using --verify", file=sys.stderr)
+        return 2
     run_dirs = [Path(d) for d in args.run_dirs]
     for d in run_dirs:
         if not (d / "manifest.json").exists():

@@ -258,7 +258,9 @@ def deposit_manifest(
     )
     dep_id = str(deposition["id"])
 
-    upload_paths: List[str] = files if files is not None else ["manifest.json"]
+    upload_paths: List[str] = list(files) if files is not None else ["manifest.json"]
+    if files is not None and "manifest.json" not in upload_paths:
+        upload_paths.insert(0, "manifest.json")
     for rel in upload_paths:
         zenodo_upload_file(dep_id, str(rd / rel), token=tok, sandbox=sandbox, timeout=timeout)
 
@@ -291,7 +293,9 @@ def swh_resolve_git_sha(
     Parameters
     ----------
     git_sha:
-        Full or abbreviated git commit SHA to look up.
+        Full 40-character hex git commit SHA to look up.  Abbreviated SHAs
+        are rejected with :exc:`ValueError` because SWH identifiers require
+        the complete SHA1.
     timeout:
         HTTP timeout in seconds.
 
@@ -302,9 +306,15 @@ def swh_resolve_git_sha(
 
     Raises
     ------
+    ValueError
+        If *git_sha* is not a full 40-character hex string.
     SoftwareHeritageError
         On network or unexpected API errors.
     """
+    if len(git_sha) != 40 or not all(c in "0123456789abcdefABCDEF" for c in git_sha):
+        raise ValueError(
+            f"swh_resolve_git_sha requires a full 40-character hex SHA; got {git_sha!r}"
+        )
     url = f"{_SWH_API_BASE}/resolve/swh:1:rev:{git_sha}/"
     req = Request(url, headers={"Accept": "application/json"})
     try:
@@ -350,4 +360,7 @@ def swh_lookup(
     """
     if not manifest.git_sha:
         return None
-    return swh_resolve_git_sha(manifest.git_sha, timeout=timeout)
+    sha = manifest.git_sha
+    if len(sha) != 40 or not all(c in "0123456789abcdefABCDEF" for c in sha):
+        return None
+    return swh_resolve_git_sha(sha, timeout=timeout)
