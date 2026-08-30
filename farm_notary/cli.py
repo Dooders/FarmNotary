@@ -847,11 +847,15 @@ def _cmd_reproduce(args: argparse.Namespace) -> int:
         return 2
     trust_note = _trusted_reproduce_source(manifest, cwd=cwd, run_dir=run_dir)
     print(
-        "warning: `reproduce` executes the manifest's recorded command via the shell; "
-        "treat a downloaded manifest as untrusted code execution.",
+        "warning: `reproduce` executes the manifest's recorded command via the shell.",
         file=sys.stderr,
     )
     if trust_note is None and not args.accept_untrusted_command:
+        print(
+            "warning: this manifest is outside the local checkout / CI context "
+            "already being trusted; treat it as untrusted code execution.",
+            file=sys.stderr,
+        )
         print(
             "error: refusing to run an untrusted recorded command without "
             "--i-accept-untrusted-command. Automatic trust is limited to the "
@@ -860,7 +864,7 @@ def _cmd_reproduce(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         print(
-            "error: if you choose to proceed, do it inside your own sandbox "
+            "warning: if you choose to proceed, do it inside your own sandbox "
             "(for example: container or VM, with no network).",
             file=sys.stderr,
         )
@@ -870,8 +874,8 @@ def _cmd_reproduce(args: argparse.Namespace) -> int:
     else:
         print(
             "warning: proceeding only because --i-accept-untrusted-command was "
-            "given; sandboxing (container/VM, no network) is your "
-            "responsibility.",
+            "given; treat this as untrusted code execution. Sandboxing "
+            "(container/VM, no network) is your responsibility.",
             file=sys.stderr,
         )
     try:
@@ -953,9 +957,20 @@ def _trusted_reproduce_source(
         and current_sha
     ):
         return f"current GitHub Actions run matches {current_repo}@{current_sha[:12]}"
-    local_sha, _ = detect_git_status(cwd=cwd or run_dir)
-    if manifest.git_sha and local_sha and manifest.git_sha == local_sha:
-        return f"local checkout matches git_sha {local_sha[:12]}"
+    probe_dirs = [cwd] if cwd is not None else []
+    if cwd is None:
+        try:
+            probe_dirs.append(Path.cwd())
+        except OSError:
+            pass
+        probe_dirs.append(run_dir)
+    for probe_dir in probe_dirs:
+        try:
+            local_sha, _ = detect_git_status(cwd=probe_dir)
+        except OSError:
+            continue
+        if manifest.git_sha and local_sha and manifest.git_sha == local_sha:
+            return f"local checkout matches git_sha {local_sha[:12]}"
     return None
 
 

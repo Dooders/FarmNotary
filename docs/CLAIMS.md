@@ -117,17 +117,18 @@ the manifest: the policy is part of the claim.
 science failure. The receipt's `diagnostics` name the packaging causes we
 know how to spot:
 
-It also executes the recorded command via the shell. Treat a downloaded
-manifest as untrusted code execution, not as proof of independence. If the
-manifest did not come from the same checkout or CI context you already trust,
-`farm-notary reproduce` requires `--i-accept-untrusted-command`; container/VM
-isolation and disabling network access are the operator's job.
-
 - `embedded_absolute_path` — the artifact baked in the output directory
   (the `{run_dir}` fix that took the consensus experiment from 7/7 to 8/8)
 - `timestamp` — a clock reading in `REPORT.md` or similar
 - `float_print_format` — the same numbers, spelled differently
 - `video_encoder` — MP4/WebM output that is not bit-stable
+
+`reproduce` also executes the recorded command via the shell. Treat a
+downloaded manifest as untrusted code execution, not as proof of
+independence. If the manifest did not come from the same checkout or CI
+context you already trust, `farm-notary reproduce` requires
+`--i-accept-untrusted-command`; container/VM isolation and disabling network
+access are the operator's job.
 
 Those lines say **not a science failure** and how to fix the record
 (`{run_dir}`, pin a print format, `--ignore '*.mp4'`). An unclassified
