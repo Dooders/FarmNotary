@@ -337,3 +337,54 @@ def test_claim_card_dry_run_anchor_does_not_earn_existed_by(tmp_path: Path):
     card = evaluate_claims(manifest, tmp_path)
     assert card.ok
     assert card.existed_by == "missing"
+
+
+# ---------------------------------------------------------------------------
+# CID binding proof verification
+# ---------------------------------------------------------------------------
+
+def test_verify_anchor_cid_binding_proof_ok(tmp_path: Path):
+    from farm_notary.ots import CID_BINDING_PROOF_NAME, cid_binding_digest
+
+    manifest = make_manifest(tmp_path)
+    manifest.cid = "bafytest"
+    anchor_run(manifest)
+    manifest.anchor["backend"] = "opentimestamps"
+    write_proof_for(manifest, tmp_path)
+
+    # Write a correct CID binding proof.
+    digest = cid_binding_digest(manifest.content_hash(), "bafytest")
+    binding_proof = serialize_proof(pending_timestamp(digest, "https://example.com"))
+    (tmp_path / CID_BINDING_PROOF_NAME).write_bytes(binding_proof)
+
+    assert verify_anchor(manifest, tmp_path) == []
+
+
+def test_verify_anchor_cid_binding_proof_rejects_swapped_cid(tmp_path: Path):
+    from farm_notary.ots import CID_BINDING_PROOF_NAME, cid_binding_digest
+
+    manifest = make_manifest(tmp_path)
+    manifest.cid = "bafySWAPPED"
+    anchor_run(manifest)
+    manifest.anchor["backend"] = "opentimestamps"
+    write_proof_for(manifest, tmp_path)
+
+    # Stamp for a *different* CID.
+    digest = cid_binding_digest(manifest.content_hash(), "bafyCORRECT")
+    binding_proof = serialize_proof(pending_timestamp(digest, "https://example.com"))
+    (tmp_path / CID_BINDING_PROOF_NAME).write_bytes(binding_proof)
+
+    problems = verify_anchor(manifest, tmp_path)
+    assert any("CID binding proof commits to" in p for p in problems)
+
+
+def test_verify_anchor_no_cid_binding_proof_is_not_an_error(tmp_path: Path):
+    """If manifest.cid.ots is absent, verify does not raise an error."""
+    manifest = make_manifest(tmp_path)
+    manifest.cid = "bafytest"
+    anchor_run(manifest)
+    manifest.anchor["backend"] = "opentimestamps"
+    write_proof_for(manifest, tmp_path)
+
+    # No manifest.cid.ots written – should still pass.
+    assert verify_anchor(manifest, tmp_path) == []

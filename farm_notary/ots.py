@@ -9,15 +9,23 @@ SHA-256 of the canonical manifest body excluding ``cid`` and ``anchor`` — so
 stamping the manifest with upload/anchor results never invalidates it.
 Proofs start out pending; once a calendar batches the digest into a Bitcoin
 transaction (typically within hours), ``farm-notary upgrade`` completes them.
+
+When the run directory is pinned to IPFS a second proof (``manifest.cid.ots``)
+is produced that commits to ``SHA-256(content_hash_bytes || cid_utf8_bytes)``.
+This binding proof attests that a specific manifest (identified by its content
+hash) was published at a specific CID.  ``verify`` checks the binding when the
+proof file is present: a swapped CID causes the recomputed digest to mismatch.
 """
 
 from __future__ import annotations
 
+import hashlib
 import os
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 PROOF_NAME = "manifest.ots"
+CID_BINDING_PROOF_NAME = "manifest.cid.ots"
 
 DEFAULT_CALENDARS = (
     "https://a.pool.opentimestamps.org",
@@ -37,6 +45,34 @@ def _public_calendar_urls() -> set[str]:
 
 class OtsError(RuntimeError):
     pass
+
+
+def cid_binding_digest(manifest_hash: str, cid: str) -> bytes:
+    """Return SHA-256(manifest_hash_bytes || cid_utf8_bytes).
+
+    This is the digest submitted to OTS for ``manifest.cid.ots``.
+    It commits to both the manifest content hash and the IPFS CID so that
+    substituting either value causes verification to fail.
+    """
+    return hashlib.sha256(bytes.fromhex(manifest_hash) + cid.encode()).digest()
+
+
+def verify_cid_binding_proof(proof: bytes, manifest_hash: str, cid: str) -> List[str]:
+    """Check that the CID binding proof commits to H(manifest_hash || cid)."""
+    expected = cid_binding_digest(manifest_hash, cid).hex()
+    try:
+        status = proof_status(proof)
+    except OtsError as exc:
+        return [str(exc)]
+    problems = []
+    if status.digest != expected:
+        problems.append(
+            f"CID binding proof commits to {status.digest}, "
+            f"expected {expected} (H(manifest_hash || cid))"
+        )
+    if not status.confirmed and not status.pending_calendars:
+        problems.append("CID binding proof has no attestations")
+    return problems
 
 
 def _require_ots():
