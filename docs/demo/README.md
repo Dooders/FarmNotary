@@ -1,6 +1,6 @@
 # FarmNotary live demo
 
-A notebook that runs a tiny consensus-style experiment and notarizes it, so a researcher can see the claim card, the allowlist, a scoped re-run, and a packaging mismatch that is **not a science failure**.
+A notebook that runs a tiny consensus-style experiment and notarizes it, so a researcher can see the claim card, the allowlist, a scoped re-run, and a packaging mismatch that is **not a science failure**. For a room: the walkthrough deck is [`docs/slides/consensus.html`](../slides/consensus.html) ([PDF](../slides/consensus.pdf)).
 
 The simulation stays off-chain. This notebook uses the dry-run backend: no calendars, no pin, no network.
 
