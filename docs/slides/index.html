@@ -140,7 +140,7 @@
     }
     .grid-2 { grid-template-columns: 1fr 1fr; }
     .grid-3 { grid-template-columns: repeat(3, 1fr); }
-    @media (max-width: 860px) {
+    @media screen and (max-width: 860px) {
       .grid-2, .grid-3 { grid-template-columns: 1fr; }
     }
 
@@ -224,7 +224,7 @@
       padding: 0.7rem 0.85rem;
       overflow-x: auto;
     }
-    @media (max-width: 860px) {
+    @media screen and (max-width: 860px) {
       .path-step { grid-template-columns: 2rem 1fr; }
       .path .verb { grid-column: 2; }
       .path code { grid-column: 1 / -1; }
@@ -241,7 +241,7 @@
     .rung .lvl { margin: 0; font-size: 0.84rem; line-height: 1.3; }
     .rung .not { color: var(--muted); }
     .rung.reserved { opacity: 0.62; }
-    @media (max-width: 860px) {
+    @media screen and (max-width: 860px) {
       .rung { grid-template-columns: 3.2rem 1fr; }
       .rung .not { grid-column: 2; }
     }
@@ -359,17 +359,41 @@
     #help.show, #notes.show { display: block; }
 
     @media print {
-      @page { size: landscape; margin: 0; }
-      html, body, #deck { height: auto; background: white; }
+      @page { size: 13.333in 7.5in; margin: 0; }
+      html, body {
+        width: 13.333in;
+        height: auto;
+        background: #241f19;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      #deck { height: auto; overflow: visible; }
       #chrome, #help, #notes { display: none !important; }
       .slide {
         position: relative;
+        inset: auto;
         opacity: 1 !important;
         visibility: visible !important;
+        pointer-events: auto;
+        overflow: hidden;
+        width: 13.333in;
+        height: 7.5in;
         page-break-after: always;
         break-after: page;
-        height: 100vh;
+        page-break-inside: avoid;
+        break-inside: avoid;
       }
+      .slide:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
+      .grid-2 { grid-template-columns: 1fr 1fr; }
+      .grid-3 { grid-template-columns: repeat(3, 1fr); }
+      .path-step { grid-template-columns: 2.4rem 7.2rem minmax(0, 1fr); }
+      .path .verb { grid-column: auto; }
+      .path code { grid-column: auto; }
+      .rung { grid-template-columns: 3.6rem minmax(0, 1.4fr) minmax(0, 1fr); }
+      .rung .not { grid-column: auto; }
     }
   </style>
 </head>

@@ -91,6 +91,18 @@ def test_claim_card_rows_match_the_tool():
     assert "does not cite `Ln`" in README or "does not cite `Ln`" in DESIGN
 
 
+def test_intro_deck_pdf_is_checked_in():
+    """The talk is also a downloadable 16:9 PDF, not only a browser deck."""
+    pdf = Path("docs/slides/farmnotary.pdf")
+    slides_readme = Path("docs/slides/README.md").read_text(encoding="utf-8")
+    assert pdf.is_file()
+    assert pdf.read_bytes()[:5] == b"%PDF-"
+    assert pdf.stat().st_size > 10_000
+    assert "farmnotary.pdf" in README
+    assert "farmnotary.pdf" in slides_readme
+    assert "export_pdf.py" in slides_readme
+
+
 def test_intro_deck_stays_inside_the_claim_card():
     """The researcher/lab talk may not outrun CLAIMS.md."""
     assert "[docs/slides/](docs/slides/)" in README
