@@ -38,7 +38,7 @@ def verify_derived_artifacts(manifest: Manifest, run_dir: Path, *, allow_execute
 
 
 def verify_ci_provenance(manifest: Manifest) -> List[str]:
-    """Check that ``git_sha`` agrees with the CI-attested SHA in ``ci_provenance``.
+    """Check that ``git_sha`` agrees with the recorded CI SHA in ``ci_provenance``.
 
     When a manifest was built inside GitHub Actions, ``ci_provenance.sha``
     carries ``GITHUB_SHA`` — the commit the runner checked out.  If the
@@ -61,20 +61,20 @@ def verify_ci_provenance(manifest: Manifest) -> List[str]:
     attested_sha = prov.get("sha", "")
     if not attested_sha:
         problems.append(
-            "ci_provenance is present but contains no attested SHA; "
+            "ci_provenance is present but contains no recorded SHA; "
             "cannot verify provenance binding"
         )
         return problems
     if not manifest.git_sha:
         problems.append(
-            "manifest git_sha is missing but ci_provenance attests "
+            "manifest git_sha is missing but ci_provenance records "
             f"SHA {attested_sha!r}; cannot verify provenance binding"
         )
         return problems
     if manifest.git_sha != attested_sha:
         problems.append(
             f"git_sha {manifest.git_sha!r} disagrees with "
-            f"CI-attested SHA {attested_sha!r}"
+            f"recorded CI SHA {attested_sha!r}"
         )
     return problems
 

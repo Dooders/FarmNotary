@@ -2,7 +2,7 @@
 
 ``detect_ci_provenance`` reads GitHub Actions env vars and records them in
 the manifest.  ``verify_ci_provenance`` checks that ``git_sha`` agrees with
-the CI-attested SHA.  Disagreement is a hard problem (verify fails).
+the recorded CI SHA.  Disagreement is a hard problem (verify fails).
 """
 
 from pathlib import Path
@@ -217,7 +217,7 @@ def test_verify_ci_provenance_empty_manifest_git_sha():
 # ---------------------------------------------------------------------------
 
 def test_evaluate_claims_ci_provenance_note_when_matching(tmp_path):
-    """A matching ci_provenance produces a CI-attested note, not a problem."""
+    """A matching ci_provenance produces a recorded CI SHA note, not a problem."""
     sha = "e" * 40
     manifest = build_manifest(
         _run_dir(tmp_path),
@@ -254,4 +254,4 @@ def test_evaluate_claims_no_ci_provenance_still_ok(tmp_path):
     assert manifest.ci_provenance is None
     card = evaluate_claims(manifest, tmp_path)
     assert card.ok
-    assert not any("CI-attested" in n for n in card.notes)
+    assert not any("Recorded CI SHA" in n for n in card.notes)
