@@ -952,26 +952,7 @@ def _cmd_reproduce(args: argparse.Namespace) -> int:
 def _trusted_reproduce_source(
     manifest, *, cwd: Optional[Path], run_dir: Path
 ) -> Optional[str]:
-    prov = manifest.ci_provenance if isinstance(manifest.ci_provenance, dict) else None
-    current_repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
-    current_sha = os.environ.get("GITHUB_SHA", "").strip()
-    if (
-        os.environ.get("GITHUB_ACTIONS") == "true"
-        and prov
-        and prov.get("kind") == "github_actions"
-        and prov.get("repository") == current_repo
-        and prov.get("sha") == current_sha
-        and current_repo
-        and current_sha
-    ):
-        return "ci"
-    probe_dirs = [cwd] if cwd is not None else []
-    if cwd is None:
-        try:
-            probe_dirs.append(Path.cwd())
-        except OSError:
-            pass
-        probe_dirs.append(run_dir)
+    probe_dirs = [cwd] if cwd is not None else [run_dir]
     for probe_dir in probe_dirs:
         try:
             local_sha, _ = detect_git_status(cwd=probe_dir)
