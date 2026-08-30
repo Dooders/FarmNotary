@@ -47,6 +47,13 @@ def bitcoin_timestamp(digest: bytes, height: int) -> Timestamp:
     return timestamp
 
 
+def mixed_pending_timestamp(digest: bytes, *uris: str) -> Timestamp:
+    timestamp = Timestamp(digest)
+    for uri in uris:
+        timestamp.attestations.add(PendingAttestation(uri))
+    return timestamp
+
+
 def test_backend_submits_digest_and_returns_proof(stub_server, tmp_path: Path):
     manifest = make_manifest(tmp_path)
     digest = bytes.fromhex(manifest.content_hash())

@@ -9,6 +9,7 @@ from farm_notary.ots import DEFAULT_CALENDARS, PROOF_NAME, serialize_proof
 from tests.conftest import StubServer
 from tests.test_ots import (
     bitcoin_timestamp,
+    mixed_pending_timestamp,
     pending_timestamp,
     serialize_timestamp,
 )
@@ -274,6 +275,16 @@ def test_verify_distinguishes_public_and_user_supplied_pending_calendars(tmp_pat
     out = capsys.readouterr().out
     assert "pending at user-supplied calendar:" in out
     assert "https://example.com" in out
+
+    (run_dir / PROOF_NAME).write_bytes(
+        serialize_proof(
+            mixed_pending_timestamp(digest, DEFAULT_CALENDARS[0], "https://example.com")
+        )
+    )
+    assert main(["verify", "--run-dir", str(run_dir)]) == 0
+    out = capsys.readouterr().out
+    assert "pending on public OpenTimestamps calendar:" in out
+    assert "user-supplied calendar: https://example.com (untrusted until Bitcoin)" in out
 
 
 def test_anchor_pin_gateway_reachable_recorded(tmp_path: Path, monkeypatch, capsys):
