@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FarmNotary — walk one consensus run</title>
+  <meta name="description" content="Worked example: a tiny consensus experiment notarized with FarmNotary so a room can see the official record, the claim card, a scoped re-run, and a packaging bug that is not a science failure.">
+  <style>
+    @font-face {
+      font-family: Fraunces;
+      src: url("fonts/fraunces-normal-680.woff2") format("woff2");
+      font-weight: 680;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: Fraunces;
+      src: url("fonts/fraunces-italic-500.woff2") format("woff2");
+      font-weight: 500;
+      font-style: italic;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: "Source Serif 4";
+      src: url("fonts/sourceserif4-normal-400.woff2") format("woff2");
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("fonts/ibmplexmono-normal-400.woff2") format("woff2");
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("fonts/ibmplexmono-normal-500.woff2") format("woff2");
+      font-weight: 500;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    :root {
+      --paper: #f3ead8;
+      --paper-2: #e8dcc4;
+      --ink: #1b1610;
+      --muted: #5c5348;
+      --rule: #c9b89a;
+      --seal: #9a2f2a;
+      --forest: #2c4a3c;
+      --gold: #8a6a28;
+      --card: #f8f2e6;
+      --term: #1b1610;
+      --display: Fraunces, "Source Serif 4", Palatino, "Liberation Serif", Georgia, serif;
+      --serif: "Source Serif 4", "Iowan Old Style", Palatino, "Liberation Serif", Georgia, serif;
+      --mono: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #241f19;
+      color: var(--ink);
+      font-family: var(--serif);
+    }
+
+    #deck { position: relative; height: 100%; overflow: hidden; }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: clamp(1.6rem, 4.2vh, 2.8rem) clamp(2.4rem, 5.5vw, 4.8rem) 3.2rem;
+      background:
+        linear-gradient(90deg, var(--seal) 0 7px, transparent 7px),
+        radial-gradient(900px 420px at 0% 0%, rgba(154, 47, 42, 0.06), transparent 55%),
+        linear-gradient(180deg, var(--paper), var(--paper-2));
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 160ms ease, visibility 160ms ease;
+    }
+    .slide.active {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      overflow-y: auto;
+    }
+    .slide.top { justify-content: flex-start; padding-top: clamp(1.4rem, 3.6vh, 2.2rem); }
+    @media (prefers-reduced-motion: reduce) {
+      .slide { transition: none; }
+    }
+
+    .stage { width: 100%; max-width: 76rem; }
+
+    .kicker {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--seal);
+      margin: 0 0 0.55rem;
+    }
+    h1, h2 {
+      font-family: var(--display);
+      font-weight: 680;
+      letter-spacing: -0.03em;
+      line-height: 1.05;
+      margin: 0 0 0.55rem;
+    }
+    h1 { font-size: clamp(3.2rem, 8vw, 5.6rem); }
+    h2 { font-size: clamp(2rem, 4.4vw, 3.15rem); max-width: 22ch; }
+    .lede {
+      font-size: clamp(1.15rem, 2vw, 1.4rem);
+      line-height: 1.38;
+      max-width: 42rem;
+      margin: 0;
+    }
+    p, li { line-height: 1.42; }
+    ul { margin: 0; padding-left: 1.1rem; }
+    li + li { margin-top: 0.38rem; }
+
+    .rule {
+      width: 2.6rem;
+      height: 2px;
+      background: var(--seal);
+      border: 0;
+      margin: 0.85rem 0 1.15rem;
+    }
+
+    .grid-2, .grid-3 {
+      display: grid;
+      gap: 1rem 1.3rem;
+      width: 100%;
+    }
+    .grid-2 { grid-template-columns: 1fr 1fr; }
+    .grid-3 { grid-template-columns: repeat(3, 1fr); }
+    @media screen and (max-width: 860px) {
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--rule);
+      padding: 1rem 1.15rem 1.05rem;
+      min-height: 100%;
+    }
+    .panel h3, .path .verb, .rung .lvl, .stat-k {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin: 0 0 0.5rem;
+      color: var(--forest);
+      font-weight: 500;
+    }
+    .panel.out h3, .rung.reserved .lvl { color: var(--seal); }
+
+    .term, .path code, .cmds code, .cmd {
+      font-family: var(--mono);
+      background: var(--term);
+      color: #efe6d2;
+    }
+    .term {
+      font-size: clamp(0.7rem, 1.15vw, 0.86rem);
+      line-height: 1.5;
+      padding: 1rem 1.15rem;
+      width: 100%;
+      margin: 0;
+      white-space: pre-wrap;
+      overflow-wrap: break-word;
+    }
+    .term .c-ok { color: #b7d4c4; }
+    .term .c-pend { color: #e6c56a; }
+    .term .c-miss { color: #c9b8a0; }
+    .term .c-no { color: #e3a39a; }
+    .term .c-dim { color: #9a8f7e; }
+
+    .card-frame {
+      border: 1px solid var(--ink);
+      background: var(--term);
+    }
+    .card-frame header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.45rem 0.9rem;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #c9b8a0;
+      border-bottom: 1px solid #3a3228;
+    }
+
+    .cmd {
+      font-size: 0.86em;
+      padding: 0.1rem 0.35rem;
+      white-space: pre-wrap;
+    }
+
+    .path { display: grid; gap: 0.55rem; width: 100%; }
+    .path-step {
+      display: grid;
+      grid-template-columns: 2.4rem 7.2rem minmax(0, 1fr);
+      gap: 0.75rem;
+      align-items: center;
+    }
+    .path .n {
+      font-family: var(--display);
+      font-size: 1.35rem;
+      color: var(--seal);
+      line-height: 1;
+    }
+    .path .verb { margin: 0; color: var(--ink); }
+    .path code, .cmds code {
+      display: block;
+      font-size: clamp(0.72rem, 1.2vw, 0.88rem);
+      padding: 0.7rem 0.85rem;
+      overflow-x: auto;
+    }
+    @media screen and (max-width: 860px) {
+      .path-step { grid-template-columns: 2rem 1fr; }
+      .path .verb { grid-column: 2; }
+      .path code { grid-column: 1 / -1; }
+    }
+
+    .rungs { list-style: none; margin: 0; padding: 0; width: 100%; }
+    .rung {
+      display: grid;
+      grid-template-columns: 3.6rem minmax(0, 1.4fr) minmax(0, 1fr);
+      gap: 1rem;
+      padding: 0.7rem 0;
+      border-bottom: 1px solid var(--rule);
+    }
+    .rung .lvl { margin: 0; font-size: 0.84rem; line-height: 1.3; }
+    .rung .not { color: var(--muted); }
+    .rung.reserved { opacity: 0.62; }
+    @media screen and (max-width: 860px) {
+      .rung { grid-template-columns: 3.2rem 1fr; }
+      .rung .not { grid-column: 2; }
+    }
+
+    .seal {
+      width: 8.4rem;
+      height: 8.4rem;
+      border: 3px solid var(--seal);
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      color: var(--seal);
+      transform: rotate(-8deg);
+      flex: 0 0 auto;
+      box-shadow: inset 0 0 0 6px rgba(154, 47, 42, 0.12);
+    }
+    .seal span {
+      font-family: var(--display);
+      font-style: italic;
+      font-weight: 500;
+      font-size: 1rem;
+      line-height: 1.15;
+      max-width: 6.2rem;
+    }
+
+    .title-row {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 2.5rem;
+      width: 100%;
+    }
+
+    .stat {
+      font-family: var(--display);
+      font-size: clamp(3.4rem, 8vw, 5.2rem);
+      line-height: 0.9;
+      letter-spacing: -0.04em;
+      color: var(--forest);
+    }
+    .stat-k { margin: 0 0 0.35rem; }
+
+    .foot {
+      margin-top: 1.15rem;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--muted);
+      max-width: 48rem;
+    }
+
+    .mini {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.98rem;
+    }
+    .mini th, .mini td {
+      text-align: left;
+      padding: 0.42rem 0.7rem 0.42rem 0;
+      border-bottom: 1px solid var(--rule);
+      vertical-align: top;
+    }
+    .mini th {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 500;
+      width: 14rem;
+    }
+
+    .files {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+    .files th, .files td {
+      text-align: left;
+      padding: 0.36rem 0.65rem 0.36rem 0;
+      border-bottom: 1px solid var(--rule);
+      vertical-align: top;
+    }
+    .files th {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .files td:first-child { font-family: var(--mono); font-size: 0.82rem; }
+    .tag {
+      font-family: var(--mono);
+      font-size: 0.66rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 0.1rem 0.38rem;
+      border: 1px solid var(--rule);
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .tag.in { color: var(--forest); border-color: var(--forest); }
+    .tag.out { color: var(--seal); border-color: var(--seal); }
+
+    #chrome {
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.5rem 1.2rem 0.75rem 1.4rem;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.08em;
+      color: rgba(27, 22, 16, 0.5);
+      pointer-events: none;
+      z-index: 5;
+    }
+    #progress {
+      position: absolute;
+      left: 0; bottom: 0;
+      height: 3px;
+      background: var(--seal);
+      width: 0;
+    }
+    #help, #notes {
+      display: none;
+      position: fixed;
+      z-index: 6;
+      background: rgba(27, 22, 16, 0.94);
+      color: #efe6d2;
+      padding: 0.85rem 1rem;
+    }
+    #help {
+      inset: auto 1rem 2.4rem auto;
+      font-family: var(--mono);
+      font-size: 0.76rem;
+      line-height: 1.55;
+    }
+    #notes {
+      left: 1.2rem; right: 1.2rem; bottom: 2.2rem;
+      font-size: 0.95rem;
+      line-height: 1.4;
+      max-height: 28vh;
+      overflow: auto;
+    }
+    #help.show, #notes.show { display: block; }
+
+    @media print {
+      @page { size: 13.333in 7.5in; margin: 0; }
+      html, body {
+        width: 13.333in;
+        height: auto;
+        background: #241f19;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      #deck { height: auto; overflow: visible; }
+      #chrome, #help, #notes { display: none !important; }
+      .slide {
+        position: relative;
+        inset: auto;
+        opacity: 1 !important;
+        visibility: visible !important;
+        pointer-events: auto;
+        overflow: hidden;
+        width: 13.333in;
+        height: 7.5in;
+        page-break-after: always;
+        break-after: page;
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+      .slide:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
+      .grid-2 { grid-template-columns: 1fr 1fr; }
+      .grid-3 { grid-template-columns: repeat(3, 1fr); }
+      .path-step { grid-template-columns: 2.4rem 7.2rem minmax(0, 1fr); }
+      .path .verb { grid-column: auto; }
+      .path code { grid-column: auto; }
+      .rung { grid-template-columns: 3.6rem minmax(0, 1.4fr) minmax(0, 1fr); }
+      .rung .not { grid-column: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div id="deck">
+
+    <section class="slide active" data-act="I · Setup" data-notes="This is the worked example, not the product pitch. Point at the notebook if it is open: docs/demo/farmnotary_live_demo.ipynb. The simulation stays off-chain. Do not open with Bitcoin.">
+      <div class="stage">
+        <p class="kicker">I · Setup &nbsp;·&nbsp; a room, one run &nbsp;·&nbsp; 0.2</p>
+        <div class="title-row">
+          <div>
+            <h1>Walk one run.</h1>
+            <hr class="rule">
+            <p class="lede">A tiny consensus experiment, then the notary.<br>See the official record. Read the card.</p>
+            <p class="foot">docs/demo/experiment.py · companion to the intro deck</p>
+          </div>
+          <div class="seal" aria-hidden="true"><span>the record,<br>not the<br>result</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-act="I · Setup" data-notes="Four beats you will actually show. If a laptop is live, say you will run these, not just describe them. Keep the science small so the notary is visible.">
+      <div class="stage">
+        <p class="kicker">I · Setup &nbsp;·&nbsp; this room</p>
+        <h2>What you will see, in order.</h2>
+        <hr class="rule">
+        <div class="grid-2">
+          <div class="panel">
+            <h3>The experiment</h3>
+            <ul>
+              <li>Twelve voters. Four candidates. Seed 0. Stdlib only.</li>
+              <li>Aggregates and a winner are official. Individual choices are not.</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <h3>The notary</h3>
+            <ul>
+              <li>A profile that refuses to hash ballots.</li>
+              <li>A claim card a stranger can read.</li>
+              <li>The same seed, a new folder: a scoped match.</li>
+              <li>A packaging bug labeled <strong>not a science failure</strong>.</li>
+            </ul>
+          </div>
+        </div>
+        <p class="foot">Live path: the notebook. Talk-only path: these slides already hold the numbers.</p>
+      </div>
+    </section>
+
+    <section class="slide top" data-act="I · Setup" data-notes="Read two of the refused claims aloud. Dry-run means we will not earn L0. Do not let anyone leave thinking this is independently reproduced.">
+      <div class="stage">
+        <p class="kicker">I · Setup &nbsp;·&nbsp; what you may not take</p>
+        <h2>A passing card is not a verified result.</h2>
+        <hr class="rule">
+        <ol class="rungs">
+          <li class="rung">
+            <span class="lvl">none</span>
+            <span>This room uses the dry-run backend. No calendar, no pin, no gas.</span>
+            <span class="not">Not a failed experiment.</span>
+          </li>
+          <li class="rung">
+            <span class="lvl">L0</span>
+            <span>These bytes existed by time T; Bitcoin headers not verified by this tool.</span>
+            <span class="not">Dry-run cannot earn this. Pending OpenTimestamps is not L0 either.</span>
+          </li>
+          <li class="rung">
+            <span class="lvl">L1</span>
+            <span>Re-execution specified: command, git SHA, environment fingerprint.</span>
+            <span class="not">Not a completed re-run. The command was not run by verify.</span>
+          </li>
+          <li class="rung">
+            <span class="lvl">L2</span>
+            <span>Seed not grindable after the plan is anchored.</span>
+            <span class="not">Not scientific correctness. Not today’s demo.</span>
+          </li>
+          <li class="rung">
+            <span class="lvl">L3</span>
+            <span>A Sigstore keyless signature is on the reproduction receipt. Identity is recorded, not proven independent.</span>
+            <span class="not">Not independently reproduced.</span>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="slide" data-act="I · Setup" data-notes="Keep the science boring. Winner west is a fact of this seed, not a finding FarmNotary certifies. Point at the private line.">
+      <div class="stage">
+        <p class="kicker">I · Setup &nbsp;·&nbsp; the experiment</p>
+        <h2>Twelve agents vote. The notary never sees a ballot.</h2>
+        <hr class="rule">
+        <div class="grid-2">
+          <div class="panel">
+            <p class="stat-k">Seed 0 · 12 voters</p>
+            <p class="stat">west</p>
+            <p style="margin:0.7rem 0 0">north 1 · east 2 · south 4 · west 5. Shares from <span class="cmd">summary.csv</span>.</p>
+            <p class="foot" style="margin-top:0.7rem">A notarized winner can still be the wrong science.</p>
+          </div>
+          <div class="panel">
+            <h3>Why this toy</h3>
+            <ul>
+              <li>Same profile as the AgentFarm consensus experiment: <span class="cmd">consensus</span>.</li>
+              <li>Official artifacts are aggregates, config, report, figure.</li>
+              <li>Ballots go under <span class="cmd">private/</span> so a glob cannot admit them.</li>
+              <li>stdlib. Runs in the notebook or <span class="cmd">docs/demo/experiment.py</span>.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-act="II · Hash" data-notes="If a terminal is up, run this now and leave the tree on screen. Otherwise read the table. Unmatched names are never printed by the CLI — the slide shows the name only so the room can see the policy.">
+      <div class="stage">
+        <p class="kicker">II · Hash &nbsp;·&nbsp; run the seed</p>
+        <h2>Write the folder a reviewer would receive.</h2>
+        <hr class="rule">
+        <div class="path" style="margin-bottom:1rem">
+          <div class="path-step">
+            <span class="n">01</span>
+            <span class="verb">Run</span>
+            <code>python docs/demo/experiment.py --seed 0 --out run/</code>
+          </div>
+        </div>
+        <table class="files">
+          <tr><th>Path</th><th>Role</th><th></th></tr>
+          <tr><td>trials.csv · summary.csv · allocation_means.csv · contrasts.csv</td><td>aggregates</td><td><span class="tag in">official</span></td></tr>
+          <tr><td>REPORT.md · run_config.json · figure.png</td><td>narrative, config, figure</td><td><span class="tag in">official</span></td></tr>
+          <tr><td>private/ballots.csv</td><td>voter, choice</td><td><span class="tag out">denylist</span></td></tr>
+          <tr><td>scratch_notes.txt</td><td>lab leftover</td><td><span class="tag">unmatched</span></td></tr>
+        </table>
+        <p class="foot">A hash tool would digest the ballots. FarmNotary hashes nothing until a profile says what may leave.</p>
+      </div>
+    </section>
+
+    <section class="slide" data-act="II · Hash" data-notes="This is the value slide. Matching bytes is the start of the sentence. Name the denylist fragments: ballot, vote, voter, individual_choice, private.">
+      <div class="stage">
+        <p class="kicker">II · Hash &nbsp;·&nbsp; hash tool vs notary</p>
+        <h2>The allowlist is the privacy model.</h2>
+        <hr class="rule">
+        <div class="grid-2">
+          <div class="panel out">
+            <h3>sha256sum, on this folder</h3>
+            <p class="lede" style="max-width:none;font-family:var(--display);font-style:italic;font-weight:500;font-size:clamp(1.35rem,2.3vw,1.9rem)">These files match this digest.</p>
+            <p class="foot" style="margin-top:0.85rem">Including <span class="cmd">private/ballots.csv</span>. That is the entire claim.</p>
+          </div>
+          <div class="panel">
+            <h3>farm-notary, profile consensus</h3>
+            <ul>
+              <li>Seven official artifacts. Policy recorded on the manifest.</li>
+              <li>Ballots excluded even if a glob would admit them.</li>
+              <li><span class="cmd">scratch_notes.txt</span> increments <span class="cmd">unmatched_count</span>. The name is never printed.</li>
+              <li>What you may claim. What you may not.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-act="II · Hash" data-notes="Walk the command slowly. Default is hash nothing. Named profiles stop labs inventing globs and forgetting REPORT.md.">
+      <div class="stage">
+        <p class="kicker">II · Hash &nbsp;·&nbsp; the profile</p>
+        <h2>Nothing is hashed until you say what may leave.</h2>
+        <hr class="rule">
+        <div class="path">
+          <div class="path-step">
+            <span class="n">01</span>
+            <span class="verb">Profile</span>
+            <code>farm-notary manifest --run-dir run/ --profile consensus --config run/run_config.json</code>
+          </div>
+        </div>
+        <table class="mini" style="margin-top:1.1rem">
+          <tr><th>Admitted</th><td>trials.csv, summary.csv, allocation_means.csv, contrasts.csv, REPORT.md, run_config.json, *.png</td></tr>
+          <tr><th>Denied</th><td>any path containing ballot, vote, voter, individual_choice, or private</td></tr>
+          <tr><th>Unmatched</th><td>count only — scratch_notes.txt is not on the record</td></tr>
+        </table>
+        <p class="foot">Profiles: consensus, rl-sweep, evolution-run. The resolved patterns are part of the claim.</p>
+      </div>
+    </section>
+
+    <section class="slide" data-act="II · Hash" data-notes="Be honest: the notebook binds precommit after this demo run so the card row is visible. A lab stamps first. A timestamp after the result is known is not pre-registration.">
+      <div class="stage">
+        <p class="kicker">II · Hash &nbsp;·&nbsp; pre-specified design</p>
+        <h2>Stamp the plan before the artifacts exist.</h2>
+        <hr class="rule">
+        <div class="path">
+          <div class="path-step">
+            <span class="n">01</span>
+            <span class="verb">Plan</span>
+            <code>farm-notary precommit --config run/run_config.json --command "python docs/demo/experiment.py --seed 0 --out '{run_dir}'"</code>
+          </div>
+          <div class="path-step">
+            <span class="n">02</span>
+            <span class="verb">Bind</span>
+            <code>farm-notary manifest --run-dir run/ --profile consensus --precommit precommit.json</code>
+          </div>
+        </div>
+        <p class="lede" style="margin-top:1.15rem;max-width:46rem">This room is dry-run. A lab would pass <span class="cmd">--backend ots</span> on the plan, then run. FarmNotary will still stamp a favorable run after the fact. It will not call that a pre-specified design.</p>
+      </div>
+    </section>
+
+    <section class="slide" data-act="III · Card" data-notes="This is the product. Read the card aloud. Point at last row and at existed-by-time-T missing. Exit code is for scripts. Missing is not failure.">
+      <div class="stage">
+        <p class="kicker">III · Card &nbsp;·&nbsp; the product</p>
+        <h2>Reviewers read the card, not the exit code.</h2>
+        <hr class="rule">
+        <div class="card-frame">
+          <header><span>farm-notary verify --run-dir run/</span><span>dry-run · this room</span></header>
+          <pre class="term" style="background:transparent;padding-top:0.85rem"><span class="c-dim">level: none — no earned ladder level</span>
+<span class="c-dim">next:  L0 — these bytes existed by time T; Bitcoin headers not verified by this tool (missing: Bitcoin attestation)</span>
+•  tamper-evident record           — <span class="c-ok">pass</span>
+•  existed by time T               — <span class="c-miss">missing</span>
+•  pre-specified design            — <span class="c-ok">precommit bound</span>
+•  bitwise reproducible (scoped)   — <span class="c-miss">missing</span>
+•  <span class="c-no">not claimed: scientific correctness</span></pre>
+        </div>
+        <p class="foot">Missing is not failure. Exit 0 means no attempted check failed — not that every claim was earned, and not that the science is right.</p>
+      </div>
+    </section>
+
+    <section class="slide" data-act="III · Card" data-notes="If live: append a line to summary.csv, verify, restore. This is the Drive-zip contrast. A stranger can see the break without asking you.">
+      <div class="stage">
+        <p class="kicker">III · Card &nbsp;·&nbsp; tamper</p>
+        <h2>Change one official byte. The card breaks.</h2>
+        <hr class="rule">
+        <div class="grid-2">
+          <div class="panel out">
+            <h3>After a one-line edit</h3>
+            <p>Append a comment to <span class="cmd">summary.csv</span>. Rehash fails. <span class="cmd">tamper-evident record — fail</span>. The zip on Drive would still open.</p>
+          </div>
+          <div class="panel">
+            <h3>After restore</h3>
+            <p>Put the bytes back. The card returns to pass. That is the value versus a laptop folder: the official record is checkable without asking the author.</p>
+          </div>
+        </div>
+        <p class="foot">Immutability is not correctness. A manifest can perfectly notarize a wrong winner.</p>
+      </div>
+    </section>
+
+    <section class="slide" data-act="III · Card" data-notes="If live, run reproduce now. Scope the sentence: x86-64 Linux, pinned environment. Do not let the room walk out thinking bitwise everywhere. ARM receipts are not ok.">
+      <div class="stage">
+        <p class="kicker">III · Card &nbsp;·&nbsp; re-run the seed</p>
+        <h2>Same seed. New folder. Scope the sentence.</h2>
+        <hr class="rule">
+        <div class="path" style="margin-bottom:1rem">
+          <div class="path-step">
+            <span class="n">01</span>
+            <span class="verb">Reproduce</span>
+            <code>farm-notary reproduce --run-dir run/ --fresh-dir repro/</code>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="panel">
+            <p class="stat-k">This toy, same machine</p>
+            <p class="stat">7/7</p>
+            <p style="margin:0.7rem 0 0">Every listed artifact matches. The only sentence the tool may emit:</p>
+            <p class="foot" style="margin-top:0.7rem"><em>byte-identical on x86-64 Linux in a pinned environment</em></p>
+          </div>
+          <div class="panel out">
+            <h3>Not a claim</h3>
+            <ul>
+              <li>Cross-hardware bitwise identity.</li>
+              <li>Linux ARM and macOS ARM receipts for the AgentFarm cell are not ok.</li>
+              <li>Independently reproduced. This is the author’s own re-run.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-act="IV · Value" data-notes="This is the AgentFarm 7/7 → 8/8 story, shrunk. If live, run --embed-path. Read the diagnostic: embedded_absolute_path. Not a science failure.">
+      <div class="stage">
+        <p class="kicker">IV · Value &nbsp;·&nbsp; packaging</p>
+        <h2>A byte-diff is not a science failure.</h2>
+        <hr class="rule">
+        <div class="path" style="margin-bottom:1rem">
+          <div class="path-step">
+            <span class="n">01</span>
+            <span class="verb">Break</span>
+            <code>python docs/demo/experiment.py --seed 0 --out broken/ --embed-path</code>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="panel out">
+            <h3>What changed</h3>
+            <p><span class="cmd">REPORT.md</span> baked the output directory. Re-run into a fresh folder changes one line. Science did not move. FarmNotary classifies <span class="cmd">embedded_absolute_path</span>.</p>
+          </div>
+          <div class="panel">
+            <h3>The real cell</h3>
+            <p>AgentFarm consensus: 100 trials, 300 voters, 8 candidates, seed 0. The same bug took that record from 7/7 to 8/8 after <span class="cmd">{run_dir}</span>. A classified byte-diff is <strong>not a science failure</strong>.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-act="IV · Value" data-notes="Two opt-ins: derived commands are untrusted on a downloaded manifest; the appendix must not print Ln. Do not execute step 03 unless you wrote the record.">
+      <div class="stage">
+        <p class="kicker">IV · Value &nbsp;·&nbsp; stranger and paper</p>
+        <h2>Opt in to execute. Do not cite Ln from the PDF.</h2>
+        <hr class="rule">
+        <div class="path">
+          <div class="path-step">
+            <span class="n">01</span>
+            <span class="verb">Read</span>
+            <code>farm-notary verify --run-dir run/</code>
+          </div>
+          <div class="path-step">
+            <span class="n">02</span>
+            <span class="verb">Opt in</span>
+            <code>farm-notary verify --run-dir run/ --verify-derived</code>
+          </div>
+          <div class="path-step">
+            <span class="n">03</span>
+            <span class="verb">Sweep</span>
+            <code>farm-notary campaign --name demo-sweep --run-dir run/ --run-dir run-1/ --out sweep/</code>
+          </div>
+        </div>
+        <p class="foot">Step 02 only if you trust the recorded commands. <span class="cmd">paper-pack</span> leaves reader ladder as —. A printed L0–L3 is not a finding.</p>
+      </div>
+    </section>
+
+    <section class="slide" data-act="IV · Value" data-notes="Close the value loop. Three things a Drive zip cannot do. Then stop. Do not add a badge.">
+      <div class="stage">
+        <p class="kicker">IV · Value &nbsp;·&nbsp; why this library</p>
+        <h2>The zip could not say this.</h2>
+        <hr class="rule">
+        <div class="grid-3">
+          <div class="panel">
+            <h3>Admission</h3>
+            <p>Which files left. How many were omitted. Ballots never hashed. Policy on the record.</p>
+          </div>
+          <div class="panel">
+            <h3>Language</h3>
+            <p>A card that will not print a verified-result badge. Missing is not failure. Last row is always the non-claim.</p>
+          </div>
+          <div class="panel">
+            <h3>Re-run</h3>
+            <p>Same seed, scoped sentence. A path baked into REPORT.md is classified, not treated as a failed result.</p>
+          </div>
+        </div>
+        <p class="foot">An anchor proves existence, not correctness. Cross-hardware bitwise identity is not a claim.</p>
+      </div>
+    </section>
+
+    <section class="slide" data-act="IV · Value" data-notes="Leave them with the notebook and the first verify. Offer to walk the folder if there is time. Q&A: file drawer, Bitcoin headers, dirty git, private paths.">
+      <div class="stage">
+        <p class="kicker">IV · Value</p>
+        <h2>Run the toy. Then hash a run you would cite.</h2>
+        <hr class="rule">
+        <div class="path">
+          <div class="path-step">
+            <span class="n">01</span>
+            <span class="verb">Notebook</span>
+            <code>jupyter notebook docs/demo/farmnotary_live_demo.ipynb</code>
+          </div>
+          <div class="path-step">
+            <span class="n">02</span>
+            <span class="verb">Install</span>
+            <code>pip install "farm-notary[ots] @ git+https://github.com/Dooders/FarmNotary.git@dev"</code>
+          </div>
+          <div class="path-step">
+            <span class="n">03</span>
+            <span class="verb">Cite</span>
+            <code>farm-notary anchor --run-dir path/to/run --backend ots --pin-remote pinata</code>
+          </div>
+        </div>
+        <p class="lede" style="margin-top:1.15rem">github.com/Dooders/FarmNotary</p>
+        <p class="foot">Intro deck: docs/slides/index.html. Docs: PRINCIPLES · CLAIMS · DESIGN. Apache-2.0. Dry-run until you pass --backend ots.</p>
+      </div>
+    </section>
+
+  </div>
+
+  <div id="chrome">
+    <span id="act">I · Setup</span>
+    <span id="counter">1 / 15</span>
+    <span>? help · N notes · F full</span>
+    <div id="progress"></div>
+  </div>
+  <div id="help">click / ← → space · Home/End · F fullscreen · N notes · P print · ? this</div>
+  <div id="notes"></div>
+
+  <script>
+    const slides = [...document.querySelectorAll(".slide")];
+    const counter = document.getElementById("counter");
+    const progress = document.getElementById("progress");
+    const notesEl = document.getElementById("notes");
+    const helpEl = document.getElementById("help");
+    const actEl = document.getElementById("act");
+    let i = 0;
+
+    function show(n) {
+      i = Math.max(0, Math.min(slides.length - 1, n));
+      slides.forEach((s, idx) => s.classList.toggle("active", idx === i));
+      counter.textContent = (i + 1) + " / " + slides.length;
+      progress.style.width = ((i + 1) / slides.length * 100) + "%";
+      notesEl.textContent = slides[i].dataset.notes || "";
+      actEl.textContent = slides[i].dataset.act || "FarmNotary";
+      history.replaceState(null, "", "#" + (i + 1));
+    }
+
+    function fromHash() {
+      const n = parseInt(location.hash.replace("#", ""), 10);
+      show(Number.isFinite(n) ? n - 1 : 0);
+    }
+
+    document.addEventListener("keydown", (e) => {
+      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      if (["INPUT", "TEXTAREA"].includes(e.target.tagName)) return;
+      if (["ArrowRight", "ArrowDown", " ", "PageDown"].includes(key)) { e.preventDefault(); show(i + 1); }
+      if (["ArrowLeft", "ArrowUp", "PageUp", "Backspace"].includes(key)) { e.preventDefault(); show(i - 1); }
+      if (key === "Home") show(0);
+      if (key === "End") show(slides.length - 1);
+      if (key === "?" || key === "h") helpEl.classList.toggle("show");
+      if (key === "n") notesEl.classList.toggle("show");
+      if (key === "f") {
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+        else document.exitFullscreen();
+      }
+      if (key === "p") window.print();
+    });
+
+    let touchX = null;
+    document.addEventListener("touchstart", (e) => { touchX = e.changedTouches[0].screenX; }, { passive: true });
+    document.addEventListener("touchend", (e) => {
+      if (touchX == null) return;
+      const dx = e.changedTouches[0].screenX - touchX;
+      if (dx < -40) show(i + 1);
+      if (dx > 40) show(i - 1);
+      touchX = null;
+    }, { passive: true });
+
+    document.getElementById("deck").addEventListener("click", (e) => {
+      if (window.getSelection && String(window.getSelection())) return;
+      if (e.target.closest("a, code, pre, .term")) return;
+      show(i + (e.clientX > window.innerWidth * 0.22 ? 1 : -1));
+    });
+
+    window.addEventListener("hashchange", fromHash);
+    fromHash();
+  </script>
+</body>
+</html>

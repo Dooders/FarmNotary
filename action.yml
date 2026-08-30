@@ -40,7 +40,11 @@ inputs:
     required: false
     default: ""
   git-sha:
-    description: Code identity. Defaults to the current HEAD.
+    description: >-
+      Code identity. Defaults to the current HEAD.  When running inside
+      GitHub Actions the tool also records GITHUB_SHA in ci_provenance and
+      cross-checks it against git_sha at verify time; a disagreement fails
+      the job.  Leave this blank in most CI workflows.
     required: false
     default: ""
   runner:

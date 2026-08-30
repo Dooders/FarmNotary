@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export the intro deck to a 16:9 PDF via headless Chrome."""
+"""Export a docs/slides HTML deck to a 16:9 PDF via headless Chrome."""
 
 from __future__ import annotations
 
@@ -19,8 +19,8 @@ CHROME_NAMES = (
 )
 
 SLIDES_DIR = Path(__file__).resolve().parent
-DEFAULT_HTML = SLIDES_DIR / "index.html"
-DEFAULT_PDF = SLIDES_DIR / "farmnotary.pdf"
+DEFAULT_HTML = SLIDES_DIR / "consensus.html"
+DEFAULT_PDF = SLIDES_DIR / "consensus.pdf"
 
 
 def _find_chrome(explicit: str | None) -> str:
