@@ -96,3 +96,19 @@ def stub_server():
     server = StubServer()
     yield server
     server.close()
+
+
+@pytest.fixture(autouse=True)
+def _suppress_ci_env(monkeypatch):
+    """Remove GitHub Actions env vars so tests never trigger CI provenance
+    auto-detection unless they explicitly set those vars themselves."""
+    for var in (
+        "GITHUB_ACTIONS",
+        "GITHUB_SHA",
+        "GITHUB_REPOSITORY",
+        "GITHUB_REF",
+        "GITHUB_WORKFLOW",
+        "GITHUB_RUN_ID",
+        "GITHUB_SERVER_URL",
+    ):
+        monkeypatch.delenv(var, raising=False)
