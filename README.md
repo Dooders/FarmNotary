@@ -140,6 +140,9 @@ farm-notary verify --run-dir runs/i-0 --live-beacon
 | `index` | Append a run or campaign to a static registry (no scores) |
 | `derive-seeds` | After the plan is stamped, fetch `min_round` and write `seeds.json` |
 | `register-schema` | One-time EAS schema registration |
+| `emit-interop` | Dual-write interop provenance files alongside `manifest.json` (SLSA/in-toto, RO-Crate, C2PA) |
+| `archive` | Deposit a run to durable storage: Zenodo (DOI) and/or Software Heritage (SWH ID) |
+| `chain` | Build or verify a multi-stage provenance chain (`provenance-chain.json`) |
 
 ## What you may claim
 

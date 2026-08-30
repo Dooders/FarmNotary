@@ -413,6 +413,100 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_beacon_args(p_der)
 
+    # ------------------------------------------------------------------
+    # emit-interop
+    # ------------------------------------------------------------------
+    p_interop = sub.add_parser(
+        "emit-interop",
+        help=(
+            "Emit interop provenance files alongside manifest.json "
+            "(SLSA/in-toto, RO-Crate, C2PA). Does not overwrite the FarmNotary manifest."
+        ),
+    )
+    p_interop.add_argument("run_dir", help="Run directory containing manifest.json")
+    p_interop.add_argument(
+        "--format",
+        dest="formats",
+        action="append",
+        metavar="FORMAT",
+        help=(
+            "Format to emit: slsa, ro-crate, c2pa. "
+            "Repeatable. Defaults to all three."
+        ),
+    )
+
+    # ------------------------------------------------------------------
+    # archive
+    # ------------------------------------------------------------------
+    p_arc = sub.add_parser(
+        "archive",
+        help="Archive a run to durable storage (Zenodo DOI, Software Heritage ID).",
+    )
+    p_arc.add_argument("run_dir", help="Run directory containing manifest.json")
+    p_arc.add_argument(
+        "--zenodo",
+        action="store_true",
+        help="Deposit manifest.json to Zenodo and print the deposit URL",
+    )
+    p_arc.add_argument(
+        "--zenodo-sandbox",
+        action="store_true",
+        help="Use the Zenodo sandbox instead of production",
+    )
+    p_arc.add_argument(
+        "--zenodo-token",
+        metavar="TOKEN",
+        help="Zenodo personal access token (default: ZENODO_TOKEN env var)",
+    )
+    p_arc.add_argument(
+        "--zenodo-publish",
+        action="store_true",
+        help="Publish the deposit immediately (assigns a DOI)",
+    )
+    p_arc.add_argument(
+        "--swh",
+        action="store_true",
+        help="Look up the git SHA in Software Heritage and print the SWH identifier",
+    )
+
+    # ------------------------------------------------------------------
+    # chain
+    # ------------------------------------------------------------------
+    p_chain = sub.add_parser(
+        "chain",
+        help=(
+            "Build a multi-stage provenance chain from ordered run directories "
+            "and write provenance-chain.json."
+        ),
+    )
+    p_chain.add_argument(
+        "run_dirs",
+        nargs="+",
+        metavar="RUN_DIR",
+        help="Run directories in pipeline order (earliest stage first)",
+    )
+    p_chain.add_argument(
+        "--labels",
+        nargs="+",
+        metavar="LABEL",
+        help="Stage labels (must match the number of run_dirs)",
+    )
+    p_chain.add_argument(
+        "--out",
+        metavar="DIR",
+        help="Directory for provenance-chain.json (default: last run_dir)",
+    )
+    p_chain.add_argument(
+        "--verify",
+        action="store_true",
+        help="Verify an existing provenance-chain.json instead of creating one",
+    )
+    p_chain.add_argument(
+        "--chain-file",
+        metavar="FILE",
+        help="Path to provenance-chain.json for --verify (default: <last run_dir>/provenance-chain.json)",
+    )
+
     return parser
 
 
@@ -1356,6 +1450,146 @@ def _check_ots_anchor(
         print("anchor:       OTS proof present (pending / status unknown)")
 
 
+def _cmd_emit_interop(args: argparse.Namespace) -> int:
+    run_dir = Path(args.run_dir)
+    manifest_path = run_dir / "manifest.json"
+    if not manifest_path.exists():
+        print(f"error: {manifest_path} not found", file=sys.stderr)
+        return 2
+    from farm_notary.manifest import load_manifest
+    from farm_notary.interop import emit_interop, INTEROP_FORMATS
+
+    try:
+        manifest = load_manifest(manifest_path)
+    except (ValueError, KeyError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    formats = tuple(args.formats) if args.formats else INTEROP_FORMATS
+    try:
+        written = emit_interop(manifest, run_dir, formats=formats)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    for fmt, path in written.items():
+        print(f"{fmt}: {path}")
+    return 0
+
+
+def _cmd_archive(args: argparse.Namespace) -> int:
+    run_dir = Path(args.run_dir)
+    manifest_path = run_dir / "manifest.json"
+    if not manifest_path.exists():
+        print(f"error: {manifest_path} not found", file=sys.stderr)
+        return 2
+    from farm_notary.manifest import load_manifest
+
+    try:
+        manifest = load_manifest(manifest_path)
+    except (ValueError, KeyError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    rc = 0
+    if args.zenodo:
+        from farm_notary.archive import ZenodoError, deposit_manifest
+
+        try:
+            result = deposit_manifest(
+                manifest,
+                str(run_dir),
+                token=getattr(args, "zenodo_token", None) or None,
+                sandbox=getattr(args, "zenodo_sandbox", False),
+                publish=getattr(args, "zenodo_publish", False),
+            )
+            if "doi" in result:
+                print(f"zenodo doi: {result['doi']}")
+            else:
+                print(f"zenodo deposit id: {result.get('id')}")
+                links = result.get("links", {})
+                if "html" in links:
+                    print(f"zenodo url: {links['html']}")
+        except (ZenodoError, ValueError) as exc:
+            print(f"error: zenodo: {exc}", file=sys.stderr)
+            rc = 1
+
+    if args.swh:
+        from farm_notary.archive import SoftwareHeritageError, swh_lookup
+
+        try:
+            swh_id = swh_lookup(manifest)
+            if swh_id:
+                print(f"swh: {swh_id}")
+            else:
+                print("swh: not found (commit may not be archived yet)")
+        except SoftwareHeritageError as exc:
+            print(f"error: swh: {exc}", file=sys.stderr)
+            rc = 1
+
+    if not args.zenodo and not args.swh:
+        print("error: specify --zenodo and/or --swh", file=sys.stderr)
+        return 2
+
+    return rc
+
+
+def _cmd_chain(args: argparse.Namespace) -> int:
+    from farm_notary.chain import (
+        CHAIN_FILE_NAME,
+        chain_run_dirs,
+        load_chain,
+        verify_chain,
+    )
+
+    if getattr(args, "verify", False):
+        # Verify mode: load and check an existing chain.
+        chain_path: Optional[Path]
+        if getattr(args, "chain_file", None):
+            chain_path = Path(args.chain_file)
+        elif getattr(args, "run_dirs", None):
+            chain_path = Path(args.run_dirs[-1]) / CHAIN_FILE_NAME
+        else:
+            print("error: --verify requires run_dirs or --chain-file", file=sys.stderr)
+            return 2
+        if not chain_path.exists():
+            print(f"error: {chain_path} not found", file=sys.stderr)
+            return 2
+        try:
+            chain = load_chain(chain_path)
+        except (ValueError, KeyError, json.JSONDecodeError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        errors = verify_chain(chain)
+        if errors:
+            for err in errors:
+                print(f"chain error: {err}", file=sys.stderr)
+            return 1
+        print(f"ok: chain {chain_path} ({len(chain)} links, tip {chain[-1].link_hash[:12]})")
+        return 0
+
+    # Build mode.
+    run_dirs = [Path(d) for d in args.run_dirs]
+    for d in run_dirs:
+        if not (d / "manifest.json").exists():
+            print(f"error: {d}/manifest.json not found", file=sys.stderr)
+            return 2
+
+    out_dir = Path(args.out) if getattr(args, "out", None) else None
+    labels = args.labels if getattr(args, "labels", None) else None
+
+    try:
+        chain = chain_run_dirs(run_dirs, stage_labels=labels, output_dir=out_dir)
+    except (ValueError, FileNotFoundError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    dest = (out_dir or run_dirs[-1]) / CHAIN_FILE_NAME
+    print(f"chain: {dest} ({len(chain)} links)")
+    print(f"tip link_hash: {chain[-1].link_hash}")
+    return 0
+
+
 def main(argv: Optional[list] = None) -> int:
     args = _build_parser().parse_args(argv)
     handlers = {
@@ -1372,6 +1606,9 @@ def main(argv: Optional[list] = None) -> int:
         "sign": _cmd_sign,
         "paper-pack": _cmd_paper_pack,
         "index": _cmd_index,
+        "emit-interop": _cmd_emit_interop,
+        "archive": _cmd_archive,
+        "chain": _cmd_chain,
     }
     return handlers[args.cmd](args)
 
