@@ -196,7 +196,7 @@ def test_cli_reproduce_flow(tmp_path: Path, capsys):
 
     run_dir, manifest, script = make_notarized_run(tmp_path)
 
-    assert main(["reproduce", "--run-dir", str(run_dir)]) == 0
+    assert main(["reproduce", "--run-dir", str(run_dir), "--i-accept-untrusted-command"]) == 0
     out = capsys.readouterr().out
     assert "matched: 2 artifact(s) bitwise-identical" in out
     assert "receipt written to" in out
@@ -219,14 +219,84 @@ def test_cli_reproduce_flow(tmp_path: Path, capsys):
     # manifest content changed -> old receipt now refers to a stale hash; remove it.
     (run_dir / RECEIPT_NAME).unlink()
 
-    assert main(["reproduce", "--run-dir", str(run_dir)]) == 1
+    assert main(["reproduce", "--run-dir", str(run_dir), "--i-accept-untrusted-command"]) == 1
     out = capsys.readouterr().out
     assert "video_encoder" in out
     assert "not a science failure" in out
-    assert main(["reproduce", "--run-dir", str(run_dir), "--ignore", "*.mp4"]) == 0
+    assert (
+        main(
+            [
+                "reproduce",
+                "--run-dir",
+                str(run_dir),
+                "--i-accept-untrusted-command",
+                "--ignore",
+                "*.mp4",
+            ]
+        )
+        == 0
+    )
     assert "ignored globs (excluded from the claim): *.mp4" in capsys.readouterr().out
 
     assert main(["verify", "--run-dir", str(run_dir)]) == 0
     out = capsys.readouterr().out
     assert "bitwise reproducible (scoped)" in out
     assert "1/1, ignored: *.mp4" in out
+
+
+def test_cli_reproduce_requires_acceptance_for_untrusted_command(tmp_path: Path, capsys):
+    from farm_notary.cli import main
+
+    run_dir, _manifest, _ = make_notarized_run(tmp_path)
+
+    assert main(["reproduce", "--run-dir", str(run_dir)]) == 2
+    captured = capsys.readouterr()
+    assert "executes the manifest's recorded command via the shell" in captured.err
+    assert "--i-accept-untrusted-command" in captured.err
+    assert "no network" in captured.err
+    assert not (run_dir / RECEIPT_NAME).exists()
+
+
+def test_cli_reproduce_trusts_same_local_checkout(tmp_path: Path, capsys):
+    from farm_notary.cli import main
+    import subprocess
+
+    repo = tmp_path / "experiment"
+    repo.mkdir()
+    script = repo / "generate.py"
+    script.write_text(DETERMINISTIC_SCRIPT, encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "agent@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Agent"], cwd=repo, check=True)
+    subprocess.run(["git", "add", "generate.py"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+    sha = (
+        subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        .stdout.strip()
+    )
+    run_dir = tmp_path / "run"
+    command = f"{sys.executable} generate.py {{run_dir}}"
+    subprocess.run(
+        command.replace("{run_dir}", str(run_dir)),
+        shell=True,
+        check=True,
+        cwd=repo,
+    )
+    manifest = build_manifest(
+        run_dir,
+        publish_patterns=["*.csv", "*.mp4"],
+        git_sha=sha,
+        command=command,
+    )
+    write_manifest(manifest, run_dir)
+
+    assert main(["reproduce", "--run-dir", str(run_dir), "--cwd", str(repo)]) == 0
+    captured = capsys.readouterr()
+    assert "trusted context matched the local checkout git_sha" in captured.err
+    assert "matched: 2 artifact(s) bitwise-identical" in captured.out

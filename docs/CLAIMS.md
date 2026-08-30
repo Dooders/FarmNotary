@@ -56,7 +56,7 @@ That is the difference between a hash tool and a research notary.
 | Existed by time T | OpenTimestamps proof, Bitcoin attestation | `farm-notary upgrade`, then `ots verify` for full independence. Only `Bitcoin height N` earns L0; pending public calendars and user-supplied calendars do not. A user-supplied pending calendar is only a scoped submission claim until Bitcoin. |
 | Verifiable provenance | Manifest records command, config, seed, git SHA, environment (packages/lockfile hash); a stranger can re-derive everything. `git_dirty` is recorded, but a dirty tree is not a code-identity claim: `precommit` and `anchor` refuse it unless `--allow-dirty`. Omitting `git_dirty` still inspects the working tree — a supplied SHA is not a bypass. | `farm-notary manifest --command ... --lockfile ...`; `farm-notary precommit` / `anchor` (fail if dirty). `command` + `git_sha` + fingerprint earn L1 once L0 is held; that is specification, not a completed re-run. |
 | Pre-specified design | Precommit proof (config, command, git SHA anchored before the run); manifest's `precommit_hash` binds the two phases | `farm-notary precommit --config ... --command ... --backend ots`, then `farm-notary manifest --precommit precommit.json`; `farm-notary verify` reports `precommit bound`. Shown on the card; not a ladder level. |
-| Bitwise reproducible (scoped) | A reproduction receipt produced by re-running the recorded command and comparing every listed artifact; what was excluded is noted in the receipt | `farm-notary reproduce`; with `--ignore` globs for legitimately nondeterministic artifacts. Does not earn L3 without a Sigstore signature. |
+| Bitwise reproducible (scoped) | A reproduction receipt produced by re-running the recorded command and comparing every listed artifact; what was excluded is noted in the receipt | `farm-notary reproduce`; with `--ignore` globs for legitimately nondeterministic artifacts. **Warning:** this executes the recorded command via the shell. FarmNotary auto-trusts only the same local checkout or the same GitHub Actions repo/SHA; otherwise pass `--i-accept-untrusted-command` and sandbox it yourself. Does not earn L3 without a Sigstore signature. |
 | Independently reproduced | **Not earned by this tool.** A Sigstore signature proves a Fulcio-issued identity signed the receipt bytes; it does not prove that identity is independent of the publisher. Do not print this claim from L3. | — |
 | Statistics recompute exactly | `derived_from` rules in the experiment profile recompute named artifacts from their sources. Commands are **not** run by default (a downloaded manifest is untrusted input). | `farm-notary verify --verify-derived` (prints the derivation claim when rules pass). Without the flag, verify still exits 0 and notes that rules were not executed. |
 | Sweep / paper figure | Parent campaign lists child CIDs, seeds, and a shared config hash | `farm-notary campaign`, then `farm-notary verify --campaign` |
@@ -122,6 +122,13 @@ know how to spot:
 - `timestamp` — a clock reading in `REPORT.md` or similar
 - `float_print_format` — the same numbers, spelled differently
 - `video_encoder` — MP4/WebM output that is not bit-stable
+
+`reproduce` also executes the recorded command via the shell. Treat a
+downloaded manifest as untrusted code execution, not as proof of
+independence. If the manifest did not come from the same checkout or CI
+context you already trust, `farm-notary reproduce` requires
+`--i-accept-untrusted-command`; container/VM isolation and disabling network
+access are the operator's job.
 
 Those lines say **not a science failure** and how to fix the record
 (`{run_dir}`, pin a print format, `--ignore '*.mp4'`). An unclassified
