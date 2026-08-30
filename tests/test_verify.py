@@ -166,7 +166,7 @@ def test_claim_card_existed_by_public_pending_unknown_pending_and_bitcoin_height
     assert card.ok
     assert card.existed_by == (
         "pending on public OpenTimestamps calendar: "
-        f"{DEFAULT_CALENDARS[0]} (not yet Bitcoin-attested)"
+        f"{DEFAULT_CALENDARS[0]} (unverified claim; not yet Bitcoin-attested)"
     )
 
     write_pending_proof_for(manifest, tmp_path, "https://example.com")
@@ -174,7 +174,7 @@ def test_claim_card_existed_by_public_pending_unknown_pending_and_bitcoin_height
     assert card.ok
     assert card.existed_by == (
         "pending at user-supplied calendar: https://example.com "
-        "(untrusted until Bitcoin)"
+        "(unverified claim; untrusted until Bitcoin)"
     )
 
     digest = bytes.fromhex(manifest.content_hash())

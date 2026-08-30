@@ -339,23 +339,25 @@ def _existed_by_status(
         label = "calendar" if len(public) == 1 else "calendars"
         return (
             f"pending on public OpenTimestamps {label}: {', '.join(public)} "
-            "(not yet Bitcoin-attested)"
+            "(unverified claim; not yet Bitcoin-attested)"
         )
     if unknown and not public:
         label = "calendar" if len(unknown) == 1 else "calendars"
         return (
             f"pending at user-supplied {label}: {', '.join(unknown)} "
-            "(untrusted until Bitcoin)"
+            "(unverified claim; untrusted until Bitcoin)"
         )
     if public or unknown:
         parts = []
         if public:
             label = "calendar" if len(public) == 1 else "calendars"
-            parts.append(f"public OpenTimestamps {label}: {', '.join(public)}")
+            parts.append(
+                f"public OpenTimestamps {label}: {', '.join(public)} (unverified claim)"
+            )
         if unknown:
             label = "calendar" if len(unknown) == 1 else "calendars"
             parts.append(
-                f"user-supplied {label}: {', '.join(unknown)} (untrusted until Bitcoin)"
+                f"user-supplied {label}: {', '.join(unknown)} (unverified claim; untrusted until Bitcoin)"
             )
         return "pending on " + "; ".join(parts)
     return "fail"

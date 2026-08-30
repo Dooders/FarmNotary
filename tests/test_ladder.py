@@ -84,7 +84,7 @@ def test_pending_ots_is_not_l0():
     card = _card(
         existed_by=(
             "pending on public OpenTimestamps calendar: "
-            f"{DEFAULT_CALENDARS[0]} (not yet Bitcoin-attested)"
+            f"{DEFAULT_CALENDARS[0]} (unverified claim; not yet Bitcoin-attested)"
         )
     )
     result = evaluate_ladder(card, _l1_manifest())
