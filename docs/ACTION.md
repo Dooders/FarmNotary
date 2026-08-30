@@ -100,6 +100,8 @@ artifacts. It does not invent a precommit after the fact.
 | `identity-key` | | Optional minisign / SSH key; still no protocol token |
 | `identity-scheme` | `ssh` | `ssh` or `minisign` |
 | `identity-principal` | | Label recorded with the optional identity signature |
+| `sign-receipt` | `false` | After notarize, `farm-notary reproduce --sign`. Caller must set `permissions.id-token: write`. Token never on argv. Cosign pin `v2.5.3`. Not independently reproduced |
+| `reproduce-cwd` | | Working directory for `reproduce --sign` |
 | `artifact-name` | `farm-notary` | Uploaded Actions artifact name |
 
 `manifest` still requires a profile, `publish` globs, or `notary.profile` /
@@ -117,6 +119,17 @@ calendars. Use `backend: dry-run` in jobs that must not leave the runner.
 
 The action installs `${{ github.action_path }}[ots]` (the checkout of this
 repo, not the PyPI 0.1.0 wheel).
+
+To attach a Sigstore signature to a reproduction receipt in CI (L3 evidence,
+not independence), set `sign-receipt: true` and grant OIDC:
+
+```yaml
+permissions:
+  contents: read
+  id-token: write
+```
+
+Cosign is installed at `v2.5.3`. The identity token is never passed on argv.
 
 ## Outputs
 

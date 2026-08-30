@@ -75,6 +75,18 @@ inputs:
     description: Label recorded with the optional identity signature.
     required: false
     default: ""
+  sign-receipt:
+    description: >-
+      After notarize, run farm-notary reproduce --sign (Sigstore keyless).
+      The calling workflow must set permissions.id-token: write. The OIDC
+      token is never placed on argv (cosign GitHub provider / SIGSTORE_ID_TOKEN).
+      Cosign pin: v2.5.3. This is not independently reproduced.
+    required: false
+    default: "false"
+  reproduce-cwd:
+    description: Working directory for reproduce --sign (the experiment repo).
+    required: false
+    default: ""
   artifact-name:
     description: Name of the uploaded GitHub Actions artifact.
     required: false
@@ -220,6 +232,25 @@ runs:
                 fh.write(f"precommit-hash={rec.precommit_hash}\n")
         PY
 
+    - name: Install cosign
+      if: ${{ inputs.sign-receipt == 'true' && (inputs.phase == 'notarize' || inputs.phase == 'all') }}
+      uses: sigstore/cosign-installer@v3.8.1
+      with:
+        cosign-release: v2.5.3
+
+    - name: Sign reproduction receipt
+      if: ${{ inputs.sign-receipt == 'true' && (inputs.phase == 'notarize' || inputs.phase == 'all') }}
+      shell: bash
+      env:
+        RUN_DIR: ${{ inputs.run-dir }}
+        REPRODUCE_CWD: ${{ inputs.reproduce-cwd }}
+      run: |
+        set -euo pipefail
+        args=(reproduce --run-dir "${RUN_DIR}" --sign)
+        if [ -n "${REPRODUCE_CWD}" ]; then args+=(--cwd "${REPRODUCE_CWD}"); fi
+        farm-notary "${args[@]}"
+        farm-notary verify --run-dir "${RUN_DIR}"
+
     - name: Upload FarmNotary artifacts
       if: ${{ always() && (inputs.phase == 'notarize' || inputs.phase == 'all') }}
       uses: actions/upload-artifact@v4
@@ -230,4 +261,5 @@ runs:
           ${{ inputs.run-dir }}/manifest.ots
           ${{ inputs.run-dir }}/campaign.json
           ${{ inputs.run-dir }}/appendix.md
+          ${{ inputs.run-dir }}/reproduction.json
         if-no-files-found: warn

@@ -132,8 +132,8 @@ farm-notary verify --run-dir runs/i-0 --live-beacon
 | `precommit` | Write `precommit.json` before the run (`dry-run` or `ots`); `--seed-count` adds a beacon seed plan |
 | `anchor` | Optional pin + stamp (`dry-run` default; `ots`; `eas` experimental) |
 | `upgrade` | Complete a pending `manifest.ots` with a Bitcoin attestation |
-| `reproduce` | Re-run the recorded command; write `reproduction.json` |
-| `sign` | Attach a minisign or SSH signature of the content hash |
+| `reproduce` | Re-run the recorded command; write `reproduction.json` (`--sign` is Sigstore on the receipt, not lab SSH) |
+| `sign` | Attach a minisign or SSH signature of the content hash (not Sigstore) |
 | `campaign` | Build a parent `campaign.json` from child run directories |
 | `paper-pack` | Write `appendix.md` for a PDF |
 | `index` | Append a run or campaign to a static registry (no scores) |
@@ -160,8 +160,13 @@ OTS is not L0. L0 means the proof commits to the content hash and carries a
 Bitcoin-height attestation; this tool does not check Bitcoin headers (`ots
 verify` does). L1 needs a recorded command, git SHA, and environment
 fingerprint — not a completed re-run. L2 requires a beacon-derived seed
-after the plan is anchored (not scientific correctness). L3 (independent
-identity) is reserved. See [docs/CLAIMS.md](docs/CLAIMS.md).
+after the plan is anchored (not scientific correctness). L3 needs a Sigstore
+keyless signature on the reproduction receipt (`farm-notary reproduce --sign`).
+That is **not** independently reproduced: identity is recorded when it can be
+parsed, not proven distinct from the publisher. A receipt count is **not**
+credibility. Prefer `COSIGN_IDENTITY_TOKEN` / `SIGSTORE_ID_TOKEN` or
+`--identity-token @PATH` (never a raw JWT on argv). Cosign pin: `v2.5.3`.
+See [docs/CLAIMS.md](docs/CLAIMS.md).
 
 The only bitwise sentence the tool may emit today is *byte-identical on x86-64 Linux in a pinned environment*. Other hardware still reports `N/M` and refuses a cross-hardware claim. See [docs/CLAIMS.md](docs/CLAIMS.md).
 
@@ -221,7 +226,8 @@ farm-notary index --registry docs/registry.md --campaign sweep/
 
 `index` maintains a static directory (Markdown + `registry.json` sidecar): experiment, seed, CID, claim level, date. Not a scoreboard. Running `index` rewrites the Markdown table; how-to text in that file is not preserved. See [docs/registry.md](docs/registry.md).
 
-Optional lab identity (still no protocol token):
+Optional lab identity on the **manifest content hash** (still no protocol token).
+This is not `reproduce --sign` (Sigstore on the receipt):
 
 ```bash
 farm-notary sign --run-dir path/to/run --scheme ssh --key ~/.ssh/id_ed25519
@@ -327,6 +333,8 @@ CI runs pytest on Python 3.9–3.12.
 | [docs/ACTION.md](docs/ACTION.md) | GitHub Action inputs, outputs, phases |
 | [docs/EAS.md](docs/EAS.md) | Experimental EAS backend |
 | [docs/registry.md](docs/registry.md) | Generated public index (no scores) |
+| [docs/demo/](docs/demo/) | Live notebook: claim card, allowlist, scoped re-run |
+| [docs/slides/](docs/slides/) | Intro deck for researchers and labs |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
 | [integration/agentfarm/README.md](integration/agentfarm/README.md) | AgentFarm provenance patch |
 

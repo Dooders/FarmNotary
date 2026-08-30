@@ -7,14 +7,17 @@ from farm_notary.cli import _build_parser
 from farm_notary.profiles import PROFILE_NAMES
 from farm_notary.schema import REQUIRED_KEYS, TOOL_VERSION
 from farm_notary.scope import ALLOWED_SENTENCE
-from farm_notary.ladder import L0_MEANING, LADDER_LEVELS
+from farm_notary.ladder import L0_MEANING, LADDER_LEVELS, LADDER_MEANINGS
 from farm_notary.verify import _CLAIM_NAMES
 
 README = Path("README.md").read_text(encoding="utf-8")
 CLAIMS = Path("docs/CLAIMS.md").read_text(encoding="utf-8")
+CHANGELOG = Path("CHANGELOG.md").read_text(encoding="utf-8")
 DESIGN = Path("docs/DESIGN.md").read_text(encoding="utf-8")
 ACTION = Path("docs/ACTION.md").read_text(encoding="utf-8")
 PRINCIPLES = Path("docs/PRINCIPLES.md").read_text(encoding="utf-8")
+DEMO_NOTEBOOK = Path("docs/demo/farmnotary_live_demo.ipynb").read_text(encoding="utf-8")
+SLIDES = Path("docs/slides/index.html").read_text(encoding="utf-8")
 
 
 def _cli_commands() -> list[str]:
@@ -83,6 +86,24 @@ def test_claim_card_rows_match_the_tool():
     assert "does not cite `Ln`" in README or "does not cite `Ln`" in DESIGN
 
 
+def test_intro_deck_stays_inside_the_claim_card():
+    """The researcher/lab talk may not outrun CLAIMS.md."""
+    assert "[docs/slides/](docs/slides/)" in README
+    assert "not claimed: scientific correctness" in SLIDES
+    assert "Missing is not failure" in SLIDES
+    assert ALLOWED_SENTENCE in SLIDES
+    assert L0_MEANING in SLIDES
+    assert "command was not run" in SLIDES or "not a completed re-run" in SLIDES
+    for level in LADDER_LEVELS:
+        assert level in SLIDES
+    assert LADDER_MEANINGS["L3"] in CLAIMS
+    assert "not proven independent" in SLIDES.lower()
+    assert "cross-hardware" in SLIDES.lower()
+    assert "verified result" in SLIDES.lower()
+    assert "badge" in SLIDES.lower()
+    assert "not independently reproduced" in SLIDES.lower()
+
+
 def test_principles_is_listed_and_forbids_real_things():
     assert "[docs/PRINCIPLES.md](docs/PRINCIPLES.md)" in README
     assert "[PRINCIPLES.md](PRINCIPLES.md)" in DESIGN
@@ -100,6 +121,21 @@ def test_principles_is_listed_and_forbids_real_things():
         assert needle in PRINCIPLES, f"PRINCIPLES.md lost a concrete forbid: {needle!r}"
 
 
+def test_live_demo_notebook_stays_inside_the_claim_card():
+    """The live demo may not outrun CLAIMS.md."""
+    assert "[docs/demo/](docs/demo/)" in README
+    assert "not claimed: scientific correctness" in DEMO_NOTEBOOK
+    assert "Missing is not failure" in DEMO_NOTEBOOK
+    assert ALLOWED_SENTENCE in DEMO_NOTEBOOK
+    assert "dry-run" in DEMO_NOTEBOOK
+    assert "not a science failure" in DEMO_NOTEBOOK.lower()
+    lower = DEMO_NOTEBOOK.lower()
+    assert "will not claim independently reproduced" in lower
+    assert "may **not** take" in lower or "may not take" in lower
+    assert "verified result" in lower
+    assert "cross-hardware" in lower
+
+
 def test_action_docs_match_action_yml_defaults():
     action = Path("action.yml").read_text(encoding="utf-8")
     assert "default: ots" in action
@@ -110,3 +146,13 @@ def test_action_docs_match_action_yml_defaults():
     assert "not passed" in ACTION or "without" in ACTION
     assert "dry-run" in README
     assert "CLI" in ACTION and "dry-run" in ACTION
+    assert "sign-receipt" in ACTION
+    assert "v2.5.3" in ACTION
+    assert "default: \"false\"" in action or 'default: "false"' in action
+
+
+def test_changelog_records_sigstore_and_honest_l3():
+    assert "Sigstore" in CHANGELOG
+    assert "identity not constrained" in CHANGELOG
+    assert "L3 (independent" not in CHANGELOG
+    assert "identity) is reserved" not in CHANGELOG

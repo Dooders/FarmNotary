@@ -16,6 +16,11 @@ from farm_notary.manifest import (
     require_clean_identity,
     write_manifest,
 )
+from farm_notary.sigstore import (
+    SigstoreError,
+    read_identity_token_cli,
+    sign_receipt,
+)
 from farm_notary.verify import (
     evaluate_claims,
     verify_anchor,
@@ -244,6 +249,25 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Anchor the reproduction receipt via OpenTimestamps",
     )
     p_rep.add_argument("--calendar", action="append", help="Calendar URL; repeatable")
+    p_rep.add_argument(
+        "--sign",
+        action="store_true",
+        help=(
+            "Sign the reproduction receipt with Sigstore keyless (cosign sign-blob). "
+            "Skipped when the re-run fails. Identity is recorded, not proven "
+            "independent. Token via COSIGN_IDENTITY_TOKEN / SIGSTORE_ID_TOKEN "
+            "or --identity-token @PATH (never a raw JWT on argv)."
+        ),
+    )
+    p_rep.add_argument(
+        "--identity-token",
+        dest="identity_token",
+        metavar="@PATH",
+        help=(
+            "OIDC identity token file as @PATH. Prefer COSIGN_IDENTITY_TOKEN "
+            "or SIGSTORE_ID_TOKEN. A raw JWT is rejected."
+        ),
+    )
 
     sub.add_parser(
         "register-schema",
@@ -847,6 +871,23 @@ def _cmd_reproduce(args: argparse.Namespace) -> int:
         proof_path = run_dir / RECEIPT_PROOF_NAME
         proof_path.write_bytes(proof)
         print(f"receipt anchored via {len(accepted)} calendar(s); proof at {proof_path}")
+
+    if args.sign:
+        if not result.ok:
+            print(
+                "warning: skipping Sigstore sign because reproduction failed",
+                file=sys.stderr,
+            )
+        else:
+            try:
+                token = read_identity_token_cli(getattr(args, "identity_token", None))
+                bundle = sign_receipt(receipt, identity_token=token)
+                receipt["sigstore"] = bundle
+                write_receipt(receipt, run_dir)
+                print("receipt signed with Sigstore keyless; bundle embedded in receipt")
+            except SigstoreError as exc:
+                print(f"sigstore signing failed: {exc}", file=sys.stderr)
+                return 2
 
     return 0 if result.ok else 1
 
