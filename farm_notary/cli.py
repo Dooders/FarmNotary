@@ -379,6 +379,20 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_beacon_args(p_ver)
 
+    p_chk = sub.add_parser(
+        "check",
+        help=(
+            "Quick reviewer check: read claim level and anchor status from a manifest "
+            "without rehashing artifacts. Zero-install path: "
+            "uvx farm-notary check --manifest manifest.json"
+        ),
+    )
+    p_chk.add_argument(
+        "--manifest",
+        required=True,
+        help="Path to manifest.json (artifacts are not required)",
+    )
+
     p_der = sub.add_parser(
         "derive-seeds",
         help="Derive committed seeds from the precommit seed_plan's min_round",
@@ -1197,12 +1211,133 @@ def _cmd_index(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_check(args: argparse.Namespace) -> int:
+    """Quick reviewer check: claim level + anchor status from manifest only.
+
+    No artifact rehash. Works with zero extras (base install). Passes ``[ots]``
+    proof bytes through the OTS library when it is installed; otherwise reports
+    that the proof cannot be verified and exits 0 so a missing extra is not a
+    false failure.
+    """
+    manifest_path = Path(args.manifest)
+    try:
+        manifest = load_manifest(manifest_path, validate=False)
+    except (ValueError, OSError) as exc:
+        print(f"error: could not load manifest: {exc}", file=sys.stderr)
+        return 2
+
+    run_dir = manifest_path.parent
+    problems: list = []
+    content_hash = manifest.content_hash()
+
+    print(f"content_hash: {content_hash}")
+    if manifest.cid:
+        print(f"cid:          {manifest.cid}")
+
+    from farm_notary.claims import infer_claim_level
+
+    print(f"claim_level:  {infer_claim_level(manifest)}")
+
+    # Identity/issuer — display only, not validated (public key not required)
+    identity = getattr(manifest, "identity", None)
+    if identity:
+        scheme = identity.get("scheme", "unknown")
+        principal = identity.get("principal") or "lab key"
+        print(f"identity:     {scheme} signature by {principal} (declared, not validated here)")
+
+    # Anchor
+    if manifest.anchor is None:
+        print("anchor:       missing")
+    else:
+        anchored_hash = manifest.anchor.get("manifest_hash")
+        if anchored_hash != content_hash:
+            problems.append(
+                f"anchored hash {anchored_hash!r} does not match "
+                f"content hash {content_hash!r}"
+            )
+            print("anchor:       FAIL (hash mismatch)")
+        else:
+            backend = manifest.anchor.get("backend")
+            if backend == "opentimestamps":
+                _check_ots_anchor(manifest, run_dir, content_hash, problems)
+            else:
+                print(f"anchor:       {backend or 'unknown backend'}")
+
+    if problems:
+        print()
+        for problem in problems:
+            print("FAIL", problem)
+        return 1
+    return 0
+
+
+def _check_ots_anchor(
+    manifest: "Manifest",  # type: ignore[name-defined]
+    run_dir: Path,
+    content_hash: str,
+    problems: list,
+) -> None:
+    """Print OTS anchor status; append to *problems* on hard failures."""
+    try:
+        from farm_notary.ots import PROOF_NAME, proof_status, verify_proof
+    except ImportError:
+        detail = manifest.anchor.get("detail", {}) or {}
+        proof_name = detail.get("proof", "manifest.ots") if isinstance(detail, dict) else "manifest.ots"
+        proof_path = run_dir / proof_name
+        if proof_path.is_file():
+            print(
+                "anchor:       OTS proof present but farm-notary[ots] not installed; "
+                "install it to verify the proof commits to this hash"
+            )
+        else:
+            print("anchor:       OTS proof file absent (install farm-notary[ots] to verify)")
+        return
+
+    detail = manifest.anchor.get("detail", {}) or {}
+    proof_name = detail.get("proof", PROOF_NAME) if isinstance(detail, dict) else PROOF_NAME
+    proof_path = run_dir / proof_name
+    if not proof_path.is_file():
+        print(f"anchor:       proof file missing ({proof_name})")
+        return
+
+    proof_bytes = proof_path.read_bytes()
+    proof_problems = verify_proof(proof_bytes, content_hash)
+    if proof_problems:
+        problems.extend(proof_problems)
+        print("anchor:       FAIL (proof does not commit to this hash)")
+        return
+
+    try:
+        status = proof_status(proof_bytes)
+    except Exception:
+        print("anchor:       OTS proof present (status unknown)")
+        return
+
+    if status.bitcoin_heights:
+        print(f"anchor:       Bitcoin height {min(status.bitcoin_heights)}")
+    elif status.public_pending_calendars:
+        cals = ", ".join(status.public_pending_calendars)
+        print(
+            f"anchor:       pending on public OpenTimestamps calendars: {cals} "
+            "(unverified claim; not yet Bitcoin-attested)"
+        )
+    elif status.unknown_pending_calendars:
+        cals = ", ".join(status.unknown_pending_calendars)
+        print(
+            f"anchor:       pending at user-supplied calendars: {cals} "
+            "(unverified claim; untrusted until Bitcoin)"
+        )
+    else:
+        print("anchor:       OTS proof present (pending / status unknown)")
+
+
 def main(argv: Optional[list] = None) -> int:
     args = _build_parser().parse_args(argv)
     handlers = {
         "manifest": _cmd_manifest,
         "anchor": _cmd_anchor,
         "verify": _cmd_verify,
+        "check": _cmd_check,
         "upgrade": _cmd_upgrade,
         "reproduce": _cmd_reproduce,
         "derive-seeds": _cmd_derive_seeds,
