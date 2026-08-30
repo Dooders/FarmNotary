@@ -46,6 +46,12 @@ def test_readme_documents_verify_derived_and_missing_is_not_failure():
     assert "--verify-derived" in README
     assert "--verify-derived" in CLAIMS
     assert "--verify-derived" in DESIGN
+    assert "--i-accept-untrusted-command" in README
+    assert "--i-accept-untrusted-command" in CLAIMS
+    assert "untrusted code execution" in README
+    assert "untrusted code execution" in CLAIMS
+    assert "no network" in README
+    assert "no network" in CLAIMS
     assert "Missing is not failure" in README
     assert "Missing is not failure" in CLAIMS
     assert "Exit 0 means the artifact hashes match" in README
