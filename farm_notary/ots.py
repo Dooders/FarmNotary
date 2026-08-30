@@ -27,6 +27,14 @@ DEFAULT_CALENDARS = (
 )
 
 
+def _canonical_calendar_url(url: str) -> str:
+    return url.rstrip("/")
+
+
+def _public_calendar_urls() -> set[str]:
+    return {_canonical_calendar_url(url) for url in DEFAULT_CALENDARS}
+
+
 class OtsError(RuntimeError):
     pass
 
@@ -90,6 +98,20 @@ class ProofStatus:
     @property
     def confirmed(self) -> bool:
         return bool(self.bitcoin_heights)
+
+    @property
+    def public_pending_calendars(self) -> List[str]:
+        public = _public_calendar_urls()
+        return sorted(
+            {uri for uri in self.pending_calendars if _canonical_calendar_url(uri) in public}
+        )
+
+    @property
+    def unknown_pending_calendars(self) -> List[str]:
+        public = _public_calendar_urls()
+        return sorted(
+            {uri for uri in self.pending_calendars if _canonical_calendar_url(uri) not in public}
+        )
 
     def summary(self) -> List[str]:
         lines = []
