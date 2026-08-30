@@ -1,0 +1,68 @@
+name: Action self-test
+
+# Smoke-test the composite action (action.yml) against a synthetic run
+# directory so it cannot silently break without CI catching it.
+#
+# Uses `uses: ./` (local action reference) with `backend: dry-run` so no OTS
+# calendars are contacted. (Note: the action still installs deps via pip.)
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Action smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ── Synthetic run directory ────────────────────────────────────────────
+      # Matches the `consensus` profile allowlist: REPORT.md + run_config.json
+      # are the expected artifacts. The allowlist check verifies these files
+      # are present in the manifest.
+      - name: Create synthetic run directory
+        run: |
+          mkdir -p run
+          echo "# Synthetic consensus report" > run/REPORT.md
+          echo '{"experiment": "selftest", "seed": 0}' > run/run_config.json
+
+      # ── Exercise the action itself (phase: all, dry-run) ──────────────────
+      - name: Run farm-notary action (dry-run)
+        id: notarize
+        uses: ./
+        with:
+          phase: all
+          run-dir: run
+          profile: consensus
+          backend: dry-run
+          allow-dirty: "true"
+
+      # ── Confirm the action produced expected outputs ───────────────────────
+      - name: Verify outputs and manifest
+        env:
+          CONTENT_HASH: ${{ steps.notarize.outputs.content-hash }}
+        run: |
+          set -euo pipefail
+          echo "content-hash: ${CONTENT_HASH}"
+          [ -n "${CONTENT_HASH}" ] || { echo "content-hash output missing" >&2; exit 1; }
+          [ -f run/manifest.json ] || { echo "manifest.json missing" >&2; exit 1; }
+          python - <<'PY'
+          import json, sys
+          from pathlib import Path
+          m = json.loads(Path("run/manifest.json").read_text())
+          assert m.get("schema") == "farmnotary.manifest.v1", f"bad schema: {m.get('schema')}"
+          assert m.get("publish_profile") == "consensus", f"bad profile: {m.get('publish_profile')}"
+          assert "REPORT.md" in m.get("artifacts", {}), "REPORT.md not in artifacts"
+          print("manifest OK:", m["schema"], "profile:", m["publish_profile"])
+          PY

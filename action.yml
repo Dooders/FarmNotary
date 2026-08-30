@@ -95,6 +95,13 @@ inputs:
     description: Name of the uploaded GitHub Actions artifact.
     required: false
     default: farm-notary
+  allow-dirty:
+    description: >-
+      Allow a dirty git working tree. The recorded SHA will not identify the
+      exact code that ran. Use only in smoke tests or when the tree is
+      intentionally unclean (e.g. generated output files). Defaults to false.
+    required: false
+    default: "false"
 
 outputs:
   content-hash:
@@ -128,6 +135,7 @@ runs:
         LOCKFILE: ${{ inputs.lockfile }}
         GIT_SHA: ${{ inputs.git-sha }}
         BACKEND: ${{ inputs.backend }}
+        ALLOW_DIRTY: ${{ inputs.allow-dirty }}
       run: |
         set -euo pipefail
         mkdir -p "${RUN_DIR}"
@@ -137,6 +145,7 @@ runs:
         if [ -n "${LOCKFILE}" ]; then args+=(--lockfile "${LOCKFILE}"); fi
         if [ -n "${GIT_SHA}" ]; then args+=(--git-sha "${GIT_SHA}"); fi
         if [ "${BACKEND}" = "ots" ]; then args+=(--backend ots); fi
+        if [ "${ALLOW_DIRTY}" = "true" ]; then args+=(--allow-dirty); fi
         farm-notary "${args[@]}"
         hash="$(python -c "from farm_notary.precommit import load_precommit, precommit_hash; print(precommit_hash(load_precommit('${RUN_DIR}/precommit.json')))")"
         echo "precommit-hash=${hash}" >> "${GITHUB_OUTPUT}"
@@ -171,6 +180,7 @@ runs:
         IDENTITY_KEY: ${{ inputs.identity-key }}
         IDENTITY_SCHEME: ${{ inputs.identity-scheme }}
         IDENTITY_PRINCIPAL: ${{ inputs.identity-principal }}
+        ALLOW_DIRTY: ${{ inputs.allow-dirty }}
       run: |
         set -euo pipefail
         if [ ! -d "${RUN_DIR}" ]; then
@@ -212,6 +222,7 @@ runs:
         if [ "${NO_CHECK_GATEWAY}" = "true" ]; then
           anc_args+=(--no-check-gateway)
         fi
+        if [ "${ALLOW_DIRTY}" = "true" ]; then anc_args+=(--allow-dirty); fi
         farm-notary "${anc_args[@]}"
 
         # Fail the job if verify fails.

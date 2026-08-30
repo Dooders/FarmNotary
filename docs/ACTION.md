@@ -103,6 +103,7 @@ artifacts. It does not invent a precommit after the fact.
 | `sign-receipt` | `false` | After notarize, `farm-notary reproduce --sign`. Caller must set `permissions.id-token: write`. Token never on argv. Cosign pin `v2.5.3`. Not independently reproduced |
 | `reproduce-cwd` | | Working directory for `reproduce --sign` |
 | `artifact-name` | `farm-notary` | Uploaded Actions artifact name |
+| `allow-dirty` | `false` | Allow a dirty git working tree. The recorded SHA will not identify the exact code that ran. Use only in smoke tests or when the tree is intentionally unclean |
 
 `manifest` still requires a profile, `publish` globs, or `notary.profile` /
 `notary.publish` in the config. Prefer `profile`.
@@ -136,6 +137,73 @@ Cosign is installed at `v2.5.3`. The identity token is never passed on argv.
 - `content-hash` — canonical manifest (or campaign) hash; excludes CID, anchor, identity
 - `cid` — set when pinning succeeded
 - `precommit-hash` — set on the precommit phase, or when a precommit was bound
+
+## AgentFarm integration example (copy-pasteable)
+
+This is the minimal workflow to drop into any repo that runs AgentFarm
+consensus experiments. Change `run-dir`, `config`, `command`, and
+`lockfile` to match your repository layout; keep everything else as-is.
+
+```yaml
+# .github/workflows/notarize.yml
+name: Notarize AgentFarm run
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Pin to a commit SHA or a stable tag once v0.2.0 is released.
+# @dev is a mutable ref — replace it with a SHA for production use.
+# e.g.  uses: dooders/FarmNotary@<commit-sha>
+
+jobs:
+  notarize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4         # sets GITHUB_SHA automatically
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install --requirement requirements.lock
+          pip install -e .
+
+      # Optional: pre-specify the run before it executes
+      - name: Pre-specify (precommit)
+        uses: dooders/FarmNotary@dev  # pin to a SHA in production
+        with:
+          phase: precommit
+          run-dir: results
+          config: experiments/consensus/config.json
+          command: "python run_experiment.py --seed 0 --out {run_dir}"
+          lockfile: requirements.lock
+
+      # Your experiment goes here
+      - name: Run experiment
+        run: python run_experiment.py --seed 0 --out results
+
+      # Notarize, anchor via OpenTimestamps, run verify, upload manifest
+      - name: Notarize + verify
+        uses: dooders/FarmNotary@dev  # pin to a SHA in production
+        with:
+          phase: notarize
+          run-dir: results
+          config: experiments/consensus/config.json
+          command: "python run_experiment.py --seed 0 --out {run_dir}"
+          profile: consensus
+          lockfile: requirements.lock
+          backend: ots
+          # pin-remote: pinata  # uncomment when a Kubo remote is registered
+```
+
+`GITHUB_SHA` is automatically picked up and recorded in `ci_provenance`;
+no `git-sha` override is needed. The precommit step is optional — omit it
+and set `phase: all` when the run has already completed.
 
 ## What this action will not do
 
