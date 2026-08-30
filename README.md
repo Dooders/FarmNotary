@@ -126,6 +126,7 @@ farm-notary verify --run-dir runs/i-0 --live-beacon
 | Command | What it does |
 |---|---|
 | `manifest` | Write `manifest.json` (requires `--profile` and/or `--publish`) |
+| `check` | **Zero-install reviewer check**: claim level + anchor status from `manifest.json` only; no artifact rehash (`uvx farm-notary check --manifest …`) |
 | `verify` | Print a CLAIMS.md claim card (ladder + rows); rehash; check proofs if present |
 | `verify --verify-derived` | Also run `derived_from` commands (trusted manifests only) |
 | `verify --campaign` | Check child hashes and the shared config hash (not a claim card) |
@@ -355,8 +356,35 @@ Breaking changes (new required fields, renamed keys, removed fields) are reserve
 
 ## Verifying someone else's claim
 
+**Quick check (zero-install):** No venv, no extras, no account. You only need
+`manifest.json` (and `manifest.ots` if you want the anchor checked).
+
+```bash
+uvx farm-notary check --manifest path/to/manifest.json
+# or: pipx run farm-notary check --manifest path/to/manifest.json
+```
+
+Output:
+
+```
+content_hash: a1b2c3…
+cid:          bafybeig…
+claim_level:  bytes
+anchor:       Bitcoin height 840000
+```
+
+Add `[ots]` to verify the OTS proof commits to the content hash:
+
+```bash
+uvx "farm-notary[ots]" check --manifest path/to/manifest.json
+```
+
+See [docs/VERIFIER.md](docs/VERIFIER.md) for the full reviewer guide.
+
+**Full verify (artifact rehash):**
+
 1. Fetch the CID (`ipfs get <cid>`), or obtain the run directory another way. If `ipfs get` hangs, check `pin_service` (local-only is not archival), `cid_reachable`, and try `https://ipfs.io/ipfs/<cid>`.
-2. `farm-notary verify --run-dir <dir>`
+2. `uvx "farm-notary[ots]" verify --run-dir <dir>`
 3. Read the claim card. **Missing is not failure.** The card always ends with `not claimed: scientific correctness`.
 4. Only if you trust the recorded commands: `farm-notary verify --run-dir <dir> --verify-derived`
 
@@ -384,6 +412,7 @@ CI runs pytest on Python 3.9–3.12.
 | [docs/DESIGN.md](docs/DESIGN.md) | Schema, backends, privacy, provenance flow |
 | [docs/ACTION.md](docs/ACTION.md) | GitHub Action inputs, outputs, phases |
 | [docs/EAS.md](docs/EAS.md) | Experimental EAS backend |
+| [docs/VERIFIER.md](docs/VERIFIER.md) | Reviewer quick-check: zero-install `uvx`/`pipx run` path |
 | [docs/registry.md](docs/registry.md) | Generated public index (no scores) |
 | [docs/demo/](docs/demo/) | Live notebook: claim card, allowlist, scoped re-run |
 | [docs/slides/](docs/slides/) | Intro deck ([PDF](docs/slides/farmnotary.pdf)) and consensus walkthrough ([PDF](docs/slides/consensus.pdf)) |

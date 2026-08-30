@@ -416,3 +416,140 @@ def test_anchor_no_check_gateway_skips_reachability(tmp_path: Path, monkeypatch)
         assert manifest.cid_reachable is None
     finally:
         ipfs.close()
+
+
+# ---------------------------------------------------------------------------
+# check subcommand
+# ---------------------------------------------------------------------------
+
+def test_check_basic(tmp_path: Path, capsys):
+    """check prints content_hash and claim_level from manifest only."""
+    run_dir = make_run_dir(tmp_path)
+    assert main(["manifest", "--run-dir", str(run_dir), "--publish", "*.csv"]) == 0
+    rc = main(["check", "--manifest", str(run_dir / "manifest.json")])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "content_hash:" in out
+    assert "claim_level:" in out
+    assert "anchor:       missing" in out
+
+
+def test_check_with_cid(tmp_path: Path, capsys):
+    """check prints cid when present in the manifest."""
+    run_dir = make_run_dir(tmp_path)
+    assert main(["manifest", "--run-dir", str(run_dir), "--publish", "*.csv"]) == 0
+    data = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    data["cid"] = "bafytest"
+    (run_dir / "manifest.json").write_text(json.dumps(data), encoding="utf-8")
+    assert main(["check", "--manifest", str(run_dir / "manifest.json")]) == 0
+    out = capsys.readouterr().out
+    assert "cid:" in out
+    assert "bafytest" in out
+
+
+def test_check_anchor_hash_mismatch(tmp_path: Path, capsys):
+    """check exits 1 when anchored hash disagrees with content hash."""
+    run_dir = make_run_dir(tmp_path)
+    assert main(["manifest", "--run-dir", str(run_dir), "--publish", "*.csv"]) == 0
+    data = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    data["anchor"] = {"backend": "dry-run", "manifest_hash": "sha256:deadbeef"}
+    (run_dir / "manifest.json").write_text(json.dumps(data), encoding="utf-8")
+    rc = main(["check", "--manifest", str(run_dir / "manifest.json")])
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "FAIL" in out
+
+
+def test_check_ots_anchor_no_proof_file(tmp_path: Path, capsys):
+    """check reports missing proof file for ots backend without error exit."""
+    run_dir = make_run_dir(tmp_path)
+    assert main(["manifest", "--run-dir", str(run_dir), "--publish", "*.csv"]) == 0
+    manifest = load_manifest(run_dir)
+    content_hash = manifest.content_hash()
+    data = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    data["anchor"] = {"backend": "opentimestamps", "manifest_hash": content_hash}
+    (run_dir / "manifest.json").write_text(json.dumps(data), encoding="utf-8")
+    rc = main(["check", "--manifest", str(run_dir / "manifest.json")])
+    assert rc == 0
+    out = capsys.readouterr().out
+    # Either "proof file missing" or "OTS proof present but farm-notary[ots] not installed"
+    assert "anchor:" in out
+
+
+def test_check_ots_proof_present_without_ots_dependency(tmp_path: Path, capsys, monkeypatch):
+    """check exits 0 when proof exists but farm-notary[ots] is unavailable."""
+    run_dir = make_run_dir(tmp_path)
+    assert main(["manifest", "--run-dir", str(run_dir), "--publish", "*.csv"]) == 0
+    manifest = load_manifest(run_dir)
+    content_hash = manifest.content_hash()
+    data = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    data["anchor"] = {"backend": "opentimestamps", "manifest_hash": content_hash}
+    (run_dir / "manifest.json").write_text(json.dumps(data), encoding="utf-8")
+    (run_dir / PROOF_NAME).write_bytes(b"dummy-proof")
+    monkeypatch.setattr(
+        "farm_notary.ots.verify_proof",
+        lambda *_: [
+            "OpenTimestamps anchoring needs the opentimestamps library; install farm-notary[ots]"
+        ],
+    )
+
+    rc = main(["check", "--manifest", str(run_dir / "manifest.json")])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "OTS proof present but farm-notary[ots] not installed" in out
+
+
+def test_check_with_ots_proof(tmp_path: Path, capsys):
+    """check verifies OTS proof when farm-notary[ots] is installed."""
+    run_dir = make_run_dir(tmp_path)
+    assert main(["manifest", "--run-dir", str(run_dir), "--publish", "*.csv"]) == 0
+    manifest = load_manifest(run_dir)
+    content_hash = manifest.content_hash()
+
+    from tests.test_ots import bitcoin_timestamp
+    from farm_notary.ots import serialize_proof, PROOF_NAME
+
+    digest = bytes.fromhex(content_hash)
+    ts = bitcoin_timestamp(digest, 840000)
+    proof_bytes = serialize_proof(ts)
+    (run_dir / PROOF_NAME).write_bytes(proof_bytes)
+
+    data = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    data["anchor"] = {"backend": "opentimestamps", "manifest_hash": content_hash}
+    (run_dir / "manifest.json").write_text(json.dumps(data), encoding="utf-8")
+
+    rc = main(["check", "--manifest", str(run_dir / "manifest.json")])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Bitcoin height" in out
+
+
+def test_check_identity_displayed(tmp_path: Path, capsys):
+    """check prints identity scheme and principal when present."""
+    run_dir = make_run_dir(tmp_path)
+    assert main(["manifest", "--run-dir", str(run_dir), "--publish", "*.csv"]) == 0
+    data = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    data["identity"] = {"scheme": "ssh", "principal": "lab@example.com", "signature": "fakesig"}
+    (run_dir / "manifest.json").write_text(json.dumps(data), encoding="utf-8")
+    rc = main(["check", "--manifest", str(run_dir / "manifest.json")])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "identity:" in out
+    assert "lab@example.com" in out
+    assert "not validated" in out
+
+
+def test_check_missing_manifest(tmp_path: Path, capsys):
+    """check exits 2 when the manifest file does not exist."""
+    rc = main(["check", "--manifest", str(tmp_path / "no_such.json")])
+    assert rc == 2
+    assert "error" in capsys.readouterr().err
+
+
+def test_check_rejects_invalid_manifest(tmp_path: Path, capsys):
+    """check exits 2 for invalid manifests instead of coercing defaults."""
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    rc = main(["check", "--manifest", str(manifest_path)])
+    assert rc == 2
+    assert "error: could not load manifest" in capsys.readouterr().err
