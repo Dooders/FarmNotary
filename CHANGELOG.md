@@ -68,7 +68,9 @@ The last tagged / PyPI release is **0.1.0**. This tree is **0.2.0**.
 - Intro slide deck for researchers and labs (`docs/slides/`): four-act
   talk (Why / Record / Evidence / Start), claim card, scoped consensus
   showcase, solo/lab paths. Locked to CLAIMS.md by
-  `test_intro_deck_stays_inside_the_claim_card`.
+  `test_intro_deck_stays_inside_the_claim_card`. A 16:9 PDF
+  (`docs/slides/farmnotary.pdf`) is generated from the HTML deck via
+  `docs/slides/export_pdf.py` (headless Chrome).
 - Tests for claim levels (`infer_claim_level`, paper sentences), docs-to-CLI
   lock, paper-pack `--verify-derived`, campaign `--require-local` / artifact
   rehash, derivation rule validation, and a tighter Action contract.
