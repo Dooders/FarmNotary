@@ -194,6 +194,11 @@ def verify_anchor(manifest: Manifest, run_dir: Path) -> List[str]:
 
     For OpenTimestamps anchors this also validates that the proof file next
     to the manifest commits to the recomputed manifest content hash.
+
+    When a CID is recorded and ``manifest.cid.ots`` is present next to the
+    manifest, the CID binding proof is also verified: it must commit to
+    ``SHA-256(content_hash_bytes || cid_utf8_bytes)``.  A swapped CID causes
+    the binding digest to mismatch and will be reported as a problem.
     """
     problems: List[str] = []
     if manifest.anchor is None:
@@ -205,7 +210,7 @@ def verify_anchor(manifest: Manifest, run_dir: Path) -> List[str]:
             f"anchored hash {anchored_hash} does not match manifest content hash {manifest_hash}"
         )
     if manifest.anchor.get("backend") == "opentimestamps":
-        from farm_notary.ots import PROOF_NAME, verify_proof
+        from farm_notary.ots import CID_BINDING_PROOF_NAME, PROOF_NAME, verify_proof
 
         proof_path = Path(run_dir) / manifest.anchor.get("detail", {}).get(
             "proof", PROOF_NAME
@@ -214,6 +219,15 @@ def verify_anchor(manifest: Manifest, run_dir: Path) -> List[str]:
             problems.append(f"missing anchor proof: {proof_path.name}")
         else:
             problems += verify_proof(proof_path.read_bytes(), manifest_hash)
+
+        if manifest.cid:
+            from farm_notary.ots import verify_cid_binding_proof
+
+            binding_path = Path(run_dir) / CID_BINDING_PROOF_NAME
+            if binding_path.is_file():
+                problems += verify_cid_binding_proof(
+                    binding_path.read_bytes(), manifest_hash, manifest.cid
+                )
     return problems
 
 

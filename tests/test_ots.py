@@ -164,3 +164,56 @@ def test_upgrade_proof_still_pending(stub_server):
     assert status.pending_calendars == [stub_server.url]
     assert errors and "not yet committed" in errors[0]
     assert upgraded == proof
+
+
+# ---------------------------------------------------------------------------
+# CID binding proof
+# ---------------------------------------------------------------------------
+
+def test_cid_binding_digest_is_deterministic():
+    from farm_notary.ots import cid_binding_digest
+
+    d1 = cid_binding_digest("aa" * 32, "bafytest")
+    d2 = cid_binding_digest("aa" * 32, "bafytest")
+    assert d1 == d2
+    assert len(d1) == 32
+
+
+def test_cid_binding_digest_changes_with_cid_or_hash():
+    from farm_notary.ots import cid_binding_digest
+
+    base = cid_binding_digest("aa" * 32, "bafytest")
+    assert cid_binding_digest("bb" * 32, "bafytest") != base
+    assert cid_binding_digest("aa" * 32, "bafyOTHER") != base
+
+
+def test_verify_cid_binding_proof_accepts_correct_proof():
+    from farm_notary.ots import cid_binding_digest, serialize_proof, verify_cid_binding_proof
+
+    manifest_hash = "aa" * 32
+    cid = "bafytest"
+    digest = cid_binding_digest(manifest_hash, cid)
+    proof = serialize_proof(pending_timestamp(digest, "https://example.com"))
+
+    assert verify_cid_binding_proof(proof, manifest_hash, cid) == []
+
+
+def test_verify_cid_binding_proof_rejects_wrong_cid():
+    from farm_notary.ots import cid_binding_digest, serialize_proof, verify_cid_binding_proof
+
+    manifest_hash = "aa" * 32
+    correct_cid = "bafyCORRECT"
+    swapped_cid = "bafySWAPPED"
+    digest = cid_binding_digest(manifest_hash, correct_cid)
+    proof = serialize_proof(pending_timestamp(digest, "https://example.com"))
+
+    problems = verify_cid_binding_proof(proof, manifest_hash, swapped_cid)
+    assert len(problems) == 1
+    assert "CID binding proof commits to" in problems[0]
+
+
+def test_verify_cid_binding_proof_rejects_garbage():
+    from farm_notary.ots import verify_cid_binding_proof
+
+    problems = verify_cid_binding_proof(b"not-a-proof", "aa" * 32, "bafytest")
+    assert problems and "not a valid OpenTimestamps proof" in problems[0]

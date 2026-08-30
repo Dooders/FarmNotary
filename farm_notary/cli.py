@@ -161,7 +161,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--backend",
         choices=("dry-run", "ots", "eas"),
         default="dry-run",
-        help="dry-run prints the payload; ots anchors via OpenTimestamps (recommended); eas anchors on Base (experimental — requires a funded key and costs gas; needs farm-notary[chain])",
+        help="dry-run prints the payload; ots anchors via OpenTimestamps (recommended); eas is deprecated (requires a funded key and costs gas; use ots instead)",
     )
     p_anc.add_argument(
         "--pin",
