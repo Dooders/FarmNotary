@@ -155,6 +155,14 @@ def iter_artifact_paths(
     """
     run_dir = Path(run_dir)
     for path in sorted(run_dir.rglob("*")):
+        if path.is_symlink():
+            warnings.warn(
+                f"Skipping symlink {path.name!r}: symlinks are not followed to "
+                "prevent hashing files outside the run directory.",
+                UserWarning,
+                stacklevel=2,
+            )
+            continue
         if not path.is_file():
             continue
         rel = path.relative_to(run_dir)
@@ -459,7 +467,7 @@ def build_manifest(
     # Collect all candidate files to compute the unmatched count.
     all_candidates: List[Path] = []
     for path in sorted(run_dir.rglob("*")):
-        if not path.is_file():
+        if path.is_symlink() or not path.is_file():
             continue
         rel = path.relative_to(run_dir)
         if any(part.startswith(".") for part in rel.parts):

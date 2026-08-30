@@ -228,7 +228,7 @@ def test_evaluate_claims_ci_provenance_note_when_matching(tmp_path):
     )
     card = evaluate_claims(manifest, tmp_path)
     assert card.ok
-    assert any("CI-attested SHA" in n for n in card.notes)
+    assert any("Recorded CI SHA" in n for n in card.notes)
     assert any("org/repo" in n for n in card.notes)
 
 

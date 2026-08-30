@@ -617,7 +617,7 @@
           <div class="path-step">
             <span class="n">02</span>
             <span class="verb">Bind</span>
-            <code>farm-notary manifest --run-dir run/ --profile consensus --precommit precommit.json</code>
+            <code>farm-notary manifest --run-dir run/ --profile consensus --precommit precommit.json --config run/run_config.json --command "python docs/demo/experiment.py --seed 0 --out '{run_dir}'"</code>
           </div>
         </div>
         <p class="lede" style="margin-top:1.15rem;max-width:46rem">This room is dry-run. A lab would pass <span class="cmd">--backend ots</span> on the plan, then run. FarmNotary will still stamp a favorable run after the fact. It will not call that a pre-specified design.</p>

@@ -67,8 +67,7 @@ def export_pdf(html: Path, pdf: Path, chrome: str | None) -> None:
         try:
             subprocess.run(cmd, check=True, timeout=60)
         except subprocess.TimeoutExpired:
-            if not pdf.is_file() or pdf.stat().st_size == 0:
-                raise
+            raise
     if not pdf.is_file() or pdf.stat().st_size == 0:
         raise SystemExit(f"Chrome did not write a PDF to {pdf}")
 

@@ -511,7 +511,7 @@ def evaluate_claims(
         kind = prov.get("kind", "ci")
         repo = prov.get("repository", "")
         run_url = prov.get("run_url", "")
-        note_parts = [f"CI-attested SHA ({kind})"]
+        note_parts = [f"Recorded CI SHA ({kind})"]
         if repo:
             note_parts.append(f"repository: {repo}")
         if run_url:
