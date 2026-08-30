@@ -28,13 +28,13 @@ Both talks stay inside the claim card. If either starts promising scientific cor
 Regenerate a PDF with Chrome or Chromium. For the intro deck:
 
 ```bash
-python3 docs/slides/export_pdf.py --html docs/slides/index.html --pdf docs/slides/farmnotary.pdf
+python3 docs/slides/export_pdf.py
 ```
 
 For the consensus walkthrough:
 
 ```bash
-python3 docs/slides/export_pdf.py
+python3 docs/slides/export_pdf.py --html docs/slides/consensus.html --pdf docs/slides/consensus.pdf
 ```
 
 That writes a 13.333in × 7.5in (16:9) file with backgrounds and no header/footer. Chrome → Print → Save as PDF still works: landscape, **Background graphics** on.

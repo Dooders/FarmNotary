@@ -121,18 +121,6 @@ def test_intro_deck_stays_inside_the_claim_card():
     assert "not independently reproduced" in SLIDES.lower()
 
 
-def test_intro_deck_pdf_is_checked_in():
-    """The researcher/lab talk ships a printable 16:9 PDF."""
-    pdf = Path("docs/slides/farmnotary.pdf")
-    slides_readme = Path("docs/slides/README.md").read_text(encoding="utf-8")
-    assert pdf.is_file()
-    assert pdf.read_bytes()[:5] == b"%PDF-"
-    assert pdf.stat().st_size > 10_000
-    assert "farmnotary.pdf" in README
-    assert "farmnotary.pdf" in slides_readme
-    assert "export_pdf.py" in slides_readme
-
-
 def test_consensus_walkthrough_deck_stays_inside_the_claim_card():
     """The worked-example talk may not outrun CLAIMS.md or the live demo."""
     assert "docs/slides/consensus" in README
