@@ -3,6 +3,7 @@ from __future__ import annotations
 import fnmatch
 import hashlib
 import json
+import os
 import platform
 import subprocess
 import warnings
@@ -101,6 +102,49 @@ def _matches_any_pattern(rel_posix: str, patterns: Sequence[str]) -> bool:
     return False
 
 
+def _iter_run_files(run_dir: Path, *, warn_on_symlink: bool = False) -> Iterator[Path]:
+    """Yield regular files inside *run_dir* without following symlinks."""
+    run_dir = Path(run_dir)
+    candidates: List[Path] = []
+    for root, dirnames, filenames in os.walk(run_dir, followlinks=False):
+        root_path = Path(root)
+        safe_dirs = []
+        for dirname in sorted(dirnames):
+            child = root_path / dirname
+            rel = child.relative_to(run_dir)
+            if any(part.startswith(".") for part in rel.parts):
+                continue
+            if child.is_symlink():
+                if warn_on_symlink:
+                    warnings.warn(
+                        f"Skipping symlinked directory from artifact discovery: {rel.as_posix()}",
+                        stacklevel=3,
+                    )
+                continue
+            safe_dirs.append(dirname)
+        dirnames[:] = safe_dirs
+
+        for filename in sorted(filenames):
+            path = root_path / filename
+            rel = path.relative_to(run_dir)
+            if any(part.startswith(".") for part in rel.parts):
+                continue
+            if path.name in NOTARY_FILE_NAMES or path.name.endswith(NOTARY_FILE_SUFFIXES):
+                continue
+            if path.is_symlink():
+                if warn_on_symlink:
+                    warnings.warn(
+                        f"Skipping symlinked file from artifact discovery: {rel.as_posix()}",
+                        stacklevel=3,
+                    )
+                continue
+            if not path.is_file():
+                continue
+            candidates.append(path)
+    for path in sorted(candidates):
+        yield path
+
+
 def iter_artifact_paths(
     run_dir: Path,
     publish_patterns: Sequence[str],
@@ -113,14 +157,8 @@ def iter_artifact_paths(
     admits.  Hidden files/directories and notary metadata are always skipped.
     """
     run_dir = Path(run_dir)
-    for path in sorted(run_dir.rglob("*")):
-        if not path.is_file():
-            continue
+    for path in _iter_run_files(run_dir, warn_on_symlink=True):
         rel = path.relative_to(run_dir)
-        if any(part.startswith(".") for part in rel.parts):
-            continue
-        if path.name in NOTARY_FILE_NAMES or path.name.endswith(NOTARY_FILE_SUFFIXES):
-            continue
         rel_posix = rel.as_posix()
         # --- allowlist (primary gate) ---
         if not _matches_any_pattern(rel_posix, publish_patterns):
@@ -408,16 +446,7 @@ def build_manifest(
         )
 
     # Collect all candidate files to compute the unmatched count.
-    all_candidates: List[Path] = []
-    for path in sorted(run_dir.rglob("*")):
-        if not path.is_file():
-            continue
-        rel = path.relative_to(run_dir)
-        if any(part.startswith(".") for part in rel.parts):
-            continue
-        if path.name in NOTARY_FILE_NAMES or path.name.endswith(NOTARY_FILE_SUFFIXES):
-            continue
-        all_candidates.append(path)
+    all_candidates = list(_iter_run_files(run_dir))
 
     artifacts: list = []
     hashes: dict = {}
