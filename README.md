@@ -160,8 +160,9 @@ OTS is not L0. The `existed by time T` row distinguishes Bitcoin-attested
 proofs from pending public-calendar submissions and user-supplied calendars
 that remain untrusted until Bitcoin. L0 means the proof commits to the content
 hash and carries a Bitcoin-height attestation; this tool does not check
-Bitcoin headers (`ots verify` does). L1 needs a recorded command, git SHA, and environment
-fingerprint — not a completed re-run. L2 requires a beacon-derived seed
+Bitcoin headers (`ots verify` does). L1 needs a recorded command, git SHA,
+and environment fingerprint — not a completed re-run. L2 requires a
+beacon-derived seed
 after the plan is anchored (not scientific correctness). L3 needs a Sigstore
 keyless signature on the reproduction receipt (`farm-notary reproduce --sign`).
 That is **not** independently reproduced: identity is recorded when it can be
