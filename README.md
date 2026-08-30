@@ -132,7 +132,7 @@ farm-notary verify --run-dir runs/i-0 --live-beacon
 | `precommit` | Write `precommit.json` before the run (`dry-run` or `ots`); `--seed-count` adds a beacon seed plan |
 | `anchor` | Optional pin + stamp (`dry-run` default; `ots`; `eas` experimental) |
 | `upgrade` | Complete a pending `manifest.ots` with a Bitcoin attestation |
-| `reproduce` | Re-run the recorded command; write `reproduction.json` (`--sign` is Sigstore on the receipt, not lab SSH) |
+| `reproduce` | Re-run the recorded command; write `reproduction.json` (**executes the recorded shell command**; `--sign` is Sigstore on the receipt, not lab SSH) |
 | `sign` | Attach a minisign or SSH signature of the content hash (not Sigstore) |
 | `campaign` | Build a parent `campaign.json` from child run directories |
 | `paper-pack` | Write `appendix.md` for a PDF |
@@ -209,6 +209,16 @@ farm-notary manifest --run-dir path/to/run --profile consensus \
   --lockfile requirements.lock
 farm-notary reproduce --run-dir path/to/run --cwd path/to/experiment --ignore '*.mp4' --anchor
 ```
+
+`reproduce` executes the manifest's recorded command via the shell. Treat a
+downloaded manifest as untrusted code execution — remote code execution by
+design — not as independent verification.
+
+By default, FarmNotary refuses to run that command unless the manifest matches
+the same local checkout (`git_sha`) or the same GitHub Actions repo/SHA the
+operator is already trusting. To override, pass
+`--i-accept-untrusted-command` and do the run inside your own sandbox
+(container or VM, no network).
 
 `reproduce` re-runs into a fresh directory, compares every listed artifact, and writes `reproduction.json`. A byte-diff is classified (`embedded_absolute_path`, `timestamp`, `float_print_format`, `video_encoder`) and labeled **not a science failure** when that is what it is. `--cwd` is the experiment repo when it is not the run directory. `--anchor` timestamps the receipt (`reproduction.ots`).
 

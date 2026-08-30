@@ -351,7 +351,15 @@ def test_cli_reproduce_sign_flag(tmp_path: Path, capsys):
     fake_bundle = {"mediaType": "test", "messageSignature": {}}
 
     with patch("farm_notary.cli.sign_receipt", return_value=fake_bundle):
-        ret = main(["reproduce", "--run-dir", str(run_dir), "--sign"])
+        ret = main(
+            [
+                "reproduce",
+                "--run-dir",
+                str(run_dir),
+                "--i-accept-untrusted-command",
+                "--sign",
+            ]
+        )
 
     assert ret == 0
     out = capsys.readouterr().out
@@ -661,7 +669,15 @@ def test_cli_skips_sign_when_reproduce_fails(tmp_path: Path, capsys):
         patch("farm_notary.reproduce.reproduce_run", return_value=failed),
         patch("farm_notary.cli.sign_receipt") as mock_sign,
     ):
-        ret = main(["reproduce", "--run-dir", str(run_dir), "--sign"])
+        ret = main(
+            [
+                "reproduce",
+                "--run-dir",
+                str(run_dir),
+                "--i-accept-untrusted-command",
+                "--sign",
+            ]
+        )
     assert ret == 1
     mock_sign.assert_not_called()
     assert "skipping Sigstore sign" in capsys.readouterr().err
@@ -678,6 +694,7 @@ def test_cli_rejects_raw_identity_token(tmp_path: Path, capsys):
                 "reproduce",
                 "--run-dir",
                 str(run_dir),
+                "--i-accept-untrusted-command",
                 "--sign",
                 "--identity-token",
                 "eyJhbGciOi.e30.sig",
@@ -686,4 +703,3 @@ def test_cli_rejects_raw_identity_token(tmp_path: Path, capsys):
     assert ret == 2
     mock_sign.assert_not_called()
     assert "@PATH" in capsys.readouterr().err
-
