@@ -81,6 +81,7 @@ jobs:
               command=os.environ["PORTABLE_COMMAND"],
               config=rc.get("config") or {},
               lockfile=Path("agentfarm/requirements-ci-lock.txt"),
+              ci_provenance=None,
           )
           write_manifest(manifest, run)
           print("command", manifest.command)

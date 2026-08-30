@@ -61,6 +61,47 @@ _STAMP_KEYS = (
     "identity",
 )
 
+# Sentinel that tells build_manifest to auto-detect CI provenance.
+# Callers that pass ``ci_provenance=None`` explicitly opt out of detection.
+_CI_PROV_AUTO = object()
+
+
+def detect_ci_provenance() -> Optional[dict]:
+    """Detect GitHub Actions CI provenance from environment variables.
+
+    Returns a dict describing the attested CI context when the process is
+    running inside GitHub Actions (``GITHUB_ACTIONS=true``), or ``None``
+    when not in CI.  The ``sha`` key carries ``GITHUB_SHA`` — the commit
+    that the runner checked out — which is later cross-checked against the
+    manifest's ``git_sha`` by :func:`farm_notary.verify.verify_ci_provenance`.
+    """
+    import os
+
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        return None
+    sha = os.environ.get("GITHUB_SHA", "").strip()
+    if not sha:
+        return None
+    prov: dict = {
+        "kind": "github_actions",
+        "sha": sha,
+    }
+    for key, var in (
+        ("repository", "GITHUB_REPOSITORY"),
+        ("ref", "GITHUB_REF"),
+        ("workflow", "GITHUB_WORKFLOW"),
+        ("run_id", "GITHUB_RUN_ID"),
+    ):
+        val = os.environ.get(var, "").strip()
+        if val:
+            prov[key] = val
+    server_url = os.environ.get("GITHUB_SERVER_URL", "https://github.com").rstrip("/")
+    run_id = prov.get("run_id", "")
+    repo = prov.get("repository", "")
+    if run_id and repo:
+        prov["run_url"] = f"{server_url}/{repo}/actions/runs/{run_id}"
+    return prov
+
 
 def hash_file(path: Path) -> str:
     h = hashlib.sha256()
@@ -285,6 +326,12 @@ class Manifest:
     # Optional minisign / SSH signature of content_hash.  Excluded from
     # content_hash itself (same as cid/anchor) so it can be stamped after.
     identity: Optional[dict] = None
+    # CI provenance captured from GitHub Actions environment variables at
+    # manifest-build time.  Included in content_hash (not a stamp) so the
+    # anchor commits to both the artifacts and the attested CI context.
+    # ``None`` on local / developer runs; those manifests remain valid at a
+    # lower claim level.
+    ci_provenance: Optional[dict] = None
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -302,6 +349,7 @@ class Manifest:
             "pin_service",
             "anchor",
             "identity",
+            "ci_provenance",
         }
         _OMIT_IF_EMPTY = {"derived_from"}
         return {
@@ -368,6 +416,7 @@ def build_manifest(
     seed_index: Optional[int] = None,
     beacon_client: Optional[Any] = None,
     seeds_path: Optional[Path] = None,
+    ci_provenance: Optional[Mapping[str, Any]] = _CI_PROV_AUTO,  # type: ignore[assignment]
 ) -> Manifest:
     """Build a :class:`Manifest` for *run_dir*.
 
@@ -436,6 +485,10 @@ def build_manifest(
         )
 
     git_sha, git_dirty = resolve_git_identity(git_sha, git_dirty)
+    # Auto-detect GitHub Actions CI provenance when not explicitly supplied.
+    # Pass ``ci_provenance=None`` to opt out of auto-detection.
+    if ci_provenance is _CI_PROV_AUTO:
+        ci_provenance = detect_ci_provenance()
     rules: list = []
     if derived_from:
         rules = [dict(rule) for rule in derived_from]
@@ -460,6 +513,7 @@ def build_manifest(
         official_record=dict(official_record or {}),
         derived_from=rules,
         beacon=dict(beacon) if beacon is not None else None,
+        ci_provenance=dict(ci_provenance) if ci_provenance is not None else None,
     )
     if precommit_path is not None:
         import shutil
