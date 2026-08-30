@@ -1,11 +1,17 @@
-# FarmNotary intro deck
+# FarmNotary slide decks
 
-A short talk for solo researchers and labs: what a research notary is, what FarmNotary will and will not claim, and how to hash one run this afternoon.
+Two short talks. Typefaces are vendored under `fonts/` (Fraunces, Source Serif 4, IBM Plex Mono — SIL OFL via Google Fonts) so either deck presents offline.
 
-- **PDF (16:9, 18 pages):** [`farmnotary.pdf`](farmnotary.pdf)
-- **Live deck:** open [`index.html`](index.html) in a browser. Typefaces are vendored under `fonts/` (Fraunces, Source Serif 4, IBM Plex Mono — SIL OFL via Google Fonts) so the talk presents offline.
+| Deck | HTML | PDF | For |
+|---|---|---|---|
+| Intro | [`index.html`](index.html) | [`farmnotary.pdf`](farmnotary.pdf) | Researchers and labs: what a notary is, what it will not claim |
+| Consensus walkthrough | [`consensus.html`](consensus.html) | [`consensus.pdf`](consensus.pdf) | A room that wants to see one toy run: allowlist, card, re-run, packaging bug |
 
-The talk is four acts: **Why**, **Record**, **Evidence**, **Start**.
+The walkthrough is the worked example. It runs `docs/demo/experiment.py` (12 voters, seed 0, profile `consensus`) with the **dry-run** backend. Pair it with [`docs/demo/farmnotary_live_demo.ipynb`](../demo/farmnotary_live_demo.ipynb) if a laptop is live.
+
+Both talks stay inside the claim card. If either starts promising scientific correctness, independently reproduced, or cross-hardware bitwise identity, `tests/test_docs.py` fails.
+
+## Keys
 
 | Key | Action |
 |---|---|
@@ -17,12 +23,12 @@ The talk is four acts: **Why**, **Record**, **Evidence**, **Start**.
 | `?` | Shortcuts |
 | `P` | Print / Save as PDF |
 
-A checked-in PDF is regenerated with Chrome or Chromium:
+## PDF
+
+Regenerate either PDF with Chrome or Chromium:
 
 ```bash
 python3 docs/slides/export_pdf.py
 ```
 
 That writes a 13.333in × 7.5in (16:9) file with backgrounds and no header/footer. Chrome → Print → Save as PDF still works: landscape, **Background graphics** on.
-
-The deck is locked to the claim card in `tests/test_docs.py`. If the talk starts promising scientific correctness, independently reproduced, or cross-hardware bitwise identity, the test fails.

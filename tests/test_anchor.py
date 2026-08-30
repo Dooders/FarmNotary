@@ -87,6 +87,31 @@ def test_notarize_run_with_pin(monkeypatch, stub_server, tmp_path: Path):
     assert b'filename="summary.csv"' in body
 
 
+def test_notarize_run_pin_does_not_upload_outside_symlink(monkeypatch, stub_server, tmp_path: Path):
+    make_run_dir(tmp_path)
+    outside = tmp_path.parent / "outside.csv"
+    outside.write_text("secret\n", encoding="utf-8")
+    link = tmp_path / "outside_link.csv"
+    try:
+        link.symlink_to(outside)
+    except OSError:
+        pytest.skip("symlinks not supported in this environment")
+
+    monkeypatch.setenv("FARM_NOTARY_IPFS_API", stub_server.url)
+    stub_server.response_body = (
+        json.dumps({"Name": "", "Hash": "bafypinned"}) + "\n"
+    ).encode()
+
+    manifest, receipt = notarize_run(
+        tmp_path, publish_patterns=["*"], pin=True, git_dirty=False
+    )
+
+    assert receipt.cid == "bafypinned"
+    assert "outside_link.csv" not in manifest.artifacts
+    body = stub_server.requests[0]["body"]
+    assert b'filename="outside_link.csv"' not in body
+
+
 def test_notarize_run_with_ots_backend_writes_proof(stub_server, tmp_path: Path):
     make_run_dir(tmp_path)
     # The PendingAttestation serialization does not embed the digest, so any

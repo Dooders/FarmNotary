@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export the intro deck to a 16:9 PDF via headless Chrome."""
+"""Export a docs/slides HTML deck to a 16:9 PDF via headless Chrome."""
 
 from __future__ import annotations
 
