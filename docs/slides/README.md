@@ -18,4 +18,4 @@ The talk is four acts: **Why**, **Record**, **Evidence**, **Start**.
 
 For a PDF: Chrome → Print → Save as PDF, landscape, **Background graphics** on.
 
-The deck is locked to the claim card in `tests/test_docs.py`. If the talk starts promising scientific correctness, L2, or cross-hardware bitwise identity, the test fails.
+The deck is locked to the claim card in `tests/test_docs.py`. If the talk starts promising scientific correctness, independently reproduced, or cross-hardware bitwise identity, the test fails.

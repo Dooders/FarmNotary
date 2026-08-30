@@ -5,17 +5,18 @@ two reserved gaps) into the highest *earned* level and the next missing
 check. ``claim_level`` in ``farm_notary.claims`` is a different vocabulary
 (paper-pack / index artifact labels). Do not mix them.
 
-L2 requires a beacon-derived seed after the plan is anchored. L3
-(independent identity) requires a Sigstore keyless signature on the
-reproduction receipt. A self-run ``reproduction.json`` without a signature
+L2 requires a beacon-derived seed after the plan is anchored. L3 means a
+Sigstore keyless signature on the reproduction receipt verified. That is
+not independence: identity is recorded when it can be parsed, not proven
+distinct from the publisher. A self-run unsigned ``reproduction.json``
 never yields L3. L1 means the re-execution inputs are on the record, not
 that ``verify`` ran the command.
 
 Note on credibility
 -------------------
 Receipt count is **not** credibility.  Ten throwaway Gmail reproductions are
-not equivalent to one lab CI reproduction.  Inspect the ``issuer`` field to
-distinguish workload-identity CI tokens (strong) from personal OIDC logins.
+not equivalent to one lab CI reproduction.  Inspect the ``issuer`` field when
+it is present.  Missing identity notes mean the cert could not be parsed.
 """
 
 from __future__ import annotations
@@ -35,13 +36,13 @@ LADDER_MEANINGS = {
     "L0": L0_MEANING,
     "L1": L1_MEANING,
     "L2": "seed not grindable after the plan",
-    "L3": "independent identity reproduced it",
+    "L3": "Sigstore-signed reproduction receipt (identity not constrained)",
 }
 
 L2_NEXT_MEANING = LADDER_MEANINGS["L2"]
 L3_NEXT_MEANING = (
     "add a Sigstore keyless signature to the reproduction receipt "
-    "(farm-notary reproduce --sign)"
+    "(farm-notary reproduce --sign); identity is recorded, not proven independent"
 )
 
 L2_GAP_SEED_PLAN = "missing: seed_plan"
@@ -131,9 +132,9 @@ def evaluate_ladder(
     L2 requires a passing beacon binding (seed plan, bound precommit proof,
     plan not dated after the round, exact ``min_round``, recomputed seed,
     HTTP or fixture randomness match).
-    L3 requires a Sigstore keyless signature on the reproduction receipt
-    (``receipt_sigstore=True``).  Pass it from ``evaluate_claims`` which
-    verifies the bundle with cosign.
+    L3 requires a verified Sigstore signature on the reproduction receipt
+    (``receipt_sigstore=True``).  That is not an independence claim.
+    Pass it from ``evaluate_claims`` after cosign accepts the bundle.
     """
     if getattr(card, "tamper_evident", None) != "pass":
         return _result(LADDER_NONE, "L0", ["tamper-evident failed"])

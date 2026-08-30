@@ -8,23 +8,51 @@ offline verification works without a live Rekor round-trip.
 step fails with a clear message; verification falls back to a note rather than
 a hard failure (the receipt is still "self-attested").
 
+Identity tokens are passed to cosign via ``SIGSTORE_ID_TOKEN`` (never argv).
+A receipt signature proves that Fulcio issued a cert for *some* OIDC identity.
+It does not prove independence from the publisher.
+
 Docs note
 ---------
 A receipt count is **not** credibility.  Ten throwaway Gmail reproductions are
-not equivalent to one lab CI reproduction.  Inspect ``issuer`` to distinguish
-workload-identity CI tokens from personal OIDC logins.
+not equivalent to one lab CI reproduction.  Inspect ``issuer`` when it can be
+parsed.  Missing identity notes mean the cert could not be read, not that the
+signer is trusted.
 """
 
 from __future__ import annotations
 
+import base64
 import json
+import os
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
+
+try:
+    from cryptography import x509 as _x509
+    from cryptography.x509 import ObjectIdentifier as _ObjectIdentifier
+except ImportError:  # pragma: no cover — [sigstore] extra not installed
+    _x509 = None
+    _ObjectIdentifier = None
+
+from farm_notary.manifest import hash_json
 
 SIGSTORE_FIELD = "sigstore"
+SIGSTORE_ID_TOKEN_ENV = "SIGSTORE_ID_TOKEN"
+COSIGN_IDENTITY_TOKEN_ENV = "COSIGN_IDENTITY_TOKEN"
+
+# Pinned for docs and the GitHub Action. Bump here and in action.yml together.
+COSIGN_RELEASE = "v2.5.3"
+
+SIGN_TIMEOUT_SEC = 120
+VERIFY_TIMEOUT_SEC = 60
+
+# Fulcio OIDC issuer extensions (v1 deprecated; v2 is current).
+OIDC_ISSUER_OID = "1.3.6.1.4.1.57264.1.1"
+OIDC_ISSUER_V2_OID = "1.3.6.1.4.1.57264.1.8"
 
 
 class SigstoreError(RuntimeError):
@@ -41,20 +69,91 @@ def _require_cosign() -> str:
     if not path:
         raise SigstoreError(
             "cosign is not on PATH; install it from "
-            "https://github.com/sigstore/cosign/releases"
+            "https://github.com/sigstore/cosign/releases "
+            f"(documented pin: {COSIGN_RELEASE})"
         )
     return path
 
 
-def receipt_signable_bytes(receipt: dict) -> bytes:
-    """Return the canonical JSON bytes of *receipt* that are signed and verified.
+def receipt_payload(receipt: dict) -> dict:
+    """Receipt fields that OTS and Sigstore both commit to."""
+    return {k: v for k, v in receipt.items() if k != SIGSTORE_FIELD}
 
-    The ``"sigstore"`` field is excluded so that adding the bundle after signing
-    does not invalidate the signature and so that the bytes are stable across
-    receipt round-trips (parse → strip → serialize).
+
+def receipt_signable_bytes(receipt: dict) -> bytes:
+    """Return the canonical JSON bytes of *receipt* that are signed and hashed.
+
+    Same encoding as :func:`farm_notary.manifest.hash_json` (sorted keys,
+    compact separators) so the OTS digest and the cosign blob match.
+    The ``"sigstore"`` field is excluded.
     """
-    d = {k: v for k, v in receipt.items() if k != SIGSTORE_FIELD}
-    return (json.dumps(d, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    return json.dumps(
+        receipt_payload(receipt), sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+
+
+def receipt_content_hash(receipt: dict) -> str:
+    """SHA-256 of :func:`receipt_signable_bytes` (hex)."""
+    return hash_json(receipt_payload(receipt))
+
+
+def resolve_identity_token(
+    identity_token: Optional[str] = None,
+    *,
+    env: Optional[Mapping[str, str]] = None,
+) -> Optional[str]:
+    """Resolve a token from an explicit value or the process environment.
+
+    *identity_token* is a JWT or empty. Callers that accept CLI input must
+    reject a raw JWT and pass file contents or ``None`` (env only).
+    """
+    if identity_token:
+        return identity_token
+    environ = env if env is not None else os.environ
+    return environ.get(COSIGN_IDENTITY_TOKEN_ENV) or environ.get(SIGSTORE_ID_TOKEN_ENV)
+
+
+def read_identity_token_cli(value: Optional[str]) -> Optional[str]:
+    """CLI helper: ``@PATH`` only. A raw JWT is rejected so it never hits argv.
+
+    When *value* is omitted, cosign still sees ``SIGSTORE_ID_TOKEN`` /
+    ``COSIGN_IDENTITY_TOKEN`` in the environment if the operator set them.
+    """
+    if not value:
+        return None
+    if not value.startswith("@"):
+        raise SigstoreError(
+            "--identity-token must be @PATH; set COSIGN_IDENTITY_TOKEN or "
+            "SIGSTORE_ID_TOKEN instead of passing a raw JWT on the command line"
+        )
+    path = Path(value[1:])
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise SigstoreError(f"could not read identity token file {path}: {exc}") from exc
+
+
+def bundle_has_inclusion_proof(bundle: Any) -> bool:
+    """True when *bundle* looks like it carries a Rekor inclusion proof."""
+    if not isinstance(bundle, dict):
+        return False
+    if bundle.get("rekorBundle"):
+        return True
+    vm = bundle.get("verificationMaterial")
+    if not isinstance(vm, dict):
+        return False
+    if vm.get("tlogEntries") or vm.get("tlogEntry") or vm.get("tlog"):
+        return True
+    return False
+
+
+def _cosign_env(identity_token: Optional[str]) -> dict:
+    env = os.environ.copy()
+    token = resolve_identity_token(identity_token, env=env)
+    if token:
+        env[SIGSTORE_ID_TOKEN_ENV] = token
+        env[COSIGN_IDENTITY_TOKEN_ENV] = token
+    return env
 
 
 def sign_receipt(
@@ -68,9 +167,8 @@ def sign_receipt(
     chain.  Embed it in the receipt under ``receipt["sigstore"]`` and rewrite
     the receipt file.
 
-    ``identity_token`` can be set to a GitHub Actions OIDC token
-    (``$ACTIONS_ID_TOKEN_REQUEST_TOKEN`` resolved via the Actions API) for
-    non-interactive CI signing.
+    *identity_token* is placed in ``SIGSTORE_ID_TOKEN`` for the child process.
+    It is never passed as ``--identity-token`` on argv.
 
     Raises :exc:`SigstoreError` when cosign is not on PATH or signing fails.
     """
@@ -83,15 +181,27 @@ def sign_receipt(
         bundle_path = Path(tmp) / "bundle.json"
 
         cmd = [
-            cosign, "sign-blob",
-            "--bundle", str(bundle_path),
+            cosign,
+            "sign-blob",
+            "--bundle",
+            str(bundle_path),
             "--yes",
+            str(blob_path),
         ]
-        if identity_token:
-            cmd += ["--identity-token", identity_token]
-        cmd.append(str(blob_path))
 
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=SIGN_TIMEOUT_SEC,
+                env=_cosign_env(identity_token),
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise SigstoreError(
+                f"cosign sign-blob timed out after {SIGN_TIMEOUT_SEC}s"
+            ) from exc
         if result.returncode != 0:
             raise SigstoreError(result.stderr.strip() or "cosign sign-blob failed")
         if not bundle_path.is_file():
@@ -113,20 +223,18 @@ def verify_sigstore_bundle(
     bundle: dict,
     receipt: dict,
 ) -> Tuple[List[str], Dict[str, str]]:
-    """Verify the Sigstore bundle against *receipt* (offline-first).
+    """Verify the Sigstore bundle against *receipt*.
 
-    Uses the bundled Rekor tlog entry and cert chain; a live round-trip is only
-    attempted when the bundle contains no inclusion proof.
+    Uses ``--offline`` when the bundle has a Rekor inclusion proof. Otherwise
+    a live Rekor check is attempted. There is no silent fallback the other way.
 
     Returns ``(problems, identity_info)``.  *problems* is empty on success.
-    *identity_info* contains ``"subject"`` (SAN URI or email) and ``"issuer"``
-    (OIDC issuer URL) when the cert chain can be parsed.
+    *identity_info* contains ``"subject"`` and ``"issuer"`` when the cert
+    chain can be parsed.
 
     **Identity constraints**: this function uses ``--certificate-identity-regexp .*``
     and ``--certificate-oidc-issuer-regexp .*`` so it proves that the bytes were
-    signed by *someone* via Sigstore, not by a specific trusted identity.  The
-    caller is responsible for inspecting *identity_info* and presenting the signer
-    to the user; count is **not** credibility.
+    signed by *someone* via Sigstore, not by a specific trusted identity.
 
     If ``cosign`` is not on PATH, returns a single informational problem so the
     caller can decide whether to treat it as a hard failure.
@@ -139,6 +247,7 @@ def verify_sigstore_bundle(
         )
 
     blob_bytes = receipt_signable_bytes(receipt)
+    has_proof = bundle_has_inclusion_proof(bundle)
 
     with tempfile.TemporaryDirectory(prefix="farm-notary-sigstore-verify-") as tmp:
         blob_path = Path(tmp) / "receipt.json"
@@ -147,19 +256,43 @@ def verify_sigstore_bundle(
         bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
 
         cmd = [
-            cosign, "verify-blob",
-            "--bundle", str(bundle_path),
-            "--certificate-identity-regexp", ".*",
-            "--certificate-oidc-issuer-regexp", ".*",
-            "--offline",
-            str(blob_path),
+            cosign,
+            "verify-blob",
+            "--bundle",
+            str(bundle_path),
+            "--certificate-identity-regexp",
+            ".*",
+            "--certificate-oidc-issuer-regexp",
+            ".*",
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        if result.returncode != 0:
+        if has_proof:
+            cmd.append("--offline")
+        cmd.append(str(blob_path))
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=VERIFY_TIMEOUT_SEC,
+            )
+        except subprocess.TimeoutExpired:
             return (
-                [f"cosign verify-blob: {result.stderr.strip() or 'signature rejected'}"],
+                [f"cosign verify-blob timed out after {VERIFY_TIMEOUT_SEC}s"],
                 {},
             )
+        if result.returncode != 0:
+            detail = result.stderr.strip() or "signature rejected"
+            if not has_proof:
+                return (
+                    [
+                        "bundle has no Rekor inclusion proof; offline verify not "
+                        f"possible; live verify failed: {detail}"
+                    ],
+                    {},
+                )
+            return ([f"cosign verify-blob: {detail}"], {})
 
     identity_info = _extract_identity(bundle)
     return [], identity_info
@@ -176,6 +309,18 @@ def extract_bundle_identity(bundle: dict) -> Dict[str, str]:
     return _extract_identity(bundle)
 
 
+def _decode_fulcio_issuer(raw: bytes) -> str:
+    text = raw.decode("utf-8", errors="replace").strip()
+    if text.startswith("https://") or text.startswith("http://"):
+        return text
+    # DER UTF8String: 0x0c <len> <bytes>
+    if len(raw) >= 2 and raw[0] == 0x0C:
+        length = raw[1]
+        if length <= len(raw) - 2:
+            return raw[2 : 2 + length].decode("utf-8", errors="replace")
+    return text
+
+
 def _extract_identity(bundle: dict) -> Dict[str, str]:
     try:
         certs = bundle["verificationMaterial"]["x509CertificateChain"]["certificates"]
@@ -183,39 +328,39 @@ def _extract_identity(bundle: dict) -> Dict[str, str]:
     except (KeyError, IndexError, TypeError):
         return {}
 
-    import base64
-
     try:
         der_bytes = base64.b64decode(raw_b64)
-    except Exception:
+    except (ValueError, TypeError):
+        return {}
+
+    if _x509 is None or _ObjectIdentifier is None:
         return {}
 
     try:
-        from cryptography import x509 as _x509
-
         cert = _x509.load_der_x509_certificate(der_bytes)
+    except Exception:
+        return {}
 
-        subject = ""
-        try:
-            san = cert.extensions.get_extension_for_class(_x509.SubjectAlternativeName)
-            uris = san.value.get_values_for_type(_x509.UniformResourceIdentifier)
-            emails = san.value.get_values_for_type(_x509.RFC822Name)
-            subject = uris[0] if uris else (emails[0] if emails else "")
-        except Exception:
-            pass
-
-        issuer = ""
-        try:
-            from cryptography.x509 import ObjectIdentifier
-
-            OIDC_ISSUER_OID = ObjectIdentifier("1.3.6.1.4.1.57264.1.1")
-            ext = cert.extensions.get_extension_for_oid(OIDC_ISSUER_OID)
-            issuer = ext.value.value.decode("utf-8")
-        except Exception:
-            pass
-
-        return {"subject": subject, "issuer": issuer}
-    except ImportError:
+    subject = ""
+    try:
+        san = cert.extensions.get_extension_for_class(_x509.SubjectAlternativeName)
+        uris = san.value.get_values_for_type(_x509.UniformResourceIdentifier)
+        emails = san.value.get_values_for_type(_x509.RFC822Name)
+        subject = uris[0] if uris else (emails[0] if emails else "")
+    except Exception:
         pass
 
-    return {}
+    issuer = ""
+    for oid in (OIDC_ISSUER_V2_OID, OIDC_ISSUER_OID):
+        try:
+            ext = cert.extensions.get_extension_for_oid(_ObjectIdentifier(oid))
+            raw = ext.value.value if hasattr(ext.value, "value") else bytes(ext.value)
+            issuer = _decode_fulcio_issuer(raw)
+            if issuer:
+                break
+        except Exception:
+            continue
+
+    if not subject and not issuer:
+        return {}
+    return {"subject": subject, "issuer": issuer}

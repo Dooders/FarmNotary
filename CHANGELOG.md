@@ -27,6 +27,13 @@ The last tagged / PyPI release is **0.1.0**. This tree is **0.2.0**.
 
 ### Added
 
+- Sigstore keyless signing for reproduction receipts (`farm-notary
+  reproduce --sign`). `verify` checks `receipt["sigstore"]` with
+  `cosign verify-blob` (offline when the bundle has a Rekor inclusion
+  proof). L3 means a verified signature with identity not constrained —
+  not "independently reproduced." Tokens go through `SIGSTORE_ID_TOKEN`
+  / `COSIGN_IDENTITY_TOKEN` or `--identity-token @PATH`. Documented
+  cosign pin: `v2.5.3`. Optional Action input `sign-receipt`.
 - Live demo notebook (`docs/demo/`): a tiny consensus-style experiment
   notarized with the dry-run backend so researchers can see the claim
   card, the allowlist, a scoped re-run, and a packaging mismatch labeled
@@ -46,8 +53,8 @@ The last tagged / PyPI release is **0.1.0**. This tree is **0.2.0**.
   OTS does not count) and does not mean Bitcoin headers were checked.
   L1 requires L0 plus a recorded `command`, `git_sha`, and environment
   fingerprint; it does not mean the command was run. L2 requires a
-  beacon-derived seed after the plan is anchored. L3 (independent
-  identity) is reserved. `paper-pack`
+  beacon-derived seed after the plan is anchored. L3 is a
+  Sigstore-signed receipt (identity not constrained). `paper-pack`
   prints an artifact label and leaves reader ladder as `—` (do not cite
   `Ln` from an appendix).
 - `docs/PRINCIPLES.md`: constraint document for refusing features

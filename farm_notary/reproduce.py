@@ -3,8 +3,9 @@
 This is what turns "reproducible" from a claim into a procedure: re-run the
 manifest's recorded command into a fresh directory, rehash every artifact the
 manifest lists, and compare. A successful reproduction writes a receipt
-(reproduction.json) that can itself be anchored via OpenTimestamps, giving
-"independently reproduced" a timestamped, third-party-verifiable form.
+(reproduction.json) that can itself be anchored via OpenTimestamps. That is
+bitwise reproducibility (scoped). A Sigstore signature on the receipt is
+evidence of a Fulcio-issued identity, not "independently reproduced."
 """
 
 from __future__ import annotations
@@ -28,9 +29,9 @@ from farm_notary.manifest import (
     Manifest,
     capture_environment,
     hash_file,
-    hash_json,
     iter_artifact_paths,
 )
+from farm_notary.sigstore import receipt_content_hash
 
 RECEIPT_VERSION = "farmnotary.reproduction.v1"
 RECEIPT_PROOF_NAME = "reproduction.ots"
@@ -175,11 +176,10 @@ def build_receipt(manifest: Manifest, result: ReproductionResult) -> dict:
 def receipt_hash(receipt: dict) -> str:
     """Hash the receipt, excluding the ``"sigstore"`` bundle field.
 
-    This makes the hash stable whether or not a Sigstore bundle has been
-    attached: OTS anchoring and the cosign signature both commit to the same
-    underlying content.
+    Same canonical bytes as the cosign blob, so OTS and Sigstore commit to
+    the same encoding.
     """
-    return hash_json({k: v for k, v in receipt.items() if k != "sigstore"})
+    return receipt_content_hash(receipt)
 
 
 def write_receipt(receipt: dict, run_dir: Path) -> Path:

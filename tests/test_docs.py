@@ -7,11 +7,12 @@ from farm_notary.cli import _build_parser
 from farm_notary.profiles import PROFILE_NAMES
 from farm_notary.schema import REQUIRED_KEYS, TOOL_VERSION
 from farm_notary.scope import ALLOWED_SENTENCE
-from farm_notary.ladder import L0_MEANING, LADDER_LEVELS
+from farm_notary.ladder import L0_MEANING, LADDER_LEVELS, LADDER_MEANINGS
 from farm_notary.verify import _CLAIM_NAMES
 
 README = Path("README.md").read_text(encoding="utf-8")
 CLAIMS = Path("docs/CLAIMS.md").read_text(encoding="utf-8")
+CHANGELOG = Path("CHANGELOG.md").read_text(encoding="utf-8")
 DESIGN = Path("docs/DESIGN.md").read_text(encoding="utf-8")
 ACTION = Path("docs/ACTION.md").read_text(encoding="utf-8")
 PRINCIPLES = Path("docs/PRINCIPLES.md").read_text(encoding="utf-8")
@@ -95,7 +96,8 @@ def test_intro_deck_stays_inside_the_claim_card():
     assert "command was not run" in SLIDES or "not a completed re-run" in SLIDES
     for level in LADDER_LEVELS:
         assert level in SLIDES
-    assert "Reserved" in SLIDES
+    assert LADDER_MEANINGS["L3"] in CLAIMS
+    assert "not proven independent" in SLIDES.lower()
     assert "cross-hardware" in SLIDES.lower()
     assert "verified result" in SLIDES.lower()
     assert "badge" in SLIDES.lower()
@@ -144,3 +146,13 @@ def test_action_docs_match_action_yml_defaults():
     assert "not passed" in ACTION or "without" in ACTION
     assert "dry-run" in README
     assert "CLI" in ACTION and "dry-run" in ACTION
+    assert "sign-receipt" in ACTION
+    assert "v2.5.3" in ACTION
+    assert "default: \"false\"" in action or 'default: "false"' in action
+
+
+def test_changelog_records_sigstore_and_honest_l3():
+    assert "Sigstore" in CHANGELOG
+    assert "identity not constrained" in CHANGELOG
+    assert "L3 (independent" not in CHANGELOG
+    assert "identity) is reserved" not in CHANGELOG

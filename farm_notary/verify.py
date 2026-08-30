@@ -18,6 +18,11 @@ from farm_notary.ladder import LadderResult, evaluate_ladder
 from farm_notary.manifest import RECEIPT_NAME, Manifest, hash_file
 from farm_notary.precommit import PRECOMMIT_NAME, PRECOMMIT_PROOF_NAME, load_precommit
 from farm_notary.schema import MANIFEST_VERSION
+from farm_notary.sigstore import (
+    cosign_available,
+    extract_bundle_identity,
+    verify_sigstore_bundle,
+)
 
 
 def verify_derived_artifacts(manifest: Manifest, run_dir: Path, *, allow_execute: bool = False) -> List[str]:
@@ -84,7 +89,12 @@ def verify_run_dir(manifest: Manifest, run_dir: Path) -> List[str]:
     return problems
 
 
-def verify_receipt(manifest: Manifest, run_dir: Path) -> List[str]:
+def verify_receipt(
+    manifest: Manifest,
+    run_dir: Path,
+    *,
+    notes: Optional[List[str]] = None,
+) -> List[str]:
     """Check the reproduction receipt (if present) against the manifest.
 
     Validates that the receipt refers to this manifest's content hash and,
@@ -92,7 +102,7 @@ def verify_receipt(manifest: Manifest, run_dir: Path) -> List[str]:
     receipt's own hash.  When a ``"sigstore"`` bundle is present and
     ``cosign`` is on PATH, the bundle is verified against the receipt bytes;
     a failed verification is reported as a problem.  When ``cosign`` is not
-    available the bundle is noted but not treated as a hard failure so that
+    available the bundle is appended to *notes* (not *problems*) so that
     unsigned-receipt verification keeps working without cosign installed.
     """
     from farm_notary.manifest import RECEIPT_NAME
@@ -124,14 +134,16 @@ def verify_receipt(manifest: Manifest, run_dir: Path) -> List[str]:
             f"receipt proof: {p}"
             for p in verify_proof(proof_path.read_bytes(), receipt_hash(receipt))
         ]
-    # Check the Sigstore bundle when cosign is available.
     sigstore_bundle = receipt.get("sigstore")
     if sigstore_bundle:
-        from farm_notary.sigstore import cosign_available, verify_sigstore_bundle
-
         if cosign_available():
             sig_probs, _ = verify_sigstore_bundle(sigstore_bundle, receipt)
             problems += [f"sigstore: {p}" for p in sig_probs]
+        elif notes is not None:
+            notes.append(
+                "sigstore bundle present but cosign not on PATH; "
+                "install cosign to verify"
+            )
     return problems
 
 
@@ -387,7 +399,6 @@ def evaluate_claims(
     run_dir = Path(run_dir)
     tamper_problems = verify_run_dir(manifest, run_dir)
     anchor_problems = verify_anchor(manifest, run_dir)
-    receipt_problems = verify_receipt(manifest, run_dir)
     precommit_problems = verify_precommit(manifest, run_dir)
     pc = dict(precommit) if precommit is not None else None
     if pc is None:
@@ -424,6 +435,7 @@ def evaluate_claims(
             notes = format_diagnostics(diagnostics_from_receipt(load_receipt(run_dir)))
         except (ValueError, OSError, TypeError):
             notes = []
+    receipt_problems = verify_receipt(manifest, run_dir, notes=notes)
     notes.extend(beacon_check.notes)
     tamper_evident = "pass" if not tamper_problems else "fail"
     existed_by = _existed_by_status(manifest, run_dir, anchor_problems)
@@ -439,8 +451,6 @@ def evaluate_claims(
             _receipt = load_receipt(run_dir)
             _bundle = _receipt.get("sigstore")
             if _bundle:
-                from farm_notary.sigstore import cosign_available, extract_bundle_identity
-
                 _sigstore_probs = [p for p in receipt_problems if p.startswith("sigstore:")]
                 if cosign_available() and not _sigstore_probs and not receipt_problems:
                     receipt_sigstore_verified = True
@@ -449,11 +459,8 @@ def evaluate_claims(
                         notes.append(f"sigstore identity: {_identity['subject']}")
                     if _identity.get("issuer"):
                         notes.append(f"sigstore issuer: {_identity['issuer']}")
-                elif not cosign_available():
-                    notes.append(
-                        "sigstore bundle present but cosign not on PATH; "
-                        "install cosign to verify"
-                    )
+                    if not _identity.get("subject") and not _identity.get("issuer"):
+                        notes.append("sigstore identity could not be parsed")
         except (ValueError, OSError, TypeError):
             pass
 

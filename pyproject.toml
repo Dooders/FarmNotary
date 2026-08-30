@@ -16,7 +16,7 @@ dependencies = []
 chain = ["web3>=7,<8"]
 ots = ["opentimestamps>=0.4.5"]
 sigstore = ["cryptography>=41"]
-dev = ["pytest", "web3>=7,<8", "opentimestamps>=0.4.5"]
+dev = ["pytest", "web3>=7,<8", "opentimestamps>=0.4.5", "cryptography>=41"]
 
 [project.scripts]
 farm-notary = "farm_notary.cli:main"

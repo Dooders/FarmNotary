@@ -19,8 +19,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from farm_notary.ladder import L3_GAP_SIGNATURE, LADDER_MEANINGS, evaluate_ladder
-from farm_notary.reproduce import build_receipt
-from farm_notary.sigstore import receipt_signable_bytes
+from farm_notary.reproduce import build_receipt, receipt_hash
+from farm_notary.sigstore import (
+    SIGSTORE_ID_TOKEN_ENV,
+    SigstoreError,
+    bundle_has_inclusion_proof,
+    extract_bundle_identity,
+    read_identity_token_cli,
+    receipt_signable_bytes,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -91,14 +98,28 @@ def test_signable_bytes_sort_keys():
 
 
 def test_receipt_hash_excludes_sigstore():
-    from farm_notary.reproduce import receipt_hash
-
     r = _make_receipt()
     h1 = receipt_hash(r)
     r2 = dict(r)
     r2["sigstore"] = {"bundle": "x"}
     h2 = receipt_hash(r2)
     assert h1 == h2
+
+
+def test_signable_bytes_match_hash_json_canonicalization():
+    """OTS and Sigstore commit to the same encoding."""
+    import hashlib
+
+    receipt = _make_receipt()
+    expected = json.dumps(
+        {k: v for k, v in receipt.items() if k != "sigstore"},
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    assert receipt_signable_bytes(receipt) == expected
+    assert hashlib.sha256(receipt_signable_bytes(receipt)).hexdigest() == receipt_hash(
+        receipt
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -202,8 +223,10 @@ def test_verify_receipt_valid_sigstore_bundle(tmp_path: Path):
     ):
         mock_run.return_value = MagicMock(returncode=0, stdout="Verified OK", stderr="")
         problems = verify_receipt(manifest, tmp_path)
+        cmd = mock_run.call_args[0][0]
 
     assert problems == []
+    assert "--offline" not in cmd
 
 
 def test_verify_receipt_bad_sigstore_bundle(tmp_path: Path):
@@ -309,6 +332,9 @@ def test_evaluate_claims_signed_receipt_earns_l3(tmp_path: Path):
 
     assert card.ladder.level == "L3"
     assert LADDER_MEANINGS["L3"] in card.render()
+    assert "independent identity reproduced it" not in card.render()
+    assert "independently reproduced" not in card.render()
+    assert "sigstore identity could not be parsed" in card.notes
 
 
 # ---------------------------------------------------------------------------
@@ -324,7 +350,7 @@ def test_cli_reproduce_sign_flag(tmp_path: Path, capsys):
     run_dir, manifest, _ = make_notarized_run(tmp_path)
     fake_bundle = {"mediaType": "test", "messageSignature": {}}
 
-    with patch("farm_notary.sigstore.sign_receipt", return_value=fake_bundle):
+    with patch("farm_notary.cli.sign_receipt", return_value=fake_bundle):
         ret = main(["reproduce", "--run-dir", str(run_dir), "--sign"])
 
     assert ret == 0
@@ -379,7 +405,7 @@ def test_sign_receipt_basic_command_construction():
 
 
 def test_sign_receipt_includes_identity_token():
-    """When identity_token is provided it is appended as --identity-token TOKEN."""
+    """Token is passed via SIGSTORE_ID_TOKEN, never --identity-token on argv."""
     from farm_notary.sigstore import sign_receipt
 
     fake_bundle = {"mediaType": "test"}
@@ -393,9 +419,9 @@ def test_sign_receipt_includes_identity_token():
         sign_receipt(receipt, identity_token="MY_TOKEN")
 
     cmd = mock_run.call_args[0][0]
-    assert "--identity-token" in cmd
-    idx = cmd.index("--identity-token")
-    assert cmd[idx + 1] == "MY_TOKEN"
+    assert "--identity-token" not in cmd
+    env = mock_run.call_args.kwargs["env"]
+    assert env[SIGSTORE_ID_TOKEN_ENV] == "MY_TOKEN"
 
 
 def test_sign_receipt_missing_cosign_raises():
@@ -460,4 +486,189 @@ def test_sign_receipt_bundle_not_object_raises():
     ):
         with pytest.raises(SigstoreError, match="not a JSON object"):
             sign_receipt(_make_receipt())
+
+
+def test_read_identity_token_cli_rejects_raw_jwt():
+    with pytest.raises(SigstoreError, match="@PATH"):
+        read_identity_token_cli("eyJhbGciOi.e30.sig")
+
+
+def test_read_identity_token_cli_reads_at_path(tmp_path: Path):
+    token_path = tmp_path / "oidc.txt"
+    token_path.write_text("file-token\n", encoding="utf-8")
+    assert read_identity_token_cli(f"@{token_path}") == "file-token"
+
+
+def test_bundle_has_inclusion_proof():
+    assert bundle_has_inclusion_proof({"verificationMaterial": {"tlogEntries": [{}]}})
+    assert not bundle_has_inclusion_proof({"verificationMaterial": {}})
+    assert not bundle_has_inclusion_proof("not-a-dict")
+
+
+def test_verify_uses_offline_when_bundle_has_tlog(tmp_path: Path):
+    from farm_notary.manifest import build_manifest, write_manifest
+    from farm_notary.verify import verify_receipt
+
+    (tmp_path / "summary.csv").write_text("ok\n", encoding="utf-8")
+    manifest = build_manifest(tmp_path, publish_patterns=["*.csv"], git_sha="abc")
+    write_manifest(manifest, tmp_path)
+    receipt = _make_receipt(original_manifest_hash=manifest.content_hash())
+    receipt["sigstore"] = {"verificationMaterial": {"tlogEntries": [{"logIndex": "1"}]}}
+    from farm_notary.manifest import RECEIPT_NAME
+
+    (tmp_path / RECEIPT_NAME).write_text(
+        json.dumps(receipt, indent=2) + "\n", encoding="utf-8"
+    )
+    with (
+        patch("farm_notary.sigstore.shutil.which", return_value="/usr/bin/cosign"),
+        patch("farm_notary.sigstore.subprocess.run") as mock_run,
+    ):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        assert verify_receipt(manifest, tmp_path) == []
+        assert "--offline" in mock_run.call_args[0][0]
+
+
+def test_verify_receipt_notes_missing_cosign(tmp_path: Path):
+    from farm_notary.manifest import RECEIPT_NAME, build_manifest, write_manifest
+    from farm_notary.verify import verify_receipt
+
+    (tmp_path / "summary.csv").write_text("ok\n", encoding="utf-8")
+    manifest = build_manifest(tmp_path, publish_patterns=["*.csv"], git_sha="abc")
+    write_manifest(manifest, tmp_path)
+    receipt = _make_receipt(original_manifest_hash=manifest.content_hash())
+    receipt["sigstore"] = {"bundle": "data"}
+    (tmp_path / RECEIPT_NAME).write_text(
+        json.dumps(receipt, indent=2) + "\n", encoding="utf-8"
+    )
+    notes: list[str] = []
+    with patch("farm_notary.sigstore.shutil.which", return_value=None):
+        problems = verify_receipt(manifest, tmp_path, notes=notes)
+    assert problems == []
+    assert any("cosign not on PATH" in n for n in notes)
+
+
+def test_extract_identity_v2_issuer():
+    import base64
+    from datetime import datetime, timedelta, timezone
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    issuer_url = b"https://token.actions.githubusercontent.com"
+    der_issuer = b"\x0c" + bytes([len(issuer_url)]) + issuer_url
+    now = datetime.now(timezone.utc)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "t")]))
+        .issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "t")]))
+        .public_key(key.public_key())
+        .serial_number(1)
+        .not_valid_before(now)
+        .not_valid_after(now + timedelta(days=1))
+        .add_extension(
+            x509.SubjectAlternativeName([x509.RFC822Name("lab@example.com")]),
+            critical=False,
+        )
+        .add_extension(
+            x509.UnrecognizedExtension(
+                x509.ObjectIdentifier("1.3.6.1.4.1.57264.1.8"), der_issuer
+            ),
+            critical=False,
+        )
+        .sign(key, hashes.SHA256())
+    )
+    raw = base64.b64encode(cert.public_bytes(serialization.Encoding.DER)).decode("ascii")
+    bundle = {
+        "verificationMaterial": {
+            "x509CertificateChain": {"certificates": [{"rawBytes": raw}]}
+        }
+    }
+    identity = extract_bundle_identity(bundle)
+    assert identity["subject"] == "lab@example.com"
+    assert identity["issuer"] == "https://token.actions.githubusercontent.com"
+
+
+def test_failed_receipt_with_bundle_does_not_earn_l3(tmp_path: Path):
+    from farm_notary.anchor import anchor_run
+    from farm_notary.beacon import BeaconCheck
+    from farm_notary.manifest import build_manifest, write_manifest
+    from farm_notary.ots import PROOF_NAME, serialize_proof
+    from farm_notary.reproduce import ReproductionResult, write_receipt
+    from farm_notary.verify import evaluate_claims
+    from tests.test_ots import bitcoin_timestamp
+
+    (tmp_path / "summary.csv").write_text("paradigm,total\nparty,0.2\n", encoding="utf-8")
+    manifest = build_manifest(
+        tmp_path,
+        publish_patterns=["*.csv"],
+        git_sha="abc",
+        git_dirty=False,
+        command="python run.py {run_dir}",
+    )
+    write_manifest(manifest, tmp_path)
+    anchor_run(manifest)
+    manifest.anchor["backend"] = "opentimestamps"
+    manifest.anchor["detail"] = {"proof": PROOF_NAME}
+    digest = bytes.fromhex(manifest.content_hash())
+    (tmp_path / PROOF_NAME).write_bytes(serialize_proof(bitcoin_timestamp(digest, 800000)))
+    result = ReproductionResult(
+        command="python run.py {run_dir}",
+        returncode=1,
+        matched=[],
+        mismatched=["summary.csv"],
+    )
+    receipt = build_receipt(manifest, result)
+    receipt["sigstore"] = {"verificationMaterial": {"tlogEntries": [{}]}}
+    write_receipt(receipt, tmp_path)
+    empty_beacon = BeaconCheck(gaps=[], problems=[], notes=[])
+    with (
+        patch("farm_notary.verify.verify_beacon_binding", return_value=empty_beacon),
+        patch("farm_notary.sigstore.shutil.which", return_value="/usr/bin/cosign"),
+        patch("farm_notary.sigstore.subprocess.run") as mock_run,
+    ):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        card = evaluate_claims(manifest, tmp_path)
+    assert card.ladder.level == "L2"
+    assert card.ladder.level != "L3"
+
+
+def test_cli_skips_sign_when_reproduce_fails(tmp_path: Path, capsys):
+    from farm_notary.cli import main
+    from farm_notary.reproduce import ReproductionResult
+    from tests.test_reproduce import make_notarized_run
+
+    run_dir, _manifest, _ = make_notarized_run(tmp_path)
+    failed = ReproductionResult(command="x", returncode=1, mismatched=["summary.csv"])
+    with (
+        patch("farm_notary.reproduce.reproduce_run", return_value=failed),
+        patch("farm_notary.cli.sign_receipt") as mock_sign,
+    ):
+        ret = main(["reproduce", "--run-dir", str(run_dir), "--sign"])
+    assert ret == 1
+    mock_sign.assert_not_called()
+    assert "skipping Sigstore sign" in capsys.readouterr().err
+
+
+def test_cli_rejects_raw_identity_token(tmp_path: Path, capsys):
+    from farm_notary.cli import main
+    from tests.test_reproduce import make_notarized_run
+
+    run_dir, _manifest, _ = make_notarized_run(tmp_path)
+    with patch("farm_notary.cli.sign_receipt") as mock_sign:
+        ret = main(
+            [
+                "reproduce",
+                "--run-dir",
+                str(run_dir),
+                "--sign",
+                "--identity-token",
+                "eyJhbGciOi.e30.sig",
+            ]
+        )
+    assert ret == 2
+    mock_sign.assert_not_called()
+    assert "@PATH" in capsys.readouterr().err
 
