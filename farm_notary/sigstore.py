@@ -137,13 +137,23 @@ def bundle_has_inclusion_proof(bundle: Any) -> bool:
     """True when *bundle* looks like it carries a Rekor inclusion proof."""
     if not isinstance(bundle, dict):
         return False
+    # Legacy v0.1 / cosign < 2.0 bundle format
     if bundle.get("rekorBundle"):
         return True
     vm = bundle.get("verificationMaterial")
     if not isinstance(vm, dict):
         return False
-    if vm.get("tlogEntries") or vm.get("tlogEntry") or vm.get("tlog"):
-        return True
+    # v0.3 bundle: list of tlogEntries
+    tlog_entries = vm.get("tlogEntries")
+    if isinstance(tlog_entries, list):
+        for entry in tlog_entries:
+            if isinstance(entry, dict) and entry.get("inclusionProof"):
+                return True
+    # Singular / legacy alternative key names
+    for key in ("tlogEntry", "tlog"):
+        entry = vm.get(key)
+        if isinstance(entry, dict) and entry.get("inclusionProof"):
+            return True
     return False
 
 

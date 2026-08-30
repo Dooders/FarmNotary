@@ -500,7 +500,18 @@ def test_read_identity_token_cli_reads_at_path(tmp_path: Path):
 
 
 def test_bundle_has_inclusion_proof():
-    assert bundle_has_inclusion_proof({"verificationMaterial": {"tlogEntries": [{}]}})
+    # Entry with a populated inclusionProof → True
+    assert bundle_has_inclusion_proof(
+        {"verificationMaterial": {"tlogEntries": [{"inclusionProof": {"checkpoint": "x"}}]}}
+    )
+    # Legacy rekorBundle format → True
+    assert bundle_has_inclusion_proof({"rekorBundle": {"signedEntryTimestamp": "abc"}})
+    # Empty tlogEntry (no inclusionProof) → False
+    assert not bundle_has_inclusion_proof({"verificationMaterial": {"tlogEntries": [{}]}})
+    # tlogEntry with logIndex but no inclusionProof → False
+    assert not bundle_has_inclusion_proof(
+        {"verificationMaterial": {"tlogEntries": [{"logIndex": "1"}]}}
+    )
     assert not bundle_has_inclusion_proof({"verificationMaterial": {}})
     assert not bundle_has_inclusion_proof("not-a-dict")
 
@@ -513,7 +524,11 @@ def test_verify_uses_offline_when_bundle_has_tlog(tmp_path: Path):
     manifest = build_manifest(tmp_path, publish_patterns=["*.csv"], git_sha="abc")
     write_manifest(manifest, tmp_path)
     receipt = _make_receipt(original_manifest_hash=manifest.content_hash())
-    receipt["sigstore"] = {"verificationMaterial": {"tlogEntries": [{"logIndex": "1"}]}}
+    receipt["sigstore"] = {
+        "verificationMaterial": {
+            "tlogEntries": [{"logIndex": "1", "inclusionProof": {"checkpoint": "x"}}]
+        }
+    }
     from farm_notary.manifest import RECEIPT_NAME
 
     (tmp_path / RECEIPT_NAME).write_text(
