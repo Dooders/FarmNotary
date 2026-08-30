@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from farm_notary.anchor import _write_cid_binding_proof, anchor_run, get_backend, write_proof
+from farm_notary.anchor import anchor_run, get_backend, write_cid_binding_proof, write_proof
 from farm_notary.manifest import (
     MANIFEST_NAME,
     DirtyTreeError,
@@ -606,7 +606,7 @@ def _cmd_anchor(args: argparse.Namespace) -> int:
     )
     proof_path = write_proof(receipt, run_dir)
     if cid is not None and receipt.backend == "opentimestamps":
-        _write_cid_binding_proof(manifest.content_hash(), cid, run_dir, receipt)
+        write_cid_binding_proof(manifest.content_hash(), cid, run_dir, receipt)
 
     no_write = getattr(args, "no_write", False)
     if not no_write:

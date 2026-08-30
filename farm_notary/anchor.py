@@ -99,7 +99,7 @@ def write_proof(receipt: AnchorReceipt, run_dir: Path) -> Optional[Path]:
     return dest
 
 
-def _write_cid_binding_proof(
+def write_cid_binding_proof(
     manifest_hash: str,
     cid: str,
     run_dir: Path,
@@ -225,6 +225,6 @@ def notarize_run(
     receipt = anchor_run(manifest, cid=cid, backend=backend, allow_dirty=allow_dirty)
     write_proof(receipt, run_dir)
     if cid is not None and receipt.backend == "opentimestamps":
-        _write_cid_binding_proof(manifest.content_hash(), cid, run_dir, receipt)
+        write_cid_binding_proof(manifest.content_hash(), cid, run_dir, receipt)
     write_manifest(manifest, run_dir)
     return manifest, receipt
