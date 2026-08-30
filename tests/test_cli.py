@@ -5,7 +5,7 @@ from farm_notary import cli
 from farm_notary.anchor import AnchorReceipt
 from farm_notary.cli import main
 from farm_notary.manifest import load_manifest
-from farm_notary.ots import PROOF_NAME
+from farm_notary.ots import DEFAULT_CALENDARS, PROOF_NAME, serialize_proof
 from tests.conftest import StubServer
 from tests.test_ots import (
     bitcoin_timestamp,
@@ -244,6 +244,36 @@ def test_full_pin_anchor_upgrade_verify_flow(tmp_path: Path, monkeypatch, capsys
     finally:
         ipfs.close()
         calendar.close()
+
+
+def test_verify_distinguishes_public_and_user_supplied_pending_calendars(tmp_path: Path, capsys):
+    run_dir = make_run_dir(tmp_path)
+    assert main(["manifest", "--run-dir", str(run_dir), "--git-sha", "abc", "--publish", "*.csv"]) == 0
+    manifest = load_manifest(run_dir)
+    digest = bytes.fromhex(manifest.content_hash())
+    data = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    data["anchor"] = {
+        "backend": "opentimestamps",
+        "manifest_hash": manifest.content_hash(),
+        "detail": {"proof": PROOF_NAME},
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(data), encoding="utf-8")
+
+    (run_dir / PROOF_NAME).write_bytes(
+        serialize_proof(pending_timestamp(digest, DEFAULT_CALENDARS[0]))
+    )
+    assert main(["verify", "--run-dir", str(run_dir)]) == 0
+    out = capsys.readouterr().out
+    assert "pending on public OpenTimestamps calendar:" in out
+    assert DEFAULT_CALENDARS[0] in out
+
+    (run_dir / PROOF_NAME).write_bytes(
+        serialize_proof(pending_timestamp(digest, "https://example.com"))
+    )
+    assert main(["verify", "--run-dir", str(run_dir)]) == 0
+    out = capsys.readouterr().out
+    assert "pending at user-supplied calendar:" in out
+    assert "https://example.com" in out
 
 
 def test_anchor_pin_gateway_reachable_recorded(tmp_path: Path, monkeypatch, capsys):

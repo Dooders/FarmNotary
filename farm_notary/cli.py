@@ -205,7 +205,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_ver = sub.add_parser(
         "verify",
-        help="Print a CLAIMS.md claim card for a run (rehash, timestamp, precommit, receipt)",
+        help=(
+            "Print a CLAIMS.md claim card for a run "
+            "(exit 0 = attempted checks passed; ladder strength is separate)"
+        ),
     )
     p_ver.add_argument("--run-dir", help="Run directory containing manifest.json")
     p_ver.add_argument("--manifest", help=f"Path to a {MANIFEST_NAME} (artifacts checked next to it)")

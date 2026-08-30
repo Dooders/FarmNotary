@@ -142,23 +142,25 @@ farm-notary verify --run-dir runs/i-0 --live-beacon
 
 ## What you may claim
 
-`farm-notary verify` prints a card. Reviewers read the card, not the exit code. **Missing is not failure.** Exit 0 means no attempted check failed — not that every claim was earned, and not that the science is right.
+`farm-notary verify` prints a card. Reviewers read the card, not the exit code. **Missing is not failure.** Exit 0 means the artifact hashes match and every attempted proof check passed (including that an OTS proof, if present, commits to the content hash) — not that every claim was earned, not that `existed by time T` reached Bitcoin, and not that the science is right.
 
 ```
 claim card
 level: none — no earned ladder level
 next:  L0 — these bytes existed by time T; Bitcoin headers not verified by this tool (missing: Bitcoin attestation)
 •  tamper-evident record           — pass
-•  existed by time T               — pending
+•  existed by time T               — pending on public OpenTimestamps calendar: https://a.pool.opentimestamps.org (not yet Bitcoin-attested)
 •  pre-specified design            — missing
 •  bitwise reproducible (scoped)   — 6/6, ignored: *.mp4; byte-identical on x86-64 Linux in a pinned environment
 •  not claimed: scientific correctness
 ```
 
 The `level:` line is the highest earned reader-ladder step (L0–L3). Pending
-OTS is not L0. L0 means the proof commits to the content hash and carries a
-Bitcoin-height attestation; this tool does not check Bitcoin headers (`ots
-verify` does). L1 needs a recorded command, git SHA, and environment
+OTS is not L0. The `existed by time T` row distinguishes Bitcoin-attested
+proofs from pending public-calendar submissions and user-supplied calendars
+that remain untrusted until Bitcoin. L0 means the proof commits to the content
+hash and carries a Bitcoin-height attestation; this tool does not check
+Bitcoin headers (`ots verify` does). L1 needs a recorded command, git SHA, and environment
 fingerprint — not a completed re-run. L2 requires a beacon-derived seed
 after the plan is anchored (not scientific correctness). L3 needs a Sigstore
 keyless signature on the reproduction receipt (`farm-notary reproduce --sign`).
@@ -192,7 +194,7 @@ After each pin, FarmNotary checks `https://ipfs.io/ipfs/<cid>` and records `cid_
 - **Recommended live backend:** `--backend ots` — keyless, no gas, Bitcoin-backed.
 - **Experimental:** `--backend eas` — funded key, gas on Base, attester-address trust. See [docs/EAS.md](docs/EAS.md).
 
-`--backend ots` submits the *content hash* (SHA-256 of the canonical body, excluding stamp fields `cid`, `cid_reachable`, `pin_service`, `anchor`, `identity`) to public calendars (`--calendar` or `FARM_NOTARY_CALENDARS`). The proof is `manifest.ots`. Stamping the manifest afterwards does not invalidate it.
+`--backend ots` submits the *content hash* (SHA-256 of the canonical body, excluding stamp fields `cid`, `cid_reachable`, `pin_service`, `anchor`, `identity`) to calendars (`--calendar` or `FARM_NOTARY_CALENDARS`; default: public pools). The proof is `manifest.ots`. `verify` reports whether that proof is Bitcoin-attested, pending on known public pools, or pending only on user-supplied calendars. Stamping the manifest afterwards does not invalidate it.
 
 `upgrade` asks calendars for a Bitcoin attestation (typically hours). Exit 1 means still pending. Full header checks against your own node are left to standard `ots verify` tooling.
 

@@ -10,6 +10,7 @@ from opentimestamps.core.timestamp import Timestamp
 
 from farm_notary.manifest import build_manifest
 from farm_notary.ots import (
+    DEFAULT_CALENDARS,
     OpenTimestampsBackend,
     OtsError,
     calendar_urls,
@@ -113,6 +114,19 @@ def test_proof_status_summary(tmp_path: Path):
     assert status.confirmed
     assert status.bitcoin_heights == [800000]
     assert status.summary() == ["anchored in Bitcoin block 800000"]
+
+
+def test_proof_status_splits_public_and_user_supplied_pending_calendars():
+    digest = b"\xaa" * 32
+    proof = serialize_proof(pending_timestamp(digest, DEFAULT_CALENDARS[0]))
+    status = proof_status(proof)
+    assert status.public_pending_calendars == [DEFAULT_CALENDARS[0]]
+    assert status.unknown_pending_calendars == []
+
+    proof = serialize_proof(pending_timestamp(digest, "https://example.com"))
+    status = proof_status(proof)
+    assert status.public_pending_calendars == []
+    assert status.unknown_pending_calendars == ["https://example.com"]
 
 
 def test_upgrade_proof_completes_pending_attestation(stub_server):

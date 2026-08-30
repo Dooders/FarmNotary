@@ -11,6 +11,8 @@ from farm_notary.paper import (
     build_paper_pack,
     write_paper_pack,
 )
+from farm_notary.ots import DEFAULT_CALENDARS, PROOF_NAME, serialize_proof
+from tests.test_ots import pending_timestamp
 
 
 def _run(tmp_path, seed=0):
@@ -67,12 +69,31 @@ def test_bitcoin_attestation_none_and_pending():
     class Pending:
         anchor = {"backend": "opentimestamps", "detail": {"status": "pending", "calendars": ["https://x"]}}
 
-    assert bitcoin_attestation_label(Pending()) == "pending"
+    assert bitcoin_attestation_label(Pending()) == "Pending (calendar attestation only)"
 
     class Dry:
         anchor = {"backend": "dry-run"}
 
     assert bitcoin_attestation_label(Dry()) == "none"
+
+
+def test_bitcoin_attestation_label_distinguishes_public_and_user_supplied_pending(tmp_path):
+    run, manifest = _run(tmp_path)
+    digest = bytes.fromhex(manifest.content_hash())
+    manifest.anchor = {"backend": "opentimestamps", "detail": {"proof": PROOF_NAME}}
+
+    (run / PROOF_NAME).write_bytes(
+        serialize_proof(pending_timestamp(digest, DEFAULT_CALENDARS[0]))
+    )
+    assert bitcoin_attestation_label(manifest, run) == "Pending (public OpenTimestamps calendars)"
+
+    (run / PROOF_NAME).write_bytes(
+        serialize_proof(pending_timestamp(digest, "https://example.com"))
+    )
+    assert bitcoin_attestation_label(manifest, run) == (
+        "Pending at user-supplied calendar https://example.com "
+        "(untrusted until Bitcoin)"
+    )
 
 
 def test_cli_paper_pack(tmp_path, capsys):
