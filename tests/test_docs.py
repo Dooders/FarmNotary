@@ -213,3 +213,15 @@ def test_changelog_records_sigstore_and_honest_l3():
     assert "identity not constrained" in CHANGELOG
     assert "L3 (independent" not in CHANGELOG
     assert "identity) is reserved" not in CHANGELOG
+
+
+def test_later_wave_helpers_are_labeled_unsigned_and_experimental():
+    assert "unsigned" in README.lower()
+    assert "Not verifiable provenance" in README
+    assert "unsigned-summary-not-for-verification" in DESIGN
+    assert "notarize_tracker_run" in DESIGN
+    assert "no default `*`" in DESIGN or "no default *" in DESIGN
+    assert "Hash lineage" in DESIGN
+    assert "unsigned-summary-not-for-verification" in CHANGELOG or "unsigned" in CHANGELOG
+    assert "notarize_tracker_run" in CHANGELOG
+    assert "Interop formats as new claim types" in PRINCIPLES

@@ -13,6 +13,14 @@ The last tagged / PyPI release is **0.1.0**. This tree is **0.2.0**.
 
 ### Changed
 
+- Later-wave interop/archive/plugins/chain (#40) are honest first-cuts, not
+  claim-ladder steps. SLSA/C2PA files are named `*.unsigned.json` and marked
+  `unsigned-summary-not-for-verification`. Plugins require an explicit
+  allowlist (no default `*`) and refuse dirty trees unless `allow_dirty=True`.
+  `plugins.notarize_run` is renamed to `notarize_tracker_run` so it no longer
+  collides with `farm_notary.anchor.notarize_run`. Provenance-chain paths are
+  stored relative to the chain file. Zenodo `--zenodo-creator` is required
+  for drafts as well as publish.
 - Docs rewritten against the 0.2 CLI: install path (PyPI is 0.1.0; current
   line is git `@dev`), `anchor` dry-run default vs Action `ots`,
   `--verify-derived`, publish profiles, claim levels, and Action pin

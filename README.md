@@ -140,9 +140,9 @@ farm-notary verify --run-dir runs/i-0 --live-beacon
 | `index` | Append a run or campaign to a static registry (no scores) |
 | `derive-seeds` | After the plan is stamped, fetch `min_round` and write `seeds.json` |
 | `register-schema` | One-time EAS schema registration |
-| `emit-interop` | Dual-write interop provenance files alongside `manifest.json` (SLSA/in-toto, RO-Crate, unsigned C2PA-style summary) |
-| `archive` | Deposit a run to durable storage: Zenodo (DOI) and/or Software Heritage (SWH ID) |
-| `chain` | Build or verify a multi-stage provenance chain (`provenance-chain.json`) |
+| `emit-interop` | Unsigned JSON summaries (SLSA/in-toto vocabulary, RO-Crate, C2PA-style). Not verifiable provenance |
+| `archive` | Optional Zenodo deposit / Software Heritage lookup. IDs are not claim-card rows |
+| `chain` | Manifest-hash lineage (`provenance-chain.json`). Not input/output data flow |
 
 ## What you may claim
 
@@ -425,5 +425,7 @@ CI runs pytest on Python 3.9–3.12.
 ## Status
 
 0.2. Manifests, campaigns, derivation claims, environment fingerprints, optional identity, paper pack, public index, hashing, IPFS pinning, OpenTimestamps (CLI dry-run default; Action `ots`), proof upgrade, claim-card verify, reusable GitHub Action, and experimental EAS on Base / Base Sepolia are implemented and tested.
+
+Later-wave helpers from #40 (`emit-interop`, `archive`, tracker plugins, `chain`) are experimental first-cuts. They are not claim-ladder steps: SLSA/C2PA files are unsigned summaries, plugins require an explicit allowlist, and a provenance chain is hash lineage only.
 
 The last tagged / PyPI release is **0.1.0**. This tree is **0.2.0**. The anchoring layer is outsourced — earlier revisions carried a custom `SimulationRegistry` contract, which was removed.

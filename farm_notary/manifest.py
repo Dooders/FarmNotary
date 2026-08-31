@@ -25,9 +25,15 @@ NOTARY_FILE_NAMES = frozenset(
         "campaign.json",
         "appendix.md",
         "seeds.json",
+        "provenance-chain.json",
+        "ro-crate-metadata.json",
+        "slsa-provenance.json",
+        "slsa-provenance.unsigned.json",
+        "c2pa-claim.json",
+        "c2pa-claim-summary.unsigned.json",
     }
 )
-NOTARY_FILE_SUFFIXES = (".ots",)
+NOTARY_FILE_SUFFIXES = (".ots", ".unsigned.json")
 
 # Seed keys stripped when hashing a sweep's shared config.
 SEED_KEYS = ("seed", "rng_seed", "random_seed")

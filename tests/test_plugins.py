@@ -7,7 +7,13 @@ from unittest.mock import MagicMock
 import pytest
 
 from farm_notary.manifest import MANIFEST_NAME
-from farm_notary.plugins import MLflowNotaryPlugin, dvc_anchor_outputs, notarize_run
+from farm_notary.interop import SLSA_FILE_NAME
+from farm_notary.plugins import (
+    MLflowNotaryPlugin,
+    dvc_anchor_outputs,
+    notarize_run,
+    notarize_tracker_run,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -60,6 +66,10 @@ class TestMLflowNotaryPlugin:
         data = json.loads(manifest_path.read_text())
         assert data["config"].get("mlflow_run_id") == "myrun42"
 
+    def test_requires_publish_scope(self):
+        with pytest.raises(ValueError, match="publish_patterns"):
+            MLflowNotaryPlugin()
+
     def test_non_local_artifact_uri_returns_none(self, tmp_path):
         plugin = MLflowNotaryPlugin(publish_patterns=["*.json"])
         info = MagicMock()
@@ -69,7 +79,8 @@ class TestMLflowNotaryPlugin:
         run.info = info
         run.data = MagicMock()
         run.data.params = {}
-        assert plugin.on_run_end(run) is None
+        with pytest.warns(UserWarning, match="not a local path"):
+            assert plugin.on_run_end(run) is None
 
     def test_missing_artifact_dir_returns_none(self, tmp_path):
         plugin = MLflowNotaryPlugin(publish_patterns=["*.json"])
@@ -155,16 +166,21 @@ class TestDVCAnchorOutputs:
         assert "data/processed.csv" in paths
         assert "models/model.pkl" in paths
 
+    def test_empty_lock_without_patterns_raises(self, tmp_path):
+        (tmp_path / "dvc.lock").write_text("schema: '2.0'\nstages: {}\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="no default"):
+            dvc_anchor_outputs(tmp_path)
+
 
 # ---------------------------------------------------------------------------
 # notarize_run helper
 # ---------------------------------------------------------------------------
 
 
-class TestNotarizeRun:
+class TestNotarizeTrackerRun:
     def test_writes_manifest(self, tmp_path):
         (tmp_path / "result.csv").write_text("metric,value\nacc,0.9\n", encoding="utf-8")
-        manifest = notarize_run(
+        manifest = notarize_tracker_run(
             tmp_path,
             publish_patterns=["*.csv"],
             config={"trial": 1},
@@ -172,7 +188,17 @@ class TestNotarizeRun:
         assert (tmp_path / MANIFEST_NAME).exists()
         assert "result.csv" in manifest.artifacts
 
+    def test_requires_publish_scope(self, tmp_path):
+        (tmp_path / "result.csv").write_text("x\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="publish_patterns"):
+            notarize_tracker_run(tmp_path)
+
+    def test_old_name_raises(self, tmp_path):
+        with pytest.raises(RuntimeError, match="notarize_tracker_run"):
+            notarize_run(tmp_path, publish_patterns=["*.csv"])
+
     def test_emit_slsa_flag(self, tmp_path):
         (tmp_path / "result.csv").write_text("x\n1\n", encoding="utf-8")
-        notarize_run(tmp_path, publish_patterns=["*.csv"], emit_slsa=True)
-        assert (tmp_path / "slsa-provenance.json").exists()
+        notarize_tracker_run(tmp_path, publish_patterns=["*.csv"], emit_slsa=True)
+        assert (tmp_path / SLSA_FILE_NAME).exists()
+        assert not (tmp_path / "slsa-provenance.json").exists()
