@@ -8,12 +8,11 @@ verify fails**.
 This repository hosts the action at the root (`action.yml`). Consume it as:
 
 ```yaml
-uses: dooders/FarmNotary@dev
+uses: dooders/FarmNotary@v0.2.0
 ```
 
-The last tagged release is `v0.1.0`. The 0.2 line (profiles, claim-card verify,
-campaigns) lives on `dev`. Pin that branch or a commit SHA until `v0.2.0` is
-tagged. `uses: dooders/FarmNotary@v0.2` will 404 until that tag exists.
+Pin `v0.2.0` (or a commit SHA). `@dev` tracks unreleased work on the
+development branch.
 
 The composite action's `name` field is `farm-notary-action`.
 
@@ -32,7 +31,7 @@ jobs:
           python-version: "3.12"
 
       - name: Pre-specify the run
-        uses: dooders/FarmNotary@dev
+        uses: dooders/FarmNotary@v0.2.0
         with:
           phase: precommit
           run-dir: results
@@ -44,7 +43,7 @@ jobs:
         run: python run_experiment.py --seed 0 --out results
 
       - name: Notarize, pin, verify
-        uses: dooders/FarmNotary@dev
+        uses: dooders/FarmNotary@v0.2.0
         with:
           phase: notarize
           run-dir: results
@@ -69,7 +68,7 @@ recorded commands are yours.
 ## Already-finished run
 
 ```yaml
-- uses: dooders/FarmNotary@dev
+- uses: dooders/FarmNotary@v0.2.0
   with:
     phase: all
     run-dir: results
@@ -119,7 +118,7 @@ service already registered. OpenTimestamps needs outbound HTTPS to the public
 calendars. Use `backend: dry-run` in jobs that must not leave the runner.
 
 The action installs `${{ github.action_path }}[ots]` (the checkout of this
-repo, not the PyPI 0.1.0 wheel).
+repo, so the Action always matches the pinned tag).
 
 To attach a Sigstore signature to a reproduction receipt in CI (L3 evidence,
 not independence), set `sign-receipt: true` and grant OIDC:
@@ -154,9 +153,8 @@ on:
 permissions:
   contents: read
 
-# Pin to a commit SHA or a stable tag once v0.2.0 is released.
-# @dev is a mutable ref — replace it with a SHA for production use.
-# e.g.  uses: dooders/FarmNotary@<commit-sha>
+# Pin the released tag. @dev is a mutable ref.
+# e.g.  uses: dooders/FarmNotary@v0.2.0
 
 jobs:
   notarize:
@@ -175,7 +173,7 @@ jobs:
 
       # Optional: pre-specify the run before it executes
       - name: Pre-specify (precommit)
-        uses: dooders/FarmNotary@dev  # pin to a SHA in production
+        uses: dooders/FarmNotary@v0.2.0
         with:
           phase: precommit
           run-dir: results
@@ -189,7 +187,7 @@ jobs:
 
       # Notarize, anchor via OpenTimestamps, run verify, upload manifest
       - name: Notarize + verify
-        uses: dooders/FarmNotary@dev  # pin to a SHA in production
+        uses: dooders/FarmNotary@v0.2.0
         with:
           phase: notarize
           run-dir: results

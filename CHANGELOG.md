@@ -5,7 +5,7 @@ All notable changes to FarmNotary will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 FarmNotary uses [Semantic Versioning](https://semver.org/).
 
-The last tagged / PyPI release is **0.1.0**. This tree is **0.2.0**.
+The current release is **0.2.0**.
 
 ---
 
@@ -39,7 +39,7 @@ The last tagged / PyPI release is **0.1.0**. This tree is **0.2.0**.
   and can fail the check.
 - GitHub Action accepts a `profile` input (`consensus`, `rl-sweep`,
   `evolution-run`).
-- Package description no longer says “on-chain attestation”.
+- Package description no longer says "on-chain attestation".
 
 ### Added
 
@@ -98,7 +98,9 @@ The last tagged / PyPI release is **0.1.0**. This tree is **0.2.0**.
 
 ---
 
-## [0.2.0] — unreleased tag (package version on `dev`)
+## [0.2.0] — 2026-08-31
+
+Published to PyPI as `farm-notary==0.2.0`. Action pin: `dooders/FarmNotary@v0.2.0`.
 
 ### Added
 
@@ -195,6 +197,85 @@ used, so the policy is part of the claim.
   notarize + optional pin-remote on success, upload `manifest.json` +
   `manifest.ots`, fail the job if verify fails. See `docs/ACTION.md`.
 
+#### Reader ladder, beacon seeds, and Sigstore (L0–L3)
+
+- `farm-notary verify` prints a stacked reader ladder (`none` / L0–L3)
+  above the claim-card rows: highest earned level and the gap that
+  blocks the next. L0 requires a Bitcoin-height attestation (pending
+  OTS does not count) and does not mean Bitcoin headers were checked.
+  L1 requires L0 plus a recorded `command`, `git_sha`, and environment
+  fingerprint; it does not mean the command was run. L2 requires a
+  beacon-derived seed after the plan is anchored. L3 is a
+  Sigstore-signed receipt (identity not constrained). `paper-pack`
+  prints an artifact label and leaves reader ladder as `—` (do not cite
+  `Ln` from an appendix).
+- Beacon-derived seeds (issue #30): `precommit --seed-count` records a
+  `seed_plan`; `derive-seeds` requires a `precommit.ots` that commits to
+  the plan, then binds seeds to exactly `min_round`. The run manifest
+  stores a `beacon` block so `verify` can recompute the seed. L2 also
+  requires a bound plan, `created_utc` not after the round, and a
+  fixture or `--live-beacon` HTTP compare (TLS to drand REST; signatures
+  are not checked). Missing members of the committed set are listed.
+  Tests use `FixedBeacon`; CI does not call live drand. L2 is not
+  scientific correctness.
+- Sigstore keyless signing for reproduction receipts (`farm-notary
+  reproduce --sign`). `verify` checks `receipt["sigstore"]` with
+  `cosign verify-blob` (offline when the bundle has a Rekor inclusion
+  proof). L3 means a verified signature with identity not constrained —
+  not "independently reproduced." Tokens go through `SIGSTORE_ID_TOKEN`
+  / `COSIGN_IDENTITY_TOKEN` or `--identity-token @PATH`. Documented
+  cosign pin: `v2.5.3`. Optional Action input `sign-receipt`.
+
+#### CI provenance and CID binding
+
+- When `farm-notary manifest` runs inside GitHub Actions it records
+  `ci_provenance` (`GITHUB_SHA`, repository, ref, workflow, run id)
+  inside the content hash. `verify` fails if `git_sha` disagrees with
+  `ci_provenance.sha` (issue #34).
+- After `--pin` / `--pin-remote`, an OpenTimestamps proof of
+  `H(content_hash || cid)` is written as `manifest.cid.ots` so a swapped
+  CID fails verify. EAS is no longer the way to bind CID (issue #36).
+
+#### Zero-install reviewer check
+
+- `farm-notary check --manifest path/to/manifest.json` reports content
+  hash, CID, claim label, and anchor status without rehashing artifacts.
+  Intended for `uvx farm-notary check` / `pipx run farm-notary check`
+  (issue #39). See `docs/VERIFIER.md`.
+
+#### Docs, demo, and talks
+
+- `docs/PRINCIPLES.md`: constraint document for refusing features
+  (existence is not correctness, reader-side checks over publisher
+  decoration, cherry-picking out of scope, self-assertion as input,
+  publish is one-way, omission is recorded policy, trust-assumption
+  budget, outsource solved infrastructure).
+- README: a "Why FarmNotary" section — official record vs laptop folder,
+  hash tool vs research notary, and why the domain work is allowlists,
+  privacy, and honest claims (anchoring is outsourced).
+- Live demo notebook (`docs/demo/`): a tiny consensus-style experiment
+  notarized with the dry-run backend. `tests/test_demo.py` execs the
+  notebook cells.
+- Intro slide deck (`docs/slides/farmnotary.pdf`) and consensus
+  walkthrough (`docs/slides/consensus.pdf`). Locked to CLAIMS.md.
+
+#### Additive interop, archive, plugins, and chains (issue #40)
+
+These do not change `farmnotary.manifest.v1` or the claim ladder. They
+are first-cut helpers, not a 1.0 stability promise.
+
+- `farm-notary emit-interop` dual-writes SLSA/in-toto (`slsa-provenance.json`,
+  unsigned), RO-Crate, and a C2PA-style JSON claim summary (not a binary
+  JUMBF).
+- `farm-notary archive` deposits to Zenodo (optional DOI) and/or looks up
+  a Software Heritage ID for the recorded git SHA. The DOI is not written
+  back onto the manifest; SWH is lookup, not a save request.
+- `farm_notary.plugins`: MLflow `on_run_end` hook and DVC `dvc.lock`
+  output cover. Callers must pass an explicit allowlist; hashing the
+  whole tree is not the documented path.
+- `farm-notary chain` writes `provenance-chain.json` linking stage
+  manifests. Linear only; no trusted server.
+
 ### Changed
 
 #### Durable pin is the published path
@@ -223,6 +304,31 @@ Missing is not failure: a run with no timestamp, no precommit, and no
 reproduction receipt still exits 0 if the artifacts rehash. Failed checks
 still print `FAIL <detail>` under the card and exit 1. Reproduction
 receipts now record the `--ignore` globs so the scoped claim can list them.
+
+#### Docs and Action pin
+
+- Docs rewritten against the 0.2 CLI: install from PyPI
+  (`pip install "farm-notary[ots]"`), `anchor` dry-run default vs Action
+  `ots`, `--verify-derived`, publish profiles, claim levels, and Action
+  pin (`dooders/FarmNotary@v0.2.0`).
+- `farm-notary verify` no longer fails when `derived_from` rules are present
+  but `--verify-derived` was not passed. Missing is not failure; the CLI
+  notes that rules were not executed. `--verify-derived` still runs them
+  and can fail the check.
+- GitHub Action accepts a `profile` input (`consensus`, `rl-sweep`,
+  `evolution-run`).
+- Package description no longer says “on-chain attestation”.
+- Pending OpenTimestamps calendars are not a successful time claim
+  (issue #32). Only a Bitcoin-height attestation earns L0.
+- `reproduce` is documented as executing the recorded shell command
+  (RCE by design). FarmNotary auto-trusts only the same local checkout
+  or the same GitHub Actions repo/SHA; otherwise `--i-accept-untrusted-command`
+  is required (issue #35).
+
+### Security
+
+- Artifact discovery and IPFS pin do not follow symlinks out of the run
+  directory (issue #33).
 
 ### Breaking
 
@@ -363,4 +469,6 @@ First release. Published to PyPI as `farm-notary==0.1.0`.
   bitwise** in a pinned environment with no exclusions. See
   [docs/CLAIMS.md](docs/CLAIMS.md).
 
+[Unreleased]: https://github.com/Dooders/FarmNotary/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Dooders/FarmNotary/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Dooders/FarmNotary/releases/tag/v0.1.0
