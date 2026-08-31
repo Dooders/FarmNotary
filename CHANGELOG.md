@@ -53,7 +53,7 @@ The current release is **0.2.0**.
 
 - Packaging hygiene: `py.typed`, complete public `__all__`, PyPI classifiers
   and URLs, `[lint]` extra (`ruff`, `mypy`), and a CI lint job.
-- Sigstore keyless signing for reproduction receipts (`farm-notary
+- Sigstore keyless signing for reproduction receipts (`farm-notary`
   reproduce --sign`). `verify` checks `receipt["sigstore"]` with
   `cosign verify-blob` (offline when the bundle has a Rekor inclusion
   proof). L3 means a verified signature with identity not constrained —
