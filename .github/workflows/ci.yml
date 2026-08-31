@@ -45,7 +45,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install lint extras
-        run: pip install -e ".[lint,ots,sigstore]"
+        run: pip install -e ".[lint,ots,sigstore,chain]"
 
       - name: Ruff
         run: ruff check farm_notary
