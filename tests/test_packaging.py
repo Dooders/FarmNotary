@@ -21,9 +21,9 @@ def test_all_matches_public_exports():
     imported = {
         name
         for name in dir(farm_notary)
-        if not name.startswith("_") and name in farm_notary.__all__
+        if not name.startswith("_")
     }
-    assert set(farm_notary.__all__) == set(farm_notary.__all__)
+    assert exported == imported
     missing = [name for name in farm_notary.__all__ if not hasattr(farm_notary, name)]
     assert missing == []
     assert farm_notary.__version__ == TOOL_VERSION
