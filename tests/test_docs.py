@@ -172,6 +172,7 @@ def test_principles_is_listed_and_forbids_real_things():
         "file drawer",
         "independently reproduced",
         "unmatched_count",
+        "withheld_root",
         "SimulationRegistry",
         "dry-run",
     ):
@@ -212,3 +213,14 @@ def test_changelog_records_sigstore_and_honest_l3():
     assert "identity not constrained" in CHANGELOG
     assert "L3 (independent" not in CHANGELOG
     assert "identity) is reserved" not in CHANGELOG
+
+
+def test_docs_frame_withheld_as_publication_scope():
+    for blob in (README, DESIGN, CLAIMS, PRINCIPLES, CHANGELOG):
+        assert "withheld_root" in blob
+    assert "publication scope" in README.lower() or "publication-scope" in README.lower()
+    assert "privacy protocol" in CHANGELOG.lower() or "publication-scope" in CHANGELOG.lower()
+    assert "The allowlist is the privacy model" not in CLAIMS
+    assert Path("docs/MIGRATION.md").is_file()
+    assert "withheld_salt" in Path("docs/MIGRATION.md").read_text(encoding="utf-8")
+    assert Path("schemas/farmnotary.manifest.v1.json").is_file()

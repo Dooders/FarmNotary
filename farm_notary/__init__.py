@@ -24,6 +24,11 @@ from farm_notary.profiles import PUBLISH_PROFILES, PublishProfile, get_profile
 from farm_notary.diagnose import MismatchDiagnosis, diagnose_mismatch
 from farm_notary.reproduce import ReproductionResult, reproduce_run
 from farm_notary.ladder import LadderResult, evaluate_ladder
+from farm_notary.withheld import (
+    WithheldCommitment,
+    reveal_withheld,
+    verify_reveal,
+)
 from farm_notary.verify import (
     ClaimCard,
     evaluate_claims,
@@ -65,6 +70,9 @@ __all__ = [
     "verify_identity_record",
     "verify_receipt",
     "verify_run_dir",
+    "WithheldCommitment",
+    "reveal_withheld",
+    "verify_reveal",
     "write_campaign",
     "write_manifest",
     "write_proof",

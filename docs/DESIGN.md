@@ -42,11 +42,13 @@ See `farm_notary/schema.py` and `farm_notary/manifest.py`.
 
 **Usually present:** `farm_notary_version` (`0.2.0`), `git_dirty`, `runner`, `command`, `environment`, `official_record`.
 
-**Optional (omitted when empty so older bodies keep a stable hash):** `derived_from`, `publish_profile`, `precommit_hash`, `beacon`, `identity`.
+**Optional (content-hashed; omitted when empty so older bodies keep a stable hash):** `derived_from`, `publish_profile`, `precommit_hash`, `beacon`, `ci_provenance`, `withheld_salt`, `withheld_root`, `withheld_classes`.
 
-**Stamp fields** (written after the content hash; excluded from it): `cid`, `cid_reachable`, `cid_reachable_checked_utc`, `pin_service`, `anchor`, `identity`.
+**Stamp fields** (written after the content hash; excluded from it): `cid`, `cid_reachable`, `cid_reachable_checked_utc`, `pin_service`, `anchor`, `identity`. `identity` is not content-hashed.
 
-Artifact discovery is recursive; paths are POSIX-style relative to the run directory. Hidden files and notary metadata (`manifest.json`, `reproduction.json`, `precommit.json`, `campaign.json`, `appendix.md`, `*.ots`) are skipped. `Manifest.validate()` enforces the schema id, artifact list / hash map agreement, and the privacy filter.
+JSON Schema: [`schemas/farmnotary.manifest.v1.json`](../schemas/farmnotary.manifest.v1.json). Migration: [MIGRATION.md](MIGRATION.md).
+
+Artifact discovery is recursive; paths are POSIX-style relative to the run directory. Hidden files and notary metadata (`manifest.json`, `reproduction.json`, `precommit.json`, `campaign.json`, `appendix.md`, `*.ots`) are skipped. `Manifest.validate()` enforces the schema id, artifact list / hash map agreement, and the withheld-name denylist.
 
 `content_hash` is SHA-256 of the canonical JSON body (sorted keys, no whitespace) after stripping stamp fields. You can pin, stamp, and sign without circular hashing.
 
@@ -115,7 +117,7 @@ This is how “bitwise on x86-64 Linux, pinned env” stays honest when someone 
 
 ## Paper pack
 
-`farm-notary paper-pack` writes `appendix.md`: CID, content hash, Bitcoin attestation (or pending / experimental EAS), publish allowlist, unmatched count, precommit hash, artifact label (`bytes` / `bitwise` / …), environment, and a scoped reproducibility sentence. `Reader ladder` is `—`: do not cite `Ln` from the appendix (FarmNotary does not verify Bitcoin headers; a campaign has no single-run ladder). Campaigns also list child seeds and CIDs. Pass `--verify-derived` to confirm statistics before the sentence claims they recompute.
+`farm-notary paper-pack` writes `appendix.md`: CID, content hash, Bitcoin attestation (or pending / experimental EAS), publish allowlist, unmatched count, withheld root and class counts (no names), precommit hash, artifact label (`bytes` / `bitwise` / …), environment, and a scoped reproducibility sentence. `Reader ladder` is `—`: do not cite `Ln` from the appendix (FarmNotary does not verify Bitcoin headers; a campaign has no single-run ladder). Campaigns also list child seeds and CIDs. Pass `--verify-derived` to confirm statistics before the sentence claims they recompute.
 
 ## Public index
 
@@ -127,7 +129,7 @@ Claim levels (`farm_notary.claims`) are labels, never scores: `bytes`, `derived_
 
 `dooders/FarmNotary` (action name `farm-notary-action`): precommit on workflow start, notarize + optional pin-remote on success, upload `manifest.json` + `manifest.ots`, fail the job if verify fails. Pin `@v0.2.0` or a commit SHA. See [ACTION.md](ACTION.md).
 
-## Privacy
+## Publication scope
 
 Allowlist-first: nothing is hashed unless it matches a declared publish pattern. Named experiment-type profiles (`consensus`, `rl-sweep`, `evolution-run` in `farm_notary/profiles.py`) are the checked-in official artifact lists; `--publish` and `notary.publish` append extras. Resolution order: named profile (`--profile` / `publish_profile`, else `notary.profile`), then `notary.publish`, then `--publish`. The resolved allowlist is recorded as `publish_patterns` (and `publish_profile` when a profile was used).
 
@@ -135,7 +137,26 @@ If no source supplies patterns, `build_manifest()` raises `ValueError`.
 
 Relative paths containing `ballot`, `vote`, `voter`, `individual_choice`, or `private` (any path component) are skipped by discovery, rejected by validation, and never uploaded — including after a profile or `--publish` glob would otherwise admit them. Do not put agent-level or citizen-level choices in `official_record`.
 
+Candidate files that are not published increment `unmatched_count` and, when any exist, receive a salted Merkle commitment: `withheld_salt`, `withheld_root`, `withheld_classes` (`denylist` vs `unmatched`, each with a reason string). Leaf = `SHA-256(salt || 0x00 || path_utf8 || 0x00 || content)`. Unsalted hashes of withheld files are not stored. Names are not printed. `farm-notary reveal-withheld --path REL` can open a subset later without changing the root.
+
 Simple `*.ext` patterns match files in subdirectories (filename fallback), not only the run-dir root.
+
+## CI provenance
+
+When `farm-notary manifest` runs inside GitHub Actions it records `ci_provenance` (`kind`, `sha`, `repository`, `ref`, `workflow`, `run_id`, `run_url`) inside the content hash. `verify` fails if `git_sha` disagrees with `ci_provenance.sha`. Local runs omit the field.
+
+## CID binding
+
+`content_hash` excludes `cid`, so a second OpenTimestamps proof (`manifest.cid.ots`) commits to `H(content_hash || cid)`. `verify` checks that binding when the proof is present. EAS is not the way to bind CID.
+
+## Additive interop, archive, plugins, and chains
+
+These do not change `farmnotary.manifest.v1` or the claim ladder.
+
+- `farm-notary emit-interop` — unsigned SLSA/in-toto, RO-Crate, C2PA-style JSON summary
+- `farm-notary archive` — Zenodo deposit and/or Software Heritage lookup
+- `farm_notary.plugins` — MLflow / DVC hooks (callers must pass an allowlist)
+- `farm-notary chain` — linear `provenance-chain.json`
 
 ## AgentFarm hook
 
