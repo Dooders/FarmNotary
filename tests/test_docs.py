@@ -172,6 +172,7 @@ def test_principles_is_listed_and_forbids_real_things():
         "file drawer",
         "independently reproduced",
         "unmatched_count",
+        "withheld_root",
         "SimulationRegistry",
         "dry-run",
     ):
@@ -220,3 +221,26 @@ def test_packaging_hygiene_is_documented():
     assert "mypy" in README
     assert "py.typed" in CHANGELOG
     assert "Typing :: Typed" in Path("pyproject.toml").read_text(encoding="utf-8")
+
+
+def test_later_wave_helpers_are_labeled_unsigned_and_experimental():
+    assert "unsigned" in README.lower()
+    assert "Not verifiable provenance" in README
+    assert "unsigned-summary-not-for-verification" in DESIGN
+    assert "notarize_tracker_run" in DESIGN
+    assert "no default `*`" in DESIGN or "no default *" in DESIGN
+    assert "manifest-hash lineage" in DESIGN
+    assert "unsigned-summary-not-for-verification" in CHANGELOG or "unsigned" in CHANGELOG
+    assert "notarize_tracker_run" in CHANGELOG
+    assert "Interop formats as new claim types" in PRINCIPLES
+
+
+def test_docs_frame_withheld_as_publication_scope():
+    for blob in (README, DESIGN, CLAIMS, PRINCIPLES, CHANGELOG):
+        assert "withheld_root" in blob
+    assert "publication scope" in README.lower() or "publication-scope" in README.lower()
+    assert "privacy protocol" in CHANGELOG.lower() or "publication-scope" in CHANGELOG.lower()
+    assert "The allowlist is the privacy model" not in CLAIMS
+    assert Path("docs/MIGRATION.md").is_file()
+    assert "withheld_salt" in Path("docs/MIGRATION.md").read_text(encoding="utf-8")
+    assert Path("schemas/farmnotary.manifest.v1.json").is_file()

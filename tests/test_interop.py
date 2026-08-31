@@ -7,7 +7,10 @@ import pytest
 
 from farm_notary.manifest import build_manifest, write_manifest
 from farm_notary.interop import (
+    C2PA_FILE_NAME,
     INTEROP_FORMATS,
+    INTEROP_STATUS,
+    SLSA_FILE_NAME,
     emit_c2pa,
     emit_interop,
     emit_ro_crate,
@@ -39,6 +42,7 @@ class TestSLSAProvenance:
         stmt = to_slsa_provenance(m)
         assert stmt["_type"] == "https://in-toto.io/Statement/v1"
         assert stmt["predicateType"] == "https://slsa.dev/provenance/v1"
+        assert stmt["farmnotary_interop"]["status"] == INTEROP_STATUS
 
     def test_subjects_from_artifact_hashes(self, tmp_path):
         m = _make_manifest(tmp_path)
@@ -60,9 +64,18 @@ class TestSLSAProvenance:
         m = _make_manifest(tmp_path)
         write_manifest(m, tmp_path)
         path = emit_slsa(m, tmp_path)
+        assert path.name == SLSA_FILE_NAME
         assert path.exists()
         data = json.loads(path.read_text())
         assert data["_type"] == "https://in-toto.io/Statement/v1"
+        assert data["farmnotary_interop"]["status"] == INTEROP_STATUS
+
+    def test_abbreviated_git_sha_is_not_a_sha1_dependency(self, tmp_path):
+        m = _make_manifest(tmp_path)
+        assert m.git_sha == "deadbeef"
+        stmt = to_slsa_provenance(m)
+        deps = stmt["predicate"]["buildDefinition"].get("resolvedDependencies", [])
+        assert deps == []
 
     def test_ci_provenance_sets_github_build_type(self, tmp_path):
         m = _make_manifest(tmp_path)
@@ -143,8 +156,10 @@ class TestC2PA:
         m = _make_manifest(tmp_path)
         write_manifest(m, tmp_path)
         path = emit_c2pa(m, tmp_path)
-        assert path.name == "c2pa-claim.json"
+        assert path.name == C2PA_FILE_NAME
         assert path.exists()
+        data = json.loads(path.read_text())
+        assert data["farmnotary_interop"]["status"] == INTEROP_STATUS
 
 
 # ---------------------------------------------------------------------------
@@ -171,3 +186,15 @@ class TestEmitInterop:
         m = _make_manifest(tmp_path)
         with pytest.raises(ValueError, match="unknown interop format"):
             emit_interop(m, tmp_path, formats=("bogus",))
+
+    def test_sidecars_are_not_hashed_as_artifacts(self, tmp_path):
+        m = _make_manifest(tmp_path)
+        write_manifest(m, tmp_path)
+        emit_interop(m, tmp_path)
+        rebuilt = build_manifest(
+            tmp_path, publish_patterns=["*", "**/*"], git_sha="deadbeef"
+        )
+        names = set(rebuilt.artifacts)
+        assert SLSA_FILE_NAME not in names
+        assert C2PA_FILE_NAME not in names
+        assert "ro-crate-metadata.json" not in names

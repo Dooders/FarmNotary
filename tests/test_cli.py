@@ -596,3 +596,44 @@ def test_check_rejects_invalid_manifest_field_types(tmp_path: Path, capsys):
     rc = main(["check", "--manifest", str(manifest_path)])
     assert rc == 2
     assert "error: could not load manifest" in capsys.readouterr().err
+
+
+def test_emit_interop_writes_unsigned_files(tmp_path: Path, capsys):
+    from farm_notary.interop import C2PA_FILE_NAME, SLSA_FILE_NAME
+
+    run_dir = make_run_dir(tmp_path)
+    assert main(["manifest", "--run-dir", str(run_dir), "--publish", "*.csv"]) == 0
+    capsys.readouterr()
+    assert main(["emit-interop", str(run_dir)]) == 0
+    out = capsys.readouterr().out
+    assert SLSA_FILE_NAME in out
+    assert C2PA_FILE_NAME in out
+    assert (run_dir / SLSA_FILE_NAME).is_file()
+    assert (run_dir / C2PA_FILE_NAME).is_file()
+    data = json.loads((run_dir / SLSA_FILE_NAME).read_text(encoding="utf-8"))
+    assert data["farmnotary_interop"]["status"] == "unsigned-summary-not-for-verification"
+
+
+def test_archive_zenodo_requires_creator(tmp_path: Path, capsys):
+    run_dir = make_run_dir(tmp_path)
+    assert main(["manifest", "--run-dir", str(run_dir), "--publish", "*.csv"]) == 0
+    capsys.readouterr()
+    rc = main(["archive", str(run_dir), "--zenodo", "--zenodo-token", "tok"])
+    assert rc == 2
+    assert "--zenodo-creator is required" in capsys.readouterr().err
+
+
+def test_chain_cli_relative_paths_verify(tmp_path: Path, capsys):
+    a = tmp_path / "a"
+    b = tmp_path / "b"
+    a.mkdir()
+    b.mkdir()
+    (a / "summary.csv").write_text("a\n", encoding="utf-8")
+    (b / "summary.csv").write_text("b\n", encoding="utf-8")
+    assert main(["manifest", "--run-dir", str(a), "--publish", "*.csv"]) == 0
+    assert main(["manifest", "--run-dir", str(b), "--publish", "*.csv"]) == 0
+    capsys.readouterr()
+    assert main(["chain", str(a), str(b)]) == 0
+    assert main(["chain", "--verify", "--chain-file", str(b / "provenance-chain.json")]) == 0
+    out = capsys.readouterr().out
+    assert "ok: chain" in out

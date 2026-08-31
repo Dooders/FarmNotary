@@ -93,7 +93,7 @@ def test_unmatched_count_and_warning(tmp_path: Path):
         warnings.simplefilter("always")
         manifest = build_manifest(tmp_path, publish_patterns=["*.csv"])
     assert manifest.unmatched_count == 1  # round_1.json not matched
-    assert any("excluded" in str(w.message).lower() for w in caught)
+    assert any("withheld" in str(w.message).lower() for w in caught)
 
 
 def test_no_warning_when_all_matched(tmp_path: Path):
@@ -121,6 +121,13 @@ def test_private_hidden_and_manifest_files_are_skipped(tmp_path: Path):
     (tmp_path / "manifest.json").write_text("{}", encoding="utf-8")
     manifest = build_manifest(tmp_path, publish_patterns=PUBLISH_ALL)
     assert manifest.artifacts == ["metrics/round_1.json", "summary.csv"]
+
+
+def test_non_notary_unsigned_json_is_included_when_allowlisted(tmp_path: Path):
+    make_run_dir(tmp_path)
+    (tmp_path / "custom.unsigned.json").write_text('{"ok": true}', encoding="utf-8")
+    manifest = build_manifest(tmp_path, publish_patterns=PUBLISH_ALL)
+    assert "custom.unsigned.json" in manifest.artifacts
 
 
 def test_symlink_to_outside_file_is_skipped_with_warning(tmp_path: Path):

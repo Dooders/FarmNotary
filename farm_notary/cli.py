@@ -396,6 +396,35 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to manifest.json (artifacts are not required)",
     )
 
+    p_reveal = sub.add_parser(
+        "reveal-withheld",
+        help=(
+            "Reveal a subset of withheld files against the salted Merkle "
+            "commitment. Names are never listed unless you pass --path."
+        ),
+    )
+    p_reveal.add_argument("--run-dir", required=True)
+    p_reveal.add_argument(
+        "--path",
+        action="append",
+        dest="paths",
+        metavar="REL",
+        help="Relative path to reveal; repeatable. Required.",
+    )
+    p_reveal.add_argument(
+        "--out",
+        help="Write the reveal JSON here (default: stdout summary only)",
+    )
+    p_reveal.add_argument(
+        "--verify",
+        action="store_true",
+        help="Verify an existing reveal JSON against withheld_root",
+    )
+    p_reveal.add_argument(
+        "--reveal",
+        help="Path to a reveal JSON (with --verify)",
+    )
+
     p_der = sub.add_parser(
         "derive-seeds",
         help="Derive committed seeds from the precommit seed_plan's min_round",
@@ -422,8 +451,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p_interop = sub.add_parser(
         "emit-interop",
         help=(
-            "Emit interop provenance files alongside manifest.json "
-            "(SLSA/in-toto, RO-Crate, C2PA). Does not overwrite the FarmNotary manifest."
+            "Emit unsigned interop JSON summaries (SLSA/in-toto vocabulary, "
+            "RO-Crate, C2PA-style). Not verifiable provenance. Does not "
+            "overwrite the FarmNotary manifest."
         ),
     )
     p_interop.add_argument("run_dir", help="Run directory containing manifest.json")
@@ -433,8 +463,8 @@ def _build_parser() -> argparse.ArgumentParser:
         action="append",
         metavar="FORMAT",
         help=(
-            "Format to emit: slsa, ro-crate, c2pa. "
-            "Repeatable. Defaults to all three."
+            "Format to emit: slsa, ro-crate, c2pa. Repeatable. Defaults to "
+            "all three. SLSA and C2PA files are named *.unsigned.json."
         ),
     )
 
@@ -443,7 +473,11 @@ def _build_parser() -> argparse.ArgumentParser:
     # ------------------------------------------------------------------
     p_arc = sub.add_parser(
         "archive",
-        help="Archive a run to durable storage (Zenodo DOI, Software Heritage ID).",
+        help=(
+            "Optional durable-storage helpers (Zenodo draft/DOI, Software "
+            "Heritage lookup). IDs are not claim-card rows and are not "
+            "written to the manifest."
+        ),
     )
     p_arc.add_argument("run_dir", help="Run directory containing manifest.json")
     p_arc.add_argument(
@@ -472,7 +506,7 @@ def _build_parser() -> argparse.ArgumentParser:
         required=False,
         help=(
             "Creator name for the Zenodo deposit (e.g. 'Smith, Jane'). "
-            "Required when --zenodo-publish is used to avoid fabricated authorship."
+            "Required for any --zenodo deposit (draft or publish)."
         ),
     )
     p_arc.add_argument(
@@ -496,8 +530,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_chain = sub.add_parser(
         "chain",
         help=(
-            "Build a multi-stage provenance chain from ordered run directories "
-            "and write provenance-chain.json."
+            "Build or verify a multi-stage hash lineage of manifests "
+            "(not input/output data flow)."
         ),
     )
     p_chain.add_argument(
@@ -645,6 +679,16 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
         print("profile", manifest.publish_profile)
     print("artifacts", len(manifest.artifacts))
     print("unmatched", manifest.unmatched_count)
+    if manifest.withheld_root:
+        classes = manifest.withheld_classes or {}
+        parts = [
+            f"{name}={spec.get('count')}"
+            for name, spec in classes.items()
+            if isinstance(spec, dict)
+        ]
+        print("withheld_root", manifest.withheld_root)
+        if parts:
+            print("withheld_classes", " ".join(parts))
     print("content_hash", manifest.content_hash())
     return 0
 
@@ -1367,6 +1411,14 @@ def _cmd_check(args: argparse.Namespace) -> int:
     from farm_notary.claims import infer_claim_level
 
     print(f"claim_level:  {infer_claim_level(manifest)}")
+    if getattr(manifest, "withheld_root", None):
+        classes = manifest.withheld_classes or {}
+        parts = [
+            f"{name}={spec.get('count')}"
+            for name, spec in classes.items()
+            if isinstance(spec, dict)
+        ]
+        print(f"withheld:     root {manifest.withheld_root[:12]}… ({', '.join(parts)})")
 
     # Identity/issuer — display only, not validated (public key not required)
     identity = getattr(manifest, "identity", None)
@@ -1523,10 +1575,10 @@ def _cmd_archive(args: argparse.Namespace) -> int:
         try:
             zenodo_creator = getattr(args, "zenodo_creator", None)
             zenodo_publish = getattr(args, "zenodo_publish", False)
-            if zenodo_publish and not zenodo_creator:
+            if not zenodo_creator:
                 print(
-                    "error: --zenodo-creator is required when using --zenodo-publish "
-                    "to avoid recording fabricated authorship",
+                    "error: --zenodo-creator is required for any Zenodo deposit "
+                    "(draft or publish)",
                     file=sys.stderr,
                 )
                 return 2
@@ -1636,6 +1688,81 @@ def _cmd_chain(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_reveal_withheld(args: argparse.Namespace) -> int:
+    from farm_notary.manifest import list_withheld, load_manifest
+    from farm_notary.withheld import (
+        load_reveal,
+        reveal_withheld,
+        verify_reveal,
+        write_reveal,
+    )
+
+    run_dir = Path(args.run_dir)
+    try:
+        manifest = load_manifest(run_dir)
+    except (ValueError, OSError) as exc:
+        print(f"error: could not load manifest: {exc}", file=sys.stderr)
+        return 2
+    if not manifest.withheld_root or not manifest.withheld_salt:
+        print("error: manifest has no withheld commitment", file=sys.stderr)
+        return 2
+
+    if args.verify:
+        reveal_path = Path(args.reveal) if args.reveal else None
+        if reveal_path is None:
+            print("error: --verify requires --reveal PATH", file=sys.stderr)
+            return 2
+        try:
+            entries = load_reveal(reveal_path)
+            problems = verify_reveal(
+                entries,
+                salt_hex=manifest.withheld_salt,
+                root_hex=manifest.withheld_root,
+                run_dir=run_dir,
+            )
+        except (ValueError, OSError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        if problems:
+            for problem in problems:
+                print("FAIL", problem)
+            return 1
+        print("ok", len(entries), "revealed file(s) commit to withheld_root")
+        return 0
+
+    if not args.paths:
+        print(
+            "error: pass --path REL for each file to reveal "
+            "(withheld names are not listed)",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        withheld = list_withheld(run_dir, manifest.publish_patterns)
+        entries = reveal_withheld(
+            withheld, args.paths, salt_hex=manifest.withheld_salt
+        )
+        problems = verify_reveal(
+            entries,
+            salt_hex=manifest.withheld_salt,
+            root_hex=manifest.withheld_root,
+            run_dir=run_dir,
+        )
+    except (ValueError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if problems:
+        for problem in problems:
+            print("FAIL", problem)
+        return 1
+    if args.out:
+        dest = write_reveal(entries, Path(args.out))
+        print(dest)
+    print("revealed", len(entries))
+    print("withheld_root", manifest.withheld_root)
+    return 0
+
+
 def main(argv: Optional[list] = None) -> int:
     args = _build_parser().parse_args(argv)
     handlers = {
@@ -1655,6 +1782,7 @@ def main(argv: Optional[list] = None) -> int:
         "emit-interop": _cmd_emit_interop,
         "archive": _cmd_archive,
         "chain": _cmd_chain,
+        "reveal-withheld": _cmd_reveal_withheld,
     }
     return handlers[args.cmd](args)
 

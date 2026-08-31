@@ -131,16 +131,20 @@ integrity failure. Discovery is allowlist-first: no patterns, no
 manifest. A denylist of path fragments (`ballot`, `vote`, `voter`,
 `individual_choice`, `private`) then rejects matches even if a glob
 would admit them. Non-hidden, non-notary files that were not hashed
-increment `unmatched_count`. Names of those files are not printed, so a
+increment `unmatched_count`. When any exist, the manifest also records
+`withheld_root` and `withheld_classes` (published X, withheld N in class
+C, commitment C_root). Names of those files are not printed, so a
 forgotten path is not leaked by the warning.
 
 The cost: `unmatched_count` tells a reviewer that something was left
 out, not what. A forgotten official artifact is simply absent from the
-proof.
+proof. A later `reveal-withheld` can open a named subset without
+changing the root.
 
 **Rules out:** a default whole-directory hash; omitting `unmatched_count`
 or `publish_patterns` from the v1 body; a flag that overrides the
-denylist; logging omitted filenames on the CLI or in the paper pack.
+denylist; logging omitted filenames on the CLI or in the paper pack;
+storing unsalted hashes of withheld files.
 
 ## 7. Spend a trust assumption only when it buys something the keyless path cannot
 
@@ -187,6 +191,10 @@ Permanently out of scope, not deferred.
   what the author did not publish.
 - **A complete archive of the run directory.** Allowlist plus denylist
   is the product. Individual voter or agent choices are not published.
+  Tracker plugins follow the same rule: no default `*`.
+- **Interop formats as new claim types.** SLSA/in-toto, RO-Crate, and
+  C2PA exports are unsigned vocabulary views. They do not earn a ladder
+  row and must not be presented as signed provenance.
 - **Cross-hardware bitwise identity.** The only sentence the tool may
   emit today is `byte-identical on x86-64 Linux in a pinned
   environment`. Other machines report `N/M` until
