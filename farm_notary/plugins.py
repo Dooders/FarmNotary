@@ -121,7 +121,7 @@ class MLflowNotaryPlugin:
                 artifact_uri = url2pathname(file_path)
             else:
                 warnings.warn(
-                    f"MLflow artifact URI is not a local path ({scheme}://); "
+                    f"MLflow artifact URI is not a local path ({scheme}:); "
                     "skipping notarization",
                     UserWarning,
                     stacklevel=2,
