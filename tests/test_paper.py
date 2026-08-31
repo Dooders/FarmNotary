@@ -60,6 +60,24 @@ def test_paper_pack_contains_required_fields(tmp_path):
     assert "trials.csv" in text
 
 
+def test_paper_pack_records_withheld_root_not_names(tmp_path):
+    run, _ = _run(tmp_path)
+    (run / "extra.json").write_text("{}\n", encoding="utf-8")
+    (run / "votes_ballot.csv").write_text("A,B\n", encoding="utf-8")
+    from farm_notary.manifest import build_manifest, write_manifest
+
+    manifest = build_manifest(
+        run, publish_patterns=["summary.csv", "trials.csv"], git_sha="abc"
+    )
+    write_manifest(manifest, run)
+    text = build_paper_pack(manifest, run, experiment="consensus")
+    assert manifest.withheld_root
+    assert f"| Withheld root | `{manifest.withheld_root}` |" in text
+    assert "Withheld classes" in text
+    assert "votes_ballot.csv" not in text
+    assert "extra.json" not in text
+
+
 def test_bitcoin_attestation_none_and_pending():
     class Rec:
         anchor = None

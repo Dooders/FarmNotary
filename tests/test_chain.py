@@ -168,5 +168,28 @@ class TestChainRunDirs:
         d1 = _make_run(tmp_path, "vb1", config={"step": 1})
         d2 = _make_run(tmp_path, "vb2", config={"step": 2})
         chain = chain_run_dirs([d0, d1, d2])
-        errors = verify_chain(chain, chain_dir=tmp_path)
+        errors = verify_chain(chain, chain_dir=d2)
         assert errors == []
+        assert chain[0].manifest_path == "../vb0/manifest.json"
+        assert chain[2].manifest_path == "manifest.json"
+
+    def test_relative_sibling_layout_verifies(self, tmp_path):
+        d0 = _make_run(tmp_path, "rel0")
+        d1 = _make_run(tmp_path, "rel1")
+        chain = chain_run_dirs([d0, d1])
+        assert chain[0].manifest_path == "../rel0/manifest.json"
+        assert verify_chain(chain, chain_dir=d1) == []
+        loaded = load_chain(d1 / CHAIN_FILE_NAME)
+        raw = json.loads((d1 / CHAIN_FILE_NAME).read_text(encoding="utf-8"))
+        assert raw["schema"] == "farmnotary.provenance-chain.v1"
+        assert "Hash lineage" in raw["note"]
+        assert verify_chain(loaded, chain_dir=d1) == []
+
+    def test_legacy_list_chain_still_loads(self, tmp_path):
+        d0 = _make_run(tmp_path, "leg0")
+        m0 = build_manifest(d0, publish_patterns=["*.csv"])
+        chain = chain_manifests([m0])
+        dest = tmp_path / CHAIN_FILE_NAME
+        dest.write_text(json.dumps([chain[0].to_dict()]) + "\n", encoding="utf-8")
+        loaded = load_chain(dest)
+        assert loaded[0].link_hash == chain[0].link_hash

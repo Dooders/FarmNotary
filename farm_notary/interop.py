@@ -1,22 +1,17 @@
-"""Interop schema emission.
+"""Unsigned interop vocabulary exports.
 
 Dual-write helpers that translate a :class:`~farm_notary.manifest.Manifest`
-into well-known provenance formats so verifiers that already speak those
-vocabularies do not need to learn ``farmnotary.manifest.v1``.
+into well-known *vocabularies* so a reader who already speaks those
+formats can find the FarmNotary content hash. They are **not**
+verifiable provenance:
 
-Supported targets
------------------
-* **SLSA / in-toto** – ``https://slsa.dev/provenance/v1`` predicate wrapped
-  in an in-toto ``Statement``.  The FarmNotary content hash is placed in
-  ``buildDefinition.internalParameters.content_hash``; every artifact hash
-  is listed as a ``subject``.
-* **RO-Crate** – minimal ``ro-crate-metadata.json`` (schema.org/Dataset).
-* **C2PA** – minimal JSON representation of a C2PA-style claim (not a binary
-  JUMBF; useful for tooling that consumes JSON claim summaries).
+* SLSA / in-toto JSON is not a DSSE envelope and is not signed.
+* C2PA output is a JSON summary, not a JUMBF manifest store.
+* None of these files appear on the claim card.
 
-All functions are **pure** (no I/O) and return plain dicts that callers can
-serialize to JSON.  The ``emit_*`` helpers additionally write the file next
-to ``manifest.json`` and return the destination path.
+Filenames carry ``.unsigned.json`` (except the RO-Crate metadata name,
+which is fixed by the spec). Every document also records
+``farmnotary_interop.status = unsigned-summary-not-for-verification``.
 """
 
 from __future__ import annotations
@@ -35,12 +30,36 @@ if TYPE_CHECKING:
 _SLSA_STATEMENT_TYPE = "https://in-toto.io/Statement/v1"
 _SLSA_PREDICATE_TYPE = "https://slsa.dev/provenance/v1"
 
+INTEROP_STATUS = "unsigned-summary-not-for-verification"
+SLSA_FILE_NAME = "slsa-provenance.unsigned.json"
+ROCRATE_FILE_NAME = "ro-crate-metadata.json"
+C2PA_FILE_NAME = "c2pa-claim-summary.unsigned.json"
+
+_INTEROP_NOTE = (
+    "Unsigned JSON vocabulary export. Not a DSSE envelope, not a C2PA "
+    "JUMBF, and not a claim-ladder row."
+)
+
+
+def _unsigned_mark() -> Dict[str, Any]:
+    return {
+        "farmnotary_interop": {
+            "status": INTEROP_STATUS,
+            "note": _INTEROP_NOTE,
+        }
+    }
+
+
+def _is_full_git_sha(value: str) -> bool:
+    return len(value) == 40 and all(c in "0123456789abcdefABCDEF" for c in value)
+
 
 def to_slsa_provenance(manifest: "Manifest") -> Dict[str, Any]:
     """Return an in-toto Statement containing a SLSA provenance predicate.
 
-    The statement is not signed here; callers that want a DSSE envelope
-    should wrap the serialised bytes themselves.
+    The statement is not signed. Callers that want a DSSE envelope must
+    wrap the serialised bytes themselves. The returned dict is marked
+    ``unsigned-summary-not-for-verification``.
 
     Parameters
     ----------
@@ -107,7 +126,7 @@ def to_slsa_provenance(manifest: "Manifest") -> Dict[str, Any]:
 
     # resolvedDependencies: include the Git revision as a resolved dependency.
     resolved_deps: List[Dict[str, Any]] = []
-    if manifest.git_sha:
+    if manifest.git_sha and _is_full_git_sha(manifest.git_sha):
         repo = ci_prov.get("repository", "") if ci_prov else ""
         dep: Dict[str, Any] = {"digest": {"sha1": manifest.git_sha}}
         if repo:
@@ -139,11 +158,12 @@ def to_slsa_provenance(manifest: "Manifest") -> Dict[str, Any]:
         "subject": subjects,
         "predicate": predicate,
     }
+    statement.update(_unsigned_mark())
     return statement
 
 
 def emit_slsa(manifest: "Manifest", run_dir: Path) -> Path:
-    """Write ``slsa-provenance.json`` next to ``manifest.json``.
+    """Write ``slsa-provenance.unsigned.json`` next to ``manifest.json``.
 
     Parameters
     ----------
@@ -157,7 +177,7 @@ def emit_slsa(manifest: "Manifest", run_dir: Path) -> Path:
     Path
         Path to the written file.
     """
-    dest = Path(run_dir) / "slsa-provenance.json"
+    dest = Path(run_dir) / SLSA_FILE_NAME
     dest.write_text(
         json.dumps(to_slsa_provenance(manifest), indent=2) + "\n",
         encoding="utf-8",
@@ -217,6 +237,7 @@ def to_ro_crate(manifest: "Manifest", *, crate_id: str = "./") -> Dict[str, Any]
 
     if manifest.cid:
         root_dataset["identifier"] = f"ipfs:{manifest.cid}"
+    root_dataset.update(_unsigned_mark())
 
     metadata_entity = {
         "@id": "ro-crate-metadata.json",
@@ -246,7 +267,7 @@ def emit_ro_crate(manifest: "Manifest", run_dir: Path) -> Path:
     Path
         Path to the written file.
     """
-    dest = Path(run_dir) / "ro-crate-metadata.json"
+    dest = Path(run_dir) / ROCRATE_FILE_NAME
     dest.write_text(
         json.dumps(to_ro_crate(manifest, crate_id="./"), indent=2) + "\n",
         encoding="utf-8",
@@ -261,9 +282,8 @@ def emit_ro_crate(manifest: "Manifest", run_dir: Path) -> Path:
 def to_c2pa_claim(manifest: "Manifest") -> Dict[str, Any]:
     """Return a minimal C2PA-style claim summary for *manifest*.
 
-    This is a JSON representation of a C2PA claim, not a binary JUMBF
-    structure.  It is intended for tooling that consumes JSON claim summaries
-    and for interop with systems such as Atlas that independently adopted C2PA.
+    This is a JSON vocabulary summary, not a C2PA JUMBF manifest store
+    and not a signed claim. It will not pass a C2PA validator.
 
     Parameters
     ----------
@@ -311,6 +331,7 @@ def to_c2pa_claim(manifest: "Manifest") -> Dict[str, Any]:
             "content_hash": content_hash,
         },
     }
+    claim.update(_unsigned_mark())
 
     if manifest.git_sha:
         claim["farmnotary"]["git_sha"] = manifest.git_sha
@@ -322,7 +343,7 @@ def to_c2pa_claim(manifest: "Manifest") -> Dict[str, Any]:
 
 
 def emit_c2pa(manifest: "Manifest", run_dir: Path) -> Path:
-    """Write ``c2pa-claim.json`` next to ``manifest.json``.
+    """Write ``c2pa-claim-summary.unsigned.json`` next to ``manifest.json``.
 
     Parameters
     ----------
@@ -336,7 +357,7 @@ def emit_c2pa(manifest: "Manifest", run_dir: Path) -> Path:
     Path
         Path to the written file.
     """
-    dest = Path(run_dir) / "c2pa-claim.json"
+    dest = Path(run_dir) / C2PA_FILE_NAME
     dest.write_text(
         json.dumps(to_c2pa_claim(manifest), indent=2) + "\n",
         encoding="utf-8",

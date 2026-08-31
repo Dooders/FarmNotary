@@ -16,15 +16,16 @@ from typing import Any, List, Mapping, Optional, Sequence
 from farm_notary.beacon import subset_note
 from farm_notary.manifest import (
     MANIFEST_NAME,
-    Manifest,
     SEED_KEYS,
+    Manifest,
     capture_environment,
     config_hash_excluding_seed,
     extract_seed,
     hash_json,
     load_manifest,
 )
-from farm_notary.precommit import PRECOMMIT_NAME, load_precommit, precommit_hash as hash_precommit
+from farm_notary.precommit import PRECOMMIT_NAME, load_precommit
+from farm_notary.precommit import precommit_hash as hash_precommit
 from farm_notary.schema import CAMPAIGN_VERSION, TOOL_VERSION
 
 CAMPAIGN_NAME = "campaign.json"

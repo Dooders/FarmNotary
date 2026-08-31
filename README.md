@@ -14,7 +14,7 @@ Immutability is not correctness. Re-run from the committed seed to check the sci
 
 Published runs need a record that does not depend on the author's laptop. Reviewers should be able to fetch the official artifacts, rehash them, and see when that exact file was published — without trusting a zip, a Drive folder, or a local IPFS pin.
 
-That is a narrower job than "put the simulation on a chain" and a broader one than `sha256sum`. The simulation stays off-chain. FarmNotary never hashes/uploads paths containing `ballot`, `vote`, `voter`, `individual_choice`, or `private`. What gets notarized is the official record: code identity, config, aggregate metrics, winner allocations. Anchoring a hash is already solved ([OpenTimestamps](https://opentimestamps.org/) into Bitcoin); FarmNotary's work is the domain part — allowlists, privacy, honest claims.
+That is a narrower job than "put the simulation on a chain" and a broader one than `sha256sum`. The simulation stays off-chain. FarmNotary never hashes/uploads paths containing `ballot`, `vote`, `voter`, `individual_choice`, or `private`. What gets notarized is the official record: code identity, config, aggregate metrics, winner allocations. Anchoring a hash is already solved ([OpenTimestamps](https://opentimestamps.org/) into Bitcoin); FarmNotary's work is the domain part — allowlists, publication scope, and honest claims.
 
 A hash tool will tell you the bytes match. A research notary also tells you what you may claim, and what you may not.
 
@@ -56,7 +56,7 @@ farm-notary manifest --run-dir path/to/run --profile consensus
 
 Checked-in profiles: `consensus`, `rl-sweep`, `evolution-run`. Extra `--publish` globs append. The resolved allowlist is recorded as `publish_patterns` (and `publish_profile`) so the policy is part of the claim.
 
-The denylist still applies: any path containing `ballot`, `vote`, `voter`, `individual_choice`, or `private` is excluded even if a pattern would admit it. Files that match no pattern are counted as `unmatched_count` (names are never printed).
+The denylist still applies: any path containing `ballot`, `vote`, `voter`, `individual_choice`, or `private` is excluded even if a pattern would admit it. Files left out of the official record increment `unmatched_count` (names are never printed) and, when any exist, a salted Merkle commitment (`withheld_root`, `withheld_classes`) records the publication scope: published X, withheld N in class C, commitment C_root.
 
 ## Install
 
@@ -73,7 +73,8 @@ Extras:
 | *(none)* | — | `manifest`, `verify` (local rehash), IPFS pin |
 | `[ots]` | `opentimestamps` | `anchor --backend ots`, `upgrade`, OTS proof checks |
 | `[chain]` | `web3` | experimental EAS backend |
-| `[dev]` | pytest + both extras | development |
+| `[dev]` | pytest + extras + ruff + mypy | development |
+| `[lint]` | ruff, mypy | `ruff check farm_notary` / `mypy farm_notary` |
 
 IPFS upload needs a reachable Kubo daemon (`FARM_NOTARY_IPFS_API`, default `http://127.0.0.1:5001`), not a Python extra.
 
@@ -134,11 +135,12 @@ farm-notary verify --run-dir runs/i-0 --live-beacon
 | `campaign` | Build a parent `campaign.json` from child run directories |
 | `paper-pack` | Write `appendix.md` for a PDF |
 | `index` | Append a run or campaign to a static registry (no scores) |
+| `reveal-withheld` | Open a named subset of withheld files against `withheld_root` |
 | `derive-seeds` | After the plan is stamped, fetch `min_round` and write `seeds.json` |
 | `register-schema` | One-time EAS schema registration |
-| `emit-interop` | Dual-write interop provenance files alongside `manifest.json` (SLSA/in-toto, RO-Crate, unsigned C2PA-style summary) |
-| `archive` | Deposit a run to durable storage: Zenodo (DOI) and/or Software Heritage (SWH ID) |
-| `chain` | Build or verify a multi-stage provenance chain (`provenance-chain.json`) |
+| `emit-interop` | Unsigned JSON summaries (SLSA/in-toto vocabulary, RO-Crate, C2PA-style). Not verifiable provenance |
+| `archive` | Optional Zenodo deposit / Software Heritage lookup. IDs are not claim-card rows |
+| `chain` | Manifest-hash lineage (`provenance-chain.json`). Not input/output data flow |
 
 ## What you may claim
 
@@ -347,9 +349,11 @@ manifest, receipt = notarize_run(
 
 Every manifest records `farm_notary_version` (currently `0.2.0`) and `schema` (`farmnotary.manifest.v1`).
 
-**Promise:** within the `0.x` line, schema changes are **minor-version bumps**. `verify` stays backward-compatible with older manifests: new fields are ignored when reading an older body. A newer schema emits a warning and still attempts verification. Optional fields (`derived_from`, `identity`, `ci_provenance`, `publish_profile`, …) are omitted when empty so a v1 body keeps a stable content hash.
+**Promise:** within the `0.x` line, schema changes are **minor-version bumps**. `verify` stays backward-compatible with older manifests: new fields are ignored when reading an older body. A newer schema emits a warning and still attempts verification. Optional content-hashed fields (`derived_from`, `ci_provenance`, `publish_profile`, `withheld_root`, …) are omitted when empty so a v1 body keeps a stable content hash.
 
 Required on every v1 body: `schema`, `created_utc`, `git_sha`, `config`, `artifacts`, `artifact_hashes`, `publish_patterns`, `unmatched_count`.
+
+`identity` is a **stamp field** (with `cid` and `anchor`): written after `content_hash` and excluded from it. JSON Schema files are in [`schemas/`](schemas/) (source/GitHub repo only; not included in the PyPI wheel). Migration notes: [docs/MIGRATION.md](docs/MIGRATION.md).
 
 Breaking changes (new required fields, renamed keys, removed fields) are reserved for `1.0` and will land in the changelog with a migration guide.
 
@@ -408,7 +412,9 @@ CI runs pytest on Python 3.9–3.12.
 |---|---|
 | [docs/PRINCIPLES.md](docs/PRINCIPLES.md) | Constraints that settle design arguments |
 | [docs/CLAIMS.md](docs/CLAIMS.md) | What each claim means, what backs it, hardware scope |
-| [docs/DESIGN.md](docs/DESIGN.md) | Schema, backends, privacy, provenance flow |
+| [docs/DESIGN.md](docs/DESIGN.md) | Schema, backends, publication scope, provenance flow |
+| [docs/MIGRATION.md](docs/MIGRATION.md) | 0.1 → 0.2 and withheld-commitment notes |
+| [schemas/](schemas/) | JSON Schema for manifest, campaign, and registry |
 | [docs/ACTION.md](docs/ACTION.md) | GitHub Action inputs, outputs, phases |
 | [docs/EAS.md](docs/EAS.md) | Experimental EAS backend |
 | [docs/VERIFIER.md](docs/VERIFIER.md) | Reviewer quick-check: zero-install `uvx`/`pipx run` path |
@@ -421,5 +427,7 @@ CI runs pytest on Python 3.9–3.12.
 ## Status
 
 **0.2.0** is on PyPI. Manifests, campaigns, derivation claims, environment fingerprints, optional identity, paper pack, public index, hashing, IPFS pinning, OpenTimestamps (CLI dry-run default; Action `ots`), proof upgrade, claim-card verify, reusable GitHub Action, and experimental EAS on Base / Base Sepolia are implemented and tested.
+
+Later-wave helpers from #40 (`emit-interop`, `archive`, tracker plugins, `chain`) are experimental first-cuts. They are not claim-ladder steps: SLSA/C2PA files are unsigned summaries, plugins require an explicit allowlist, and a provenance chain is hash lineage only.
 
 The anchoring layer is outsourced — earlier revisions carried a custom `SimulationRegistry` contract, which was removed. Breaking schema changes are reserved for 1.0.

@@ -14,7 +14,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
 SCHEME_SSH = "ssh"
 SCHEME_MINISIGN = "minisign"

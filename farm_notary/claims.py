@@ -81,7 +81,13 @@ def scoped_reproducibility_sentence(
 
     runs = getattr(record, "runs", None)
     if runs:
-        seeds = [r.get("seed") for r in runs if isinstance(r, dict) and r.get("seed") is not None]
+        seeds = []
+        for run in runs:
+            if not isinstance(run, dict):
+                continue
+            seed = run.get("seed")
+            if seed is not None:
+                seeds.append(seed)
         seed_bit = ""
         if seeds:
             if _is_contiguous_int_range(seeds):
