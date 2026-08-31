@@ -133,7 +133,10 @@ class TestDepositManifest:
         )
         try:
             with patch("farm_notary.archive._ZENODO_API_BASE", stub.base_url + "/api"):
-                result = deposit_manifest(m, str(tmp_path), token="tok", timeout=5)
+                result = deposit_manifest(
+                m, str(tmp_path), token="tok", timeout=5,
+                metadata={"creators": [{"name": "Test Author"}]},
+            )
             assert result["id"] == 42
             # One POST to /depositions and one to /depositions/42/files
             paths = [r["path"] for r in stub._requests]

@@ -5,9 +5,12 @@ required for the core claim ladder; they are additive.
 
 Zenodo
 ------
-Deposit a run directory (or individual files) to Zenodo and stamp the
-returned DOI back onto a manifest.  Uses the Zenodo REST API over plain
-``urllib`` to avoid adding dependencies.
+Deposit a run directory (or individual files) to Zenodo and return the
+Zenodo API response (including a ``"doi"`` key when the deposit is
+published).  Uses the Zenodo REST API over plain ``urllib`` to avoid adding
+dependencies.  The DOI is not automatically stamped back onto the manifest;
+callers that need that should update the manifest themselves from the
+returned ``"doi"`` value.
 
 Software Heritage
 -----------------
@@ -248,21 +251,39 @@ def deposit_manifest(
             f"Content hash: {manifest.content_hash()}. "
             f"Git SHA: {manifest.git_sha or 'unknown'}."
         ),
-        "creators": [{"name": "FarmNotary automated deposit"}],
     }
     if metadata:
         default_meta.update(metadata)
+
+    if not default_meta.get("creators"):
+        raise ValueError(
+            "Zenodo deposit requires at least one creator. "
+            "Supply metadata={'creators': [{'name': 'Author, Name'}]}."
+        )
 
     deposition = zenodo_create_deposit(
         token=tok, sandbox=sandbox, metadata=default_meta, timeout=timeout
     )
     dep_id = str(deposition["id"])
 
+    resolved_rd = rd.resolve()
     upload_paths: List[str] = list(files) if files is not None else ["manifest.json"]
     if files is not None and "manifest.json" not in upload_paths:
         upload_paths.insert(0, "manifest.json")
     for rel in upload_paths:
-        zenodo_upload_file(dep_id, str(rd / rel), token=tok, sandbox=sandbox, timeout=timeout)
+        rel_path = Path(rel)
+        if rel_path.is_absolute():
+            raise ValueError(
+                f"Refusing to upload {rel!r}: file paths must be relative to the run directory"
+            )
+        candidate = (rd / rel_path).resolve()
+        try:
+            candidate.relative_to(resolved_rd)
+        except ValueError:
+            raise ValueError(
+                f"Refusing to upload {rel!r}: path escapes the run directory"
+            )
+        zenodo_upload_file(dep_id, str(candidate), token=tok, sandbox=sandbox, timeout=timeout)
 
     if publish:
         return zenodo_publish(dep_id, token=tok, sandbox=sandbox, timeout=timeout)

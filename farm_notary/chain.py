@@ -21,7 +21,7 @@ The chain is a JSON array where each element is::
         "stage":          <int or str>,
         "manifest_path":  <relative path | null>,
         "content_hash":   <sha256 hex of the manifest body>,
-        "parent_hash":    <content_hash of the previous link | null for root>,
+        "parent_hash":    <link_hash of the previous link | null for root>,
         "link_hash":      <sha256(parent_hash + content_hash)>,
     }
 
@@ -58,7 +58,7 @@ class ChainLink:
         SHA-256 hash of the manifest body (from
         :meth:`~farm_notary.manifest.Manifest.content_hash`).
     parent_hash:
-        ``content_hash`` of the previous link, or ``None`` for the root.
+        ``link_hash`` of the previous link, or ``None`` for the root.
     link_hash:
         Commitment over the full lineage: ``sha256(parent_hash + content_hash)``.
         For the root, ``sha256("" + content_hash)``.
@@ -118,7 +118,7 @@ def chain_manifests(
     -------
     list of ChainLink
         Chain from root to tip.  Each link's ``parent_hash`` is the previous
-        link's ``content_hash``; each ``link_hash`` is a commitment over the
+        link's ``link_hash``; each ``link_hash`` is a commitment over the
         full history.
     """
     if not manifests:
@@ -151,7 +151,7 @@ def chain_manifests(
                 link_hash=lh,
             )
         )
-        parent_hash = ch
+        parent_hash = lh
 
     return chain
 
@@ -161,16 +161,26 @@ def chain_manifests(
 # ---------------------------------------------------------------------------
 
 
-def verify_chain(chain: Sequence[ChainLink]) -> List[str]:
+def verify_chain(
+    chain: Sequence[ChainLink], *, chain_dir: Optional[Path] = None
+) -> List[str]:
     """Verify the integrity of a provenance chain.
 
     Re-derives every ``link_hash`` from ``parent_hash`` + ``content_hash``
     and checks that consecutive links' ``parent_hash`` values are consistent.
+    When *chain_dir* is given, each link whose ``manifest_path`` is set is
+    loaded from disk and its content is hashed to confirm it matches the
+    recorded ``content_hash`` — preventing an attacker from swapping a
+    referenced manifest without updating the chain.
 
     Parameters
     ----------
     chain:
         Sequence of :class:`ChainLink` objects in order (root first).
+    chain_dir:
+        Optional base directory used to resolve relative ``manifest_path``
+        values.  When omitted, on-disk manifest verification is skipped and
+        a warning is appended for each link that has a ``manifest_path``.
 
     Returns
     -------
@@ -178,7 +188,7 @@ def verify_chain(chain: Sequence[ChainLink]) -> List[str]:
         List of error messages; empty list means the chain is intact.
     """
     errors: List[str] = []
-    prev_content_hash: Optional[str] = None
+    prev_link_hash: Optional[str] = None
 
     for i, link in enumerate(chain):
         # Check parent_hash consistency.
@@ -188,10 +198,10 @@ def verify_chain(chain: Sequence[ChainLink]) -> List[str]:
                     f"link {i} (stage {link.stage!r}): root link must have parent_hash=null"
                 )
         else:
-            if link.parent_hash != prev_content_hash:
+            if link.parent_hash != prev_link_hash:
                 errors.append(
                     f"link {i} (stage {link.stage!r}): parent_hash mismatch "
-                    f"(expected {prev_content_hash!r}, got {link.parent_hash!r})"
+                    f"(expected {prev_link_hash!r}, got {link.parent_hash!r})"
                 )
 
         # Re-derive link_hash.
@@ -202,7 +212,40 @@ def verify_chain(chain: Sequence[ChainLink]) -> List[str]:
                 f"(expected {expected_lh!r}, got {link.link_hash!r})"
             )
 
-        prev_content_hash = link.content_hash
+        # Verify the referenced manifest file if a base directory was given.
+        if link.manifest_path:
+            if chain_dir is not None:
+                manifest_file = (Path(chain_dir) / link.manifest_path).resolve()
+                if not manifest_file.exists():
+                    errors.append(
+                        f"link {i} (stage {link.stage!r}): manifest_path "
+                        f"{link.manifest_path!r} not found"
+                    )
+                else:
+                    try:
+                        from farm_notary.manifest import load_manifest
+
+                        m = load_manifest(manifest_file)
+                        actual_ch = m.content_hash()
+                    except Exception as exc:
+                        errors.append(
+                            f"link {i} (stage {link.stage!r}): could not load "
+                            f"manifest {link.manifest_path!r}: {exc}"
+                        )
+                    else:
+                        if actual_ch != link.content_hash:
+                            errors.append(
+                                f"link {i} (stage {link.stage!r}): manifest "
+                                f"content_hash mismatch — manifest on disk has "
+                                f"{actual_ch!r}, chain records {link.content_hash!r}"
+                            )
+            else:
+                errors.append(
+                    f"link {i} (stage {link.stage!r}): manifest_path "
+                    f"{link.manifest_path!r} not verified (no chain_dir supplied)"
+                )
+
+        prev_link_hash = link.link_hash
 
     return errors
 

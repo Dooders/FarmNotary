@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
     from farm_notary.manifest import Manifest
@@ -61,45 +61,72 @@ def to_slsa_provenance(manifest: "Manifest") -> Dict[str, Any]:
     ]
 
     build_type = "https://github.com/Dooders/FarmNotary/build-types/local@v1"
+    # Use a stable workflow/builder identity, not a per-run URL.
     builder_id = "https://github.com/Dooders/FarmNotary"
 
     ci_prov = manifest.ci_provenance or {}
+    invocation_id: Optional[str] = None
     if ci_prov.get("kind") == "github_actions":
         build_type = "https://github.com/Dooders/FarmNotary/build-types/github-actions@v1"
-        builder_id = ci_prov.get(
+        # builder.id must identify the stable workflow, not the individual run.
+        repo = ci_prov.get("repository", "")
+        workflow = ci_prov.get("workflow", "")
+        if repo and workflow:
+            builder_id = f"https://github.com/{repo}/actions/workflows/{workflow}"
+        elif repo:
+            builder_id = f"https://github.com/{repo}/actions"
+        # Per-run URL belongs in invocationId, not builder.id.
+        invocation_id = ci_prov.get(
             "run_url",
-            f"https://github.com/{ci_prov.get('repository', '')}/actions/runs/{ci_prov.get('run_id', '')}",
+            (
+                f"https://github.com/{repo}/actions/runs/{ci_prov.get('run_id', '')}"
+                if repo
+                else None
+            ),
         )
+
+    # SLSA v1 runDetails.metadata fields.
+    metadata: Dict[str, Any] = {
+        "finishedOn": manifest.created_utc,
+    }
+    if invocation_id:
+        metadata["invocationId"] = invocation_id
 
     run_details: Dict[str, Any] = {
         "builder": {"id": builder_id},
-        "metadata": {
-            "buildFinishedOn": manifest.created_utc,
-            "reproducible": True,
-        },
+        "metadata": metadata,
     }
 
-    if manifest.git_sha:
-        run_details["buildConfig"] = {
-            "ref": manifest.git_sha,
-            "config": manifest.config,
-        }
-
+    # Build the externalParameters block; CI inputs belong here, not in metadata.
+    external_params: Dict[str, Any] = {
+        "config": manifest.config,
+        "publish_patterns": manifest.publish_patterns,
+    }
     if ci_prov:
-        run_details["metadata"]["externalParameters"] = ci_prov
+        external_params["ci"] = ci_prov
+
+    # resolvedDependencies: include the Git revision as a resolved dependency.
+    resolved_deps: List[Dict[str, Any]] = []
+    if manifest.git_sha:
+        repo = ci_prov.get("repository", "") if ci_prov else ""
+        dep: Dict[str, Any] = {"digest": {"sha1": manifest.git_sha}}
+        if repo:
+            dep["uri"] = f"git+https://github.com/{repo}"
+        resolved_deps.append(dep)
+
+    build_definition: Dict[str, Any] = {
+        "buildType": build_type,
+        "externalParameters": external_params,
+        "internalParameters": {
+            "farmnotary_schema": manifest.schema,
+            "content_hash": manifest.content_hash(),
+        },
+    }
+    if resolved_deps:
+        build_definition["resolvedDependencies"] = resolved_deps
 
     predicate: Dict[str, Any] = {
-        "buildDefinition": {
-            "buildType": build_type,
-            "externalParameters": {
-                "config": manifest.config,
-                "publish_patterns": manifest.publish_patterns,
-            },
-            "internalParameters": {
-                "farmnotary_schema": manifest.schema,
-                "content_hash": manifest.content_hash(),
-            },
-        },
+        "buildDefinition": build_definition,
         "runDetails": run_details,
     }
 

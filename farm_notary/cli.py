@@ -5,7 +5,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from farm_notary.anchor import anchor_run, get_backend, write_cid_binding_proof, write_proof
 from farm_notary.manifest import (
@@ -462,6 +462,24 @@ def _build_parser() -> argparse.ArgumentParser:
         "--zenodo-publish",
         action="store_true",
         help="Publish the deposit immediately (assigns a DOI)",
+    )
+    p_arc.add_argument(
+        "--zenodo-creator",
+        metavar="NAME",
+        required=False,
+        help=(
+            "Creator name for the Zenodo deposit (e.g. 'Smith, Jane'). "
+            "Required when --zenodo-publish is used to avoid fabricated authorship."
+        ),
+    )
+    p_arc.add_argument(
+        "--zenodo-files",
+        metavar="FILE",
+        nargs="+",
+        help=(
+            "Relative paths (within RUN_DIR) of artifact files to upload alongside "
+            "manifest.json.  Defaults to manifest.json only."
+        ),
     )
     p_arc.add_argument(
         "--swh",
@@ -1496,12 +1514,27 @@ def _cmd_archive(args: argparse.Namespace) -> int:
         from farm_notary.archive import ZenodoError, deposit_manifest
 
         try:
+            zenodo_creator = getattr(args, "zenodo_creator", None)
+            zenodo_publish = getattr(args, "zenodo_publish", False)
+            if zenodo_publish and not zenodo_creator:
+                print(
+                    "error: --zenodo-creator is required when using --zenodo-publish "
+                    "to avoid recording fabricated authorship",
+                    file=sys.stderr,
+                )
+                return 2
+            metadata: Optional[Dict[str, Any]] = None
+            if zenodo_creator:
+                metadata = {"creators": [{"name": zenodo_creator}]}
+            zenodo_files = getattr(args, "zenodo_files", None) or None
             result = deposit_manifest(
                 manifest,
                 str(run_dir),
                 token=getattr(args, "zenodo_token", None) or None,
                 sandbox=getattr(args, "zenodo_sandbox", False),
-                publish=getattr(args, "zenodo_publish", False),
+                publish=zenodo_publish,
+                files=zenodo_files,
+                metadata=metadata,
             )
             if "doi" in result:
                 print(f"zenodo doi: {result['doi']}")
@@ -1560,7 +1593,10 @@ def _cmd_chain(args: argparse.Namespace) -> int:
         except (ValueError, KeyError, json.JSONDecodeError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
-        errors = verify_chain(chain)
+        if not chain:
+            print("error: chain file is empty", file=sys.stderr)
+            return 2
+        errors = verify_chain(chain, chain_dir=chain_path.parent)
         if errors:
             for err in errors:
                 print(f"chain error: {err}", file=sys.stderr)

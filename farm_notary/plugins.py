@@ -117,9 +117,13 @@ class MLflowNotaryPlugin:
         path = write_manifest(manifest, artifact_path)
 
         if self.anchor:
-            from farm_notary.ots import stamp_manifest
+            from farm_notary.anchor import anchor_run, write_proof
+            from farm_notary.ots import OpenTimestampsBackend
 
-            stamp_manifest(manifest, artifact_path)
+            backend = OpenTimestampsBackend()
+            receipt = anchor_run(manifest, backend=backend, allow_dirty=True)
+            write_proof(receipt, artifact_path)
+            write_manifest(manifest, artifact_path)
 
         return path
 
@@ -284,7 +288,16 @@ def dvc_anchor_outputs(
         patterns = list(publish_patterns)
     else:
         # Derive glob patterns from the concrete DVC output paths.
-        patterns = dvc_paths + list(extra_files or [])
+        # DVC commonly tracks entire directories (e.g. "models"); expand each
+        # bare directory name to also match its descendants so that files like
+        # "models/model.pkl" are included.
+        expanded: List[str] = []
+        for p in dvc_paths:
+            expanded.append(p)
+            # Add a recursive descendant pattern unless already a glob.
+            if "*" not in p and "?" not in p:
+                expanded.append(p.rstrip("/") + "/**/*")
+        patterns = expanded + list(extra_files or [])
 
     if not patterns:
         patterns = ["*", "**/*"]
@@ -349,9 +362,13 @@ def notarize_run(
     write_manifest(manifest, rd)
 
     if anchor:
-        from farm_notary.ots import stamp_manifest
+        from farm_notary.anchor import anchor_run, write_proof
+        from farm_notary.ots import OpenTimestampsBackend
 
-        stamp_manifest(manifest, rd)
+        backend = OpenTimestampsBackend()
+        receipt = anchor_run(manifest, backend=backend, allow_dirty=True)
+        write_proof(receipt, rd)
+        write_manifest(manifest, rd)
 
     if emit_slsa:
         from farm_notary.interop import emit_slsa as _emit_slsa

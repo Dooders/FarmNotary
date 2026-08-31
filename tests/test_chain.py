@@ -51,7 +51,7 @@ class TestChainManifests:
         m0 = build_manifest(d0, publish_patterns=["*.csv"])
         m1 = build_manifest(d1, publish_patterns=["*.csv"])
         chain = chain_manifests([m0, m1])
-        assert chain[1].parent_hash == m0.content_hash()
+        assert chain[1].parent_hash == chain[0].link_hash
 
     def test_link_hash_recomputed(self, tmp_path):
         import hashlib
@@ -168,5 +168,5 @@ class TestChainRunDirs:
         d1 = _make_run(tmp_path, "vb1", config={"step": 1})
         d2 = _make_run(tmp_path, "vb2", config={"step": 2})
         chain = chain_run_dirs([d0, d1, d2])
-        errors = verify_chain(chain)
+        errors = verify_chain(chain, chain_dir=tmp_path)
         assert errors == []
