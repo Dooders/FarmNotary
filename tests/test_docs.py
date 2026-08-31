@@ -34,12 +34,12 @@ def test_readme_lists_every_cli_command():
         assert f"`{name}`" in README, f"README is missing command {name!r}"
 
 
-def test_readme_and_docs_state_current_version_and_pypi_gap():
+def test_readme_and_docs_state_current_version():
     assert TOOL_VERSION == "0.2.0"
     assert "0.2.0" in README
-    assert "0.1.0" in README
-    assert "git+https://github.com/Dooders/FarmNotary.git@dev" in README
+    assert 'pip install "farm-notary[ots]"' in README
     assert "farm-notary>=0.2,<0.3" in README
+    assert "dooders/FarmNotary@v0.2.0" in README
 
 
 def test_readme_documents_verify_derived_and_missing_is_not_failure():
@@ -172,6 +172,7 @@ def test_principles_is_listed_and_forbids_real_things():
         "file drawer",
         "independently reproduced",
         "unmatched_count",
+        "withheld_root",
         "SimulationRegistry",
         "dry-run",
     ):
@@ -196,9 +197,8 @@ def test_live_demo_notebook_stays_inside_the_claim_card():
 def test_action_docs_match_action_yml_defaults():
     action = Path("action.yml").read_text(encoding="utf-8")
     assert "default: ots" in action
-    assert "dooders/FarmNotary@dev" in README
-    assert "dooders/FarmNotary@dev" in ACTION
-    assert "v0.2" in README and "tag" in README
+    assert "dooders/FarmNotary@v0.2.0" in README
+    assert "dooders/FarmNotary@v0.2.0" in ACTION
     assert "--verify-derived" in ACTION
     assert "not passed" in ACTION or "without" in ACTION
     assert "dry-run" in README
@@ -225,3 +225,14 @@ def test_later_wave_helpers_are_labeled_unsigned_and_experimental():
     assert "unsigned-summary-not-for-verification" in CHANGELOG or "unsigned" in CHANGELOG
     assert "notarize_tracker_run" in CHANGELOG
     assert "Interop formats as new claim types" in PRINCIPLES
+
+
+def test_docs_frame_withheld_as_publication_scope():
+    for blob in (README, DESIGN, CLAIMS, PRINCIPLES, CHANGELOG):
+        assert "withheld_root" in blob
+    assert "publication scope" in README.lower() or "publication-scope" in README.lower()
+    assert "privacy protocol" in CHANGELOG.lower() or "publication-scope" in CHANGELOG.lower()
+    assert "The allowlist is the privacy model" not in CLAIMS
+    assert Path("docs/MIGRATION.md").is_file()
+    assert "withheld_salt" in Path("docs/MIGRATION.md").read_text(encoding="utf-8")
+    assert Path("schemas/farmnotary.manifest.v1.json").is_file()

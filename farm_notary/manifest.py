@@ -148,17 +148,8 @@ def _matches_any_pattern(rel_posix: str, patterns: Sequence[str]) -> bool:
     return False
 
 
-def iter_artifact_paths(
-    run_dir: Path,
-    publish_patterns: Sequence[str],
-) -> Iterator[Path]:
-    """Yield hashable files under *run_dir* that match the allowlist.
-
-    Only files whose relative POSIX path (or filename) matches at least one
-    *publish_patterns* glob are yielded.  The denylist (PRIVATE_NAME_FRAGMENTS)
-    is applied as a second, belt-and-braces pass over whatever the allowlist
-    admits.  Hidden files/directories and notary metadata are always skipped.
-    """
+def iter_candidate_files(run_dir: Path) -> Iterator[Path]:
+    """Yield non-hidden, non-notary, non-symlink files under *run_dir*."""
     run_dir = Path(run_dir)
     for path in sorted(run_dir.rglob("*")):
         if path.is_symlink():
@@ -176,11 +167,25 @@ def iter_artifact_paths(
             continue
         if path.name in NOTARY_FILE_NAMES or path.name.endswith(NOTARY_FILE_SUFFIXES):
             continue
-        rel_posix = rel.as_posix()
-        # --- allowlist (primary gate) ---
+        yield path
+
+
+def iter_artifact_paths(
+    run_dir: Path,
+    publish_patterns: Sequence[str],
+) -> Iterator[Path]:
+    """Yield hashable files under *run_dir* that match the allowlist.
+
+    Only files whose relative POSIX path (or filename) matches at least one
+    *publish_patterns* glob are yielded.  The denylist (PRIVATE_NAME_FRAGMENTS)
+    is applied as a second, belt-and-braces pass over whatever the allowlist
+    admits.  Hidden files/directories and notary metadata are always skipped.
+    """
+    run_dir = Path(run_dir)
+    for path in iter_candidate_files(run_dir):
+        rel_posix = path.relative_to(run_dir).as_posix()
         if not _matches_any_pattern(rel_posix, publish_patterns):
             continue
-        # --- denylist (belt-and-braces) ---
         if is_private_path(rel_posix):
             continue
         yield path
@@ -322,6 +327,11 @@ class Manifest:
     # manifests that only recorded publish_patterns still load.
     publish_profile: Optional[str] = None
     unmatched_count: int = 0
+    # Salted Merkle commitment over unpublished candidates. Omitted when
+    # nothing was withheld so older bodies keep a stable content hash.
+    withheld_salt: Optional[str] = None
+    withheld_root: Optional[str] = None
+    withheld_classes: Optional[dict] = None
     official_record: dict = field(default_factory=dict)
     # Optional derivation rules copied from the experiment profile
     # (config.notary.derived_from).  Omitted from serialization when empty
@@ -364,6 +374,9 @@ class Manifest:
             "anchor",
             "identity",
             "ci_provenance",
+            "withheld_salt",
+            "withheld_root",
+            "withheld_classes",
         }
         _OMIT_IF_EMPTY = {"derived_from"}
         return {
@@ -420,6 +433,7 @@ class Manifest:
                     raise ValueError("manifest field 'anchor.detail.proof' must be a string when present")
         if self.identity is not None and not isinstance(self.identity, dict):
             raise ValueError("manifest field 'identity' must be an object when present")
+        self._validate_withheld()
         listed = set(self.artifacts)
         hashed = set(self.artifact_hashes)
         if listed != hashed:
@@ -430,6 +444,58 @@ class Manifest:
         private = sorted(name for name in listed if is_private_path(name))
         if private:
             raise ValueError(f"manifest contains private artifacts: {private}")
+
+    def _validate_withheld(self) -> None:
+        present = [
+            name
+            for name, value in (
+                ("withheld_salt", self.withheld_salt),
+                ("withheld_root", self.withheld_root),
+                ("withheld_classes", self.withheld_classes),
+            )
+            if value is not None
+        ]
+        if not present:
+            return
+        if len(present) != 3:
+            raise ValueError(
+                "withheld_salt, withheld_root, and withheld_classes must be "
+                "recorded together"
+            )
+        if not isinstance(self.withheld_salt, str):
+            raise ValueError("withheld_salt must be a hex string")
+        if not isinstance(self.withheld_root, str):
+            raise ValueError("withheld_root must be a hex string")
+        try:
+            salt = bytes.fromhex(self.withheld_salt)
+            root = bytes.fromhex(self.withheld_root)
+        except ValueError as exc:
+            raise ValueError("withheld_salt and withheld_root must be hex") from exc
+        if len(salt) != 32 or len(root) != 32:
+            raise ValueError("withheld_salt and withheld_root must be 32 bytes")
+        if not isinstance(self.withheld_classes, dict) or not self.withheld_classes:
+            raise ValueError("withheld_classes must be a non-empty object")
+        from farm_notary.withheld import class_counts_total
+
+        for cls_name, spec in self.withheld_classes.items():
+            if not isinstance(spec, dict):
+                raise ValueError(
+                    f"withheld_classes[{cls_name!r}] must be an object"
+                )
+            if not isinstance(spec.get("count"), int) or spec["count"] < 0:
+                raise ValueError(
+                    f"withheld_classes[{cls_name!r}]['count'] must be a non-negative integer"
+                )
+            if not isinstance(spec.get("reason"), str):
+                raise ValueError(
+                    f"withheld_classes[{cls_name!r}]['reason'] must be a string"
+                )
+        total = class_counts_total(self.withheld_classes)
+        if total != int(self.unmatched_count):
+            raise ValueError(
+                "withheld_classes counts must sum to unmatched_count "
+                f"({total} != {self.unmatched_count})"
+            )
 
 
 def build_manifest(
@@ -452,6 +518,7 @@ def build_manifest(
     beacon_client: Optional[Any] = None,
     seeds_path: Optional[Path] = None,
     ci_provenance: Optional[Mapping[str, Any]] = _CI_PROV_AUTO,  # type: ignore[assignment]
+    withheld_salt: Optional[str] = None,
 ) -> Manifest:
     """Build a :class:`Manifest` for *run_dir*.
 
@@ -491,17 +558,17 @@ def build_manifest(
             "Nothing is hashed or uploaded unless explicitly declared."
         )
 
-    # Collect all candidate files to compute the unmatched count.
-    all_candidates: List[Path] = []
-    for path in sorted(run_dir.rglob("*")):
-        if path.is_symlink() or not path.is_file():
-            continue
-        rel = path.relative_to(run_dir)
-        if any(part.startswith(".") for part in rel.parts):
-            continue
-        if path.name in NOTARY_FILE_NAMES or path.name.endswith(NOTARY_FILE_SUFFIXES):
-            continue
-        all_candidates.append(path)
+    from farm_notary.withheld import classify_withheld, commit_withheld
+
+    all_candidates = list(iter_candidate_files(run_dir))
+    withheld_files = classify_withheld(
+        run_dir,
+        effective_patterns,
+        is_private=is_private_path,
+        matches_pattern=_matches_any_pattern,
+        candidates=all_candidates,
+    )
+    commitment = commit_withheld(withheld_files, salt_hex=withheld_salt)
 
     artifacts: list = []
     hashes: dict = {}
@@ -510,12 +577,28 @@ def build_manifest(
         artifacts.append(rel)
         hashes[rel] = hash_file(path)
 
-    unmatched = len(all_candidates) - len(artifacts)
+    unmatched = len(withheld_files)
+    if unmatched != len(all_candidates) - len(artifacts):
+        raise RuntimeError(
+            "withheld set and published artifacts disagree; "
+            "candidate classification drifted"
+        )
 
     if unmatched > 0:
+        denylist_n = 0
+        unmatched_n = unmatched
+        if commitment is not None:
+            denylist_n = int(
+                (commitment.classes.get("denylist") or {}).get("count") or 0
+            )
+            unmatched_n = int(
+                (commitment.classes.get("unmatched") or {}).get("count") or 0
+            )
         warnings.warn(
-            f"{unmatched} file(s) in {run_dir} matched no publish pattern and were excluded "
-            f"from the manifest.  Use --profile, --publish, or 'notary.publish' to include them.",
+            f"{unmatched} file(s) in {run_dir} were withheld from the official "
+            f"record (denylist={denylist_n}, unmatched={unmatched_n}). "
+            "Use --profile, --publish, or 'notary.publish' to include more. "
+            "Names are not printed.",
             stacklevel=2,
         )
 
@@ -545,6 +628,9 @@ def build_manifest(
         publish_patterns=list(effective_patterns),
         publish_profile=resolved_profile,
         unmatched_count=unmatched,
+        withheld_salt=commitment.salt if commitment else None,
+        withheld_root=commitment.root if commitment else None,
+        withheld_classes=commitment.classes if commitment else None,
         official_record=dict(official_record or {}),
         derived_from=rules,
         beacon=dict(beacon) if beacon is not None else None,
@@ -606,6 +692,19 @@ def build_manifest(
         raise ValueError("--seed-index requires --precommit")
     manifest.validate()
     return manifest
+
+
+def list_withheld(run_dir: Path, publish_patterns: Sequence[str]):
+    """Return withheld files for *run_dir* under the recorded allowlist."""
+    from farm_notary.withheld import classify_withheld
+
+    return classify_withheld(
+        Path(run_dir),
+        publish_patterns,
+        is_private=is_private_path,
+        matches_pattern=_matches_any_pattern,
+        candidates=list(iter_candidate_files(run_dir)),
+    )
 
 
 def write_manifest(manifest: Manifest, run_dir: Path) -> Path:

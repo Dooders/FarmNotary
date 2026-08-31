@@ -1,9 +1,9 @@
 """Named publish profiles: official artifacts for each experiment type.
 
-Allowlist-first is the privacy model, but an empty default means every lab
-invents globs — and some will forget REPORT.md or include a path they should
-not. A profile is a checked-in list of official artifacts. The denylist is
-applied after the allowlist on every profile.
+Allowlist-first is the publication-scope model, but an empty default means
+every lab invents globs — and some will forget REPORT.md or include a path
+they should not. A profile is a checked-in list of official artifacts. The
+denylist is applied after the allowlist on every profile.
 
 The resolved ``publish_patterns`` are recorded on the manifest so the policy
 is part of the claim, not a local convention.
