@@ -25,6 +25,12 @@ NOTARY_FILE_NAMES = frozenset(
         "campaign.json",
         "appendix.md",
         "seeds.json",
+        "provenance-chain.json",
+        "ro-crate-metadata.json",
+        "slsa-provenance.json",
+        "slsa-provenance.unsigned.json",
+        "c2pa-claim.json",
+        "c2pa-claim-summary.unsigned.json",
     }
 )
 NOTARY_FILE_SUFFIXES = (".ots",)

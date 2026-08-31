@@ -144,6 +144,41 @@ class TestDepositManifest:
         finally:
             stub.shutdown()
 
+    def test_draft_requires_creator(self, tmp_path, monkeypatch):
+        m = _make_manifest(tmp_path)
+        with pytest.raises(ValueError, match="creator"):
+            deposit_manifest(m, str(tmp_path), token="tok", timeout=5)
+
+    def test_rejects_path_escape(self, tmp_path, monkeypatch):
+        from farm_notary.manifest import write_manifest
+
+        m = _make_manifest(tmp_path)
+        write_manifest(m, tmp_path)
+        with pytest.raises(ValueError, match="escapes"):
+            deposit_manifest(
+                m,
+                str(tmp_path),
+                token="tok",
+                files=["../secret.txt"],
+                metadata={"creators": [{"name": "Test Author"}]},
+                timeout=5,
+            )
+
+    def test_rejects_absolute_upload_path(self, tmp_path):
+        from farm_notary.manifest import write_manifest
+
+        m = _make_manifest(tmp_path)
+        write_manifest(m, tmp_path)
+        with pytest.raises(ValueError, match="relative"):
+            deposit_manifest(
+                m,
+                str(tmp_path),
+                token="tok",
+                files=["/etc/passwd"],
+                metadata={"creators": [{"name": "Test Author"}]},
+                timeout=5,
+            )
+
 
 # ---------------------------------------------------------------------------
 # Software Heritage tests

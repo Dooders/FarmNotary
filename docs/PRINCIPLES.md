@@ -191,6 +191,10 @@ Permanently out of scope, not deferred.
   what the author did not publish.
 - **A complete archive of the run directory.** Allowlist plus denylist
   is the product. Individual voter or agent choices are not published.
+  Tracker plugins follow the same rule: no default `*`.
+- **Interop formats as new claim types.** SLSA/in-toto, RO-Crate, and
+  C2PA exports are unsigned vocabulary views. They do not earn a ladder
+  row and must not be presented as signed provenance.
 - **Cross-hardware bitwise identity.** The only sentence the tool may
   emit today is `byte-identical on x86-64 Linux in a pinned
   environment`. Other machines report `N/M` until

@@ -30,7 +30,7 @@ The recommended backend is [OpenTimestamps](https://opentimestamps.org/): public
 
 An experimental `eas` backend attests `(manifestHash, cid)` on Base / Base Sepolia. It needs a funded key, costs gas, and ties verification to an attester address. See [EAS.md](EAS.md).
 
-FarmNotary's job is domain-specific: deciding *what* gets anchored (the canonical manifest content hash) and *what never leaves the machine* (private artifacts).
+FarmNotary's job is domain-specific: deciding *what* gets anchored (the canonical manifest content hash) and *what never leaves the machine* (unpublished artifacts). The allowlist is publication scope, not a privacy protocol.
 
 CLI `anchor` and `precommit` default to `dry-run` (no network). The GitHub Action defaults to `ots`.
 
@@ -214,6 +214,18 @@ Notary metadata (`manifest.json`, `reproduction.json`, `campaign.json`, `appendi
 3. **`eas`** — EAS attestation on Base / Base Sepolia (`farm_notary/eas.py`, extra `[chain]`, experimental). EAS is an OP-stack predeploy (`0x4200...0021`; SchemaRegistry `0x4200...0020`), so the addresses are identical on Base and Base Sepolia. Schema: `bytes32 manifestHash,string cid`, non-revocable. `web3` is a lazy import. `anchor_run` writes the receipt (backend, tx hash, attestation UID, chain id) into `manifest.anchor`. `content_hash` excludes stamp fields, so the attested hash is stable across stamping.
 
 `precommit --backend` accepts only `dry-run` and `ots` (not `eas`).
+
+## Additive interop, archive, plugins, and chains
+
+These do not change `farmnotary.manifest.v1` or the claim ladder. They are
+export views and optional helpers.
+
+- `farm-notary emit-interop` writes unsigned JSON summaries: `slsa-provenance.unsigned.json`, `ro-crate-metadata.json`, `c2pa-claim-summary.unsigned.json`. Each document records `farmnotary_interop.status = unsigned-summary-not-for-verification`. There is no DSSE envelope and no C2PA JUMBF. `verify` does not read these files.
+- `farm-notary archive` may deposit `manifest.json` to Zenodo (creator required) or look up an existing Software Heritage revision. The DOI / SWH ID is printed, not stamped onto the manifest, and is not a claim-card row. SWH is lookup-only.
+- `farm_notary.plugins` (`MLflowNotaryPlugin`, `dvc_anchor_outputs`, `notarize_tracker_run`) require `publish_patterns` or `publish_profile`. There is no default `*`. `allow_dirty` defaults to false. `plugins.notarize_run` was removed to avoid colliding with `farm_notary.anchor.notarize_run`.
+- `farm-notary chain` records manifest-hash lineage in `provenance-chain.json` (`farmnotary.provenance-chain.v1`). Paths are relative to the chain file. The chain does not check that stage N's artifacts were inputs to stage N+1.
+
+Sidecars (`*.unsigned.json`, `ro-crate-metadata.json`, `provenance-chain.json`) are skipped by artifact discovery.
 
 ## Consensus experiment note
 

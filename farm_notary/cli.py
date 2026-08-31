@@ -448,8 +448,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p_interop = sub.add_parser(
         "emit-interop",
         help=(
-            "Emit interop provenance files alongside manifest.json "
-            "(SLSA/in-toto, RO-Crate, C2PA). Does not overwrite the FarmNotary manifest."
+            "Emit unsigned interop JSON summaries (SLSA/in-toto vocabulary, "
+            "RO-Crate, C2PA-style). Not verifiable provenance. Does not "
+            "overwrite the FarmNotary manifest."
         ),
     )
     p_interop.add_argument("run_dir", help="Run directory containing manifest.json")
@@ -459,8 +460,8 @@ def _build_parser() -> argparse.ArgumentParser:
         action="append",
         metavar="FORMAT",
         help=(
-            "Format to emit: slsa, ro-crate, c2pa. "
-            "Repeatable. Defaults to all three."
+            "Format to emit: slsa, ro-crate, c2pa. Repeatable. Defaults to "
+            "all three. SLSA and C2PA files are named *.unsigned.json."
         ),
     )
 
@@ -469,7 +470,11 @@ def _build_parser() -> argparse.ArgumentParser:
     # ------------------------------------------------------------------
     p_arc = sub.add_parser(
         "archive",
-        help="Archive a run to durable storage (Zenodo DOI, Software Heritage ID).",
+        help=(
+            "Optional durable-storage helpers (Zenodo draft/DOI, Software "
+            "Heritage lookup). IDs are not claim-card rows and are not "
+            "written to the manifest."
+        ),
     )
     p_arc.add_argument("run_dir", help="Run directory containing manifest.json")
     p_arc.add_argument(
@@ -498,7 +503,7 @@ def _build_parser() -> argparse.ArgumentParser:
         required=False,
         help=(
             "Creator name for the Zenodo deposit (e.g. 'Smith, Jane'). "
-            "Required when --zenodo-publish is used to avoid fabricated authorship."
+            "Required for any --zenodo deposit (draft or publish)."
         ),
     )
     p_arc.add_argument(
@@ -522,8 +527,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_chain = sub.add_parser(
         "chain",
         help=(
-            "Build a multi-stage provenance chain from ordered run directories "
-            "and write provenance-chain.json."
+            "Build or verify a multi-stage hash lineage of manifests "
+            "(not input/output data flow)."
         ),
     )
     p_chain.add_argument(
@@ -1563,10 +1568,10 @@ def _cmd_archive(args: argparse.Namespace) -> int:
         try:
             zenodo_creator = getattr(args, "zenodo_creator", None)
             zenodo_publish = getattr(args, "zenodo_publish", False)
-            if zenodo_publish and not zenodo_creator:
+            if not zenodo_creator:
                 print(
-                    "error: --zenodo-creator is required when using --zenodo-publish "
-                    "to avoid recording fabricated authorship",
+                    "error: --zenodo-creator is required for any Zenodo deposit "
+                    "(draft or publish)",
                     file=sys.stderr,
                 )
                 return 2
