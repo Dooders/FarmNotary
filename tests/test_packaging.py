@@ -1,6 +1,7 @@
 """Package metadata, public API, and typed-package marker stay aligned."""
 
 import importlib.metadata
+import types
 from pathlib import Path
 
 import farm_notary
@@ -13,25 +14,23 @@ def test_py_typed_is_shipped_with_the_package():
 
 
 def test_all_matches_public_exports():
-    exported = {
-        name
-        for name in farm_notary.__all__
-        if name != "__version__"
-    }
-    imported = {
+    """``__all__`` is the public API. Submodules bound by imports are not."""
+    missing = [name for name in farm_notary.__all__ if not hasattr(farm_notary, name)]
+    assert missing == []
+
+    exported = {name for name in farm_notary.__all__ if name != "__version__"}
+    public_api = {
         name
         for name in dir(farm_notary)
         if not name.startswith("_")
+        and not isinstance(getattr(farm_notary, name), types.ModuleType)
     }
-    assert exported == imported
-    missing = [name for name in farm_notary.__all__ if not hasattr(farm_notary, name)]
-    assert missing == []
+    assert exported == public_api
     assert farm_notary.__version__ == TOOL_VERSION
     assert farm_notary.TOOL_VERSION == TOOL_VERSION
     assert farm_notary.MANIFEST_VERSION == MANIFEST_VERSION
     assert "infer_claim_level" in farm_notary.__all__
     assert "notarize_run" in farm_notary.__all__
-    assert exported <= imported
 
 
 def test_all_is_sorted_and_unique():
