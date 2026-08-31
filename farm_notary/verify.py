@@ -189,7 +189,7 @@ def verify_receipt(
     return problems
 
 
-def verify_anchor(manifest: Manifest, run_dir: Path) -> List[str]:
+def verify_anchor(manifest: Any, run_dir: Path) -> List[str]:
     """Check the manifest's anchor receipt against the recomputed hash.
 
     For OpenTimestamps anchors this also validates that the proof file next

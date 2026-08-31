@@ -77,7 +77,8 @@ Extras:
 | *(none)* | — | `manifest`, `verify` (local rehash), IPFS pin |
 | `[ots]` | `opentimestamps` | `anchor --backend ots`, `upgrade`, OTS proof checks |
 | `[chain]` | `web3` | experimental EAS backend |
-| `[dev]` | pytest + both extras | development |
+| `[dev]` | pytest + extras + ruff + mypy | development |
+| `[lint]` | ruff, mypy | `ruff check farm_notary` / `mypy farm_notary` |
 
 IPFS upload needs a reachable Kubo daemon (`FARM_NOTARY_IPFS_API`, default `http://127.0.0.1:5001`), not a Python extra.
 

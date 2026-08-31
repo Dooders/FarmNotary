@@ -43,7 +43,7 @@ def _multipart_body(files: List[Tuple[str, bytes]]) -> Tuple[bytes, str]:
 
 
 class IpfsClient:
-    def __init__(self, api_url: str = None, timeout: float = 120.0):
+    def __init__(self, api_url: Optional[str] = None, timeout: float = 120.0):
         self.api_url = (
             api_url
             or os.environ.get("FARM_NOTARY_IPFS_API")

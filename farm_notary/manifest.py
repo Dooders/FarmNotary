@@ -11,7 +11,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator, List, Mapping, Optional, Sequence, Tuple
 
-from farm_notary.schema import MANIFEST_VERSION, PRIVATE_NAME_FRAGMENTS, REQUIRED_KEYS, TOOL_VERSION
+from farm_notary.schema import (
+    MANIFEST_VERSION,
+    PRIVATE_NAME_FRAGMENTS,
+    REQUIRED_KEYS,
+    TOOL_VERSION,
+)
 
 MANIFEST_NAME = "manifest.json"
 RECEIPT_NAME = "reproduction.json"
@@ -490,8 +495,8 @@ def build_manifest(
     for path in sorted(run_dir.rglob("*")):
         if path.is_symlink() or not path.is_file():
             continue
-        rel = path.relative_to(run_dir)
-        if any(part.startswith(".") for part in rel.parts):
+        rel_path = path.relative_to(run_dir)
+        if any(part.startswith(".") for part in rel_path.parts):
             continue
         if path.name in NOTARY_FILE_NAMES or path.name.endswith(NOTARY_FILE_SUFFIXES):
             continue
@@ -500,9 +505,9 @@ def build_manifest(
     artifacts: list = []
     hashes: dict = {}
     for path in iter_artifact_paths(run_dir, effective_patterns):
-        rel = path.relative_to(run_dir).as_posix()
-        artifacts.append(rel)
-        hashes[rel] = hash_file(path)
+        rel_posix = path.relative_to(run_dir).as_posix()
+        artifacts.append(rel_posix)
+        hashes[rel_posix] = hash_file(path)
 
     unmatched = len(all_candidates) - len(artifacts)
 
@@ -551,6 +556,8 @@ def build_manifest(
             PRECOMMIT_NAME,
             PRECOMMIT_PROOF_NAME,
             load_precommit,
+        )
+        from farm_notary.precommit import (
             precommit_hash as _pc_hash,
         )
 

@@ -32,3 +32,23 @@ jobs:
 
       - name: Run tests
         run: python -m pytest --tb=short -q
+
+  lint:
+    name: ruff + mypy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install lint extras
+        run: pip install -e ".[lint,ots,sigstore]"
+
+      - name: Ruff
+        run: ruff check farm_notary
+
+      - name: Mypy
+        run: mypy farm_notary

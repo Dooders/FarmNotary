@@ -2,15 +2,21 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Union
 
-from farm_notary.anchor import anchor_run, get_backend, write_cid_binding_proof, write_proof
+from farm_notary.anchor import (
+    anchor_run,
+    get_backend,
+    write_cid_binding_proof,
+    write_proof,
+)
+from farm_notary.campaign import Campaign
 from farm_notary.manifest import (
     MANIFEST_NAME,
     DirtyTreeError,
+    Manifest,
     build_manifest,
     detect_git_status,
     load_manifest,
@@ -27,9 +33,6 @@ from farm_notary.verify import (
     verify_anchor,
     verify_derived_artifacts,
     verify_identity_record,
-    verify_precommit,
-    verify_receipt,
-    verify_run_dir,
 )
 
 
@@ -648,7 +651,8 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
 
 def _cmd_anchor(args: argparse.Namespace) -> int:
     run_dir = Path(args.run_dir)
-    writer = write_manifest
+    writer: Callable[[Any, Path], Path] = write_manifest
+    manifest: Union[Manifest, Campaign]
     manifest_path = run_dir / MANIFEST_NAME
     if manifest_path.is_file():
         try:
@@ -828,9 +832,10 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             "note: derivation rules are recorded but were not executed "
             "(pass --verify-derived to check; only for manifests you trust)"
         )
-    if getattr(manifest, "identity", None):
-        scheme = manifest.identity.get("scheme")
-        principal = manifest.identity.get("principal") or "lab key"
+    identity = getattr(manifest, "identity", None)
+    if identity:
+        scheme = identity.get("scheme")
+        principal = identity.get("principal") or "lab key"
         print(f"identity: {scheme} signature by {principal} verified")
     return 0
 
@@ -1397,7 +1402,7 @@ def _cmd_check(args: argparse.Namespace) -> int:
 
 
 def _check_ots_anchor(
-    manifest: "Manifest",  # type: ignore[name-defined]
+    manifest: Manifest,
     run_dir: Path,
     content_hash: str,
     problems: list,
@@ -1408,9 +1413,10 @@ def _check_ots_anchor(
         "install it to verify the proof commits to this hash"
     )
     try:
-        from farm_notary.ots import OtsError, PROOF_NAME, proof_status, verify_proof
+        from farm_notary.ots import PROOF_NAME, OtsError, proof_status, verify_proof
     except ImportError:
-        detail = manifest.anchor.get("detail", {}) or {}
+        anchor = manifest.anchor or {}
+        detail = anchor.get("detail", {}) or {}
         proof_name = detail.get("proof", "manifest.ots") if isinstance(detail, dict) else "manifest.ots"
         proof_path = run_dir / proof_name
         if proof_path.is_file():
@@ -1419,7 +1425,8 @@ def _check_ots_anchor(
             print("anchor:       OTS proof file absent (install farm-notary[ots] to verify)")
         return
 
-    detail = manifest.anchor.get("detail", {}) or {}
+    anchor = manifest.anchor or {}
+    detail = anchor.get("detail", {}) or {}
     proof_name = detail.get("proof", PROOF_NAME) if isinstance(detail, dict) else PROOF_NAME
     proof_path = run_dir / proof_name
     if not proof_path.is_file():
@@ -1474,8 +1481,8 @@ def _cmd_emit_interop(args: argparse.Namespace) -> int:
     if not manifest_path.exists():
         print(f"error: {manifest_path} not found", file=sys.stderr)
         return 2
+    from farm_notary.interop import INTEROP_FORMATS, emit_interop
     from farm_notary.manifest import load_manifest
-    from farm_notary.interop import emit_interop, INTEROP_FORMATS
 
     try:
         manifest = load_manifest(manifest_path)

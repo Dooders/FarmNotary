@@ -35,8 +35,8 @@ try:
     from cryptography import x509 as _x509
     from cryptography.x509 import ObjectIdentifier as _ObjectIdentifier
 except ImportError:  # pragma: no cover — [sigstore] extra not installed
-    _x509 = None
-    _ObjectIdentifier = None
+    _x509 = None  # type: ignore[assignment]
+    _ObjectIdentifier = None  # type: ignore[assignment,misc]
 
 from farm_notary.manifest import hash_json
 
@@ -364,8 +364,10 @@ def _extract_identity(bundle: dict) -> Dict[str, str]:
     for oid in (OIDC_ISSUER_V2_OID, OIDC_ISSUER_OID):
         try:
             ext = cert.extensions.get_extension_for_oid(_ObjectIdentifier(oid))
-            raw = ext.value.value if hasattr(ext.value, "value") else bytes(ext.value)
-            issuer = _decode_fulcio_issuer(raw)
+            payload = getattr(ext.value, "value", None)
+            if not isinstance(payload, (bytes, bytearray)):
+                continue
+            issuer = _decode_fulcio_issuer(bytes(payload))
             if issuer:
                 break
         except Exception:
