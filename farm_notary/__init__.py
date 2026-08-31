@@ -25,11 +25,6 @@ from farm_notary.profiles import PUBLISH_PROFILES, PublishProfile, get_profile
 from farm_notary.reproduce import ReproductionResult, reproduce_run
 from farm_notary.schema import MANIFEST_VERSION, TOOL_VERSION
 from farm_notary.schema import TOOL_VERSION as __version__
-from farm_notary.withheld import (
-    WithheldCommitment,
-    reveal_withheld,
-    verify_reveal,
-)
 from farm_notary.verify import (
     ClaimCard,
     evaluate_claims,
@@ -38,6 +33,11 @@ from farm_notary.verify import (
     verify_identity_record,
     verify_receipt,
     verify_run_dir,
+)
+from farm_notary.withheld import (
+    WithheldCommitment,
+    reveal_withheld,
+    verify_reveal,
 )
 
 __all__ = [
@@ -53,6 +53,7 @@ __all__ = [
     "PublishProfile",
     "ReproductionResult",
     "TOOL_VERSION",
+    "WithheldCommitment",
     "__version__",
     "anchor_run",
     "build_campaign",
@@ -70,14 +71,13 @@ __all__ = [
     "load_manifest",
     "notarize_run",
     "reproduce_run",
+    "reveal_withheld",
     "verify_anchor",
     "verify_derived_artifacts",
     "verify_identity_record",
     "verify_receipt",
-    "verify_run_dir",
-    "WithheldCommitment",
-    "reveal_withheld",
     "verify_reveal",
+    "verify_run_dir",
     "write_campaign",
     "write_manifest",
     "write_proof",

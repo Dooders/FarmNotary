@@ -593,12 +593,10 @@ def build_manifest(
         denylist_n = 0
         unmatched_n = unmatched
         if commitment is not None:
-            denylist_n = int(
-                (commitment.classes.get("denylist") or {}).get("count") or 0
-            )
-            unmatched_n = int(
-                (commitment.classes.get("unmatched") or {}).get("count") or 0
-            )
+            denylist_spec = commitment.classes.get("denylist")
+            unmatched_spec = commitment.classes.get("unmatched")
+            denylist_n = denylist_spec["count"] if denylist_spec else 0
+            unmatched_n = unmatched_spec["count"] if unmatched_spec else 0
         warnings.warn(
             f"{unmatched} file(s) in {run_dir} were withheld from the official "
             f"record (denylist={denylist_n}, unmatched={unmatched_n}). "

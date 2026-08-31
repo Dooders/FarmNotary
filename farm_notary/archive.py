@@ -284,8 +284,8 @@ def deposit_manifest(
         token=tok, sandbox=sandbox, metadata=default_meta, timeout=timeout
     )
     dep_id = str(deposition["id"])
-    for candidate in resolved_uploads:
-        zenodo_upload_file(dep_id, candidate, token=tok, sandbox=sandbox, timeout=timeout)
+    for upload_path in resolved_uploads:
+        zenodo_upload_file(dep_id, upload_path, token=tok, sandbox=sandbox, timeout=timeout)
 
     if publish:
         return zenodo_publish(dep_id, token=tok, sandbox=sandbox, timeout=timeout)

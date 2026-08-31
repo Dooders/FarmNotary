@@ -1411,7 +1411,7 @@ def _cmd_check(args: argparse.Namespace) -> int:
     from farm_notary.claims import infer_claim_level
 
     print(f"claim_level:  {infer_claim_level(manifest)}")
-    if getattr(manifest, "withheld_root", None):
+    if manifest.withheld_root:
         classes = manifest.withheld_classes or {}
         parts = [
             f"{name}={spec.get('count')}"
