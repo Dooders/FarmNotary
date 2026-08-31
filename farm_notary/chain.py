@@ -312,11 +312,27 @@ def load_chain(path: Path) -> List[ChainLink]:
     """
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
     if isinstance(raw, dict):
+        schema = raw.get("schema")
+        if schema is not None and schema != CHAIN_SCHEMA:
+            raise ValueError(
+                f"unsupported provenance-chain schema {schema!r}; "
+                f"expected {CHAIN_SCHEMA!r}"
+            )
         items = raw.get("links") or []
+        if not isinstance(items, list):
+            raise ValueError(
+                "provenance-chain.json 'links' must be a list"
+            )
     elif isinstance(raw, list):
         items = raw
     else:
         raise ValueError("provenance-chain.json must be an object or a list")
+    for i, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise ValueError(
+                f"provenance-chain.json link {i} must be an object, "
+                f"got {type(item).__name__}"
+            )
     return [ChainLink.from_dict(item) for item in items]
 
 

@@ -487,7 +487,11 @@ class Manifest:
                 raise ValueError(
                     f"withheld_classes[{cls_name!r}] must be an object"
                 )
-            if not isinstance(spec.get("count"), int) or spec["count"] < 0:
+            if (
+                not isinstance(spec.get("count"), int)
+                or isinstance(spec.get("count"), bool)
+                or spec["count"] < 0
+            ):
                 raise ValueError(
                     f"withheld_classes[{cls_name!r}]['count'] must be a non-negative integer"
                 )
@@ -495,8 +499,17 @@ class Manifest:
                 raise ValueError(
                     f"withheld_classes[{cls_name!r}]['reason'] must be a string"
                 )
+        if (
+            not isinstance(self.unmatched_count, int)
+            or isinstance(self.unmatched_count, bool)
+            or self.unmatched_count < 0
+        ):
+            raise ValueError(
+                "unmatched_count must be a non-negative integer, "
+                f"got {self.unmatched_count!r}"
+            )
         total = class_counts_total(self.withheld_classes)
-        if total != int(self.unmatched_count):
+        if total != self.unmatched_count:
             raise ValueError(
                 "withheld_classes counts must sum to unmatched_count "
                 f"({total} != {self.unmatched_count})"

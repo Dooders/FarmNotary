@@ -44,6 +44,7 @@ sigstore = ["cryptography>=41"]
 lint = ["ruff>=0.6", "mypy>=1.11"]
 dev = [
     "pytest",
+    "jsonschema>=4",
     "web3>=7,<8",
     "opentimestamps>=0.4.5",
     "cryptography>=41",

@@ -149,15 +149,6 @@ When `farm-notary manifest` runs inside GitHub Actions it records `ci_provenance
 
 `content_hash` excludes `cid`, so a second OpenTimestamps proof (`manifest.cid.ots`) commits to `H(content_hash || cid)`. `verify` checks that binding when the proof is present. EAS is not the way to bind CID.
 
-## Additive interop, archive, plugins, and chains
-
-These do not change `farmnotary.manifest.v1` or the claim ladder.
-
-- `farm-notary emit-interop` — unsigned SLSA/in-toto, RO-Crate, C2PA-style JSON summary
-- `farm-notary archive` — Zenodo deposit and/or Software Heritage lookup
-- `farm_notary.plugins` — MLflow / DVC hooks (callers must pass an allowlist)
-- `farm-notary chain` — linear `provenance-chain.json`
-
 ## AgentFarm hook
 
 After `ExperimentRunner` (or a dedicated consensus runner) flushes a run directory:

@@ -358,6 +358,13 @@ def load_reveal(path: Path) -> List[RevealEntry]:
         items = data.get("entries") or []
     else:
         raise ValueError("reveal file must be a JSON object or list")
+    if not items:
+        raise ValueError("reveal file must contain at least one entry")
+    for i, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise ValueError(
+                f"reveal file entry {i} must be an object, got {type(item).__name__}"
+            )
     return [RevealEntry.from_dict(item) for item in items]
 
 

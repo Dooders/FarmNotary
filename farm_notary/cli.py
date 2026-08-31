@@ -1756,7 +1756,21 @@ def _cmd_reveal_withheld(args: argparse.Namespace) -> int:
             print("FAIL", problem)
         return 1
     if args.out:
-        dest = write_reveal(entries, Path(args.out))
+        dest_path = Path(args.out).resolve()
+        resolved_run_dir = run_dir.resolve()
+        try:
+            dest_path.relative_to(resolved_run_dir)
+            is_inside = True
+        except ValueError:
+            is_inside = False
+        if is_inside:
+            print(
+                "error: --out destination must not be inside the run directory; "
+                "the reveal file would invalidate the withheld_root commitment",
+                file=sys.stderr,
+            )
+            return 2
+        dest = write_reveal(entries, dest_path)
         print(dest)
     print("revealed", len(entries))
     print("withheld_root", manifest.withheld_root)

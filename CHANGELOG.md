@@ -21,36 +21,6 @@ The current release is **0.2.0**.
 - JSON Schema files in `schemas/` for `farmnotary.manifest.v1`,
   `farmnotary.campaign.v1`, and `farmnotary.registry.v1`.
 - `docs/MIGRATION.md`: 0.1 → 0.2 breaking notes and the withheld fields.
-
-### Changed
-
-- Later-wave interop/archive/plugins/chain (#40) are honest first-cuts, not
-  claim-ladder steps. SLSA/C2PA files are named `*.unsigned.json` and marked
-  `unsigned-summary-not-for-verification`. Plugins require an explicit
-  allowlist (no default `*`) and refuse dirty trees unless `allow_dirty=True`.
-  `plugins.notarize_run` is renamed to `notarize_tracker_run` so it no longer
-  collides with `farm_notary.anchor.notarize_run`. Provenance-chain paths are
-  stored relative to the chain file. Zenodo `--zenodo-creator` is required
-  for drafts as well as publish.
-- Publication-scope framing: the allowlist is what left the machine, not
-  a privacy protocol. `identity` is documented as a stamp field only
-  (excluded from `content_hash`). `docs/DESIGN.md` records
-  `ci_provenance`, CID binding, and the additive interop/archive/plugin
-  /chain helpers.
-- Docs rewritten against the 0.2 CLI: install path (PyPI is 0.1.0; current
-  line is git `@dev`), `anchor` dry-run default vs Action `ots`,
-  `--verify-derived`, publish profiles, claim levels, and Action pin
-  (`dooders/FarmNotary@dev` — there is no `v0.2` tag yet).
-- `farm-notary verify` no longer fails when `derived_from` rules are present
-  but `--verify-derived` was not passed. Missing is not failure; the CLI
-  notes that rules were not executed. `--verify-derived` still runs them
-  and can fail the check.
-- GitHub Action accepts a `profile` input (`consensus`, `rl-sweep`,
-  `evolution-run`).
-- Package description no longer says "on-chain attestation".
-
-### Added
-
 - Packaging hygiene: `py.typed`, complete public `__all__`, PyPI classifiers
   and URLs, `[lint]` extra (`ruff`, `mypy`), and a CI lint job.
 - Sigstore keyless signing for reproduction receipts (`farm-notary`
@@ -105,6 +75,34 @@ The current release is **0.2.0**.
 - Tests for claim levels (`infer_claim_level`, paper sentences), docs-to-CLI
   lock, paper-pack `--verify-derived`, campaign `--require-local` / artifact
   rehash, derivation rule validation, and a tighter Action contract.
+
+### Changed
+
+- Later-wave interop/archive/plugins/chain (#40) are honest first-cuts, not
+  claim-ladder steps. SLSA/C2PA files are named `*.unsigned.json` and marked
+  `unsigned-summary-not-for-verification`. Plugins require an explicit
+  allowlist (no default `*`) and refuse dirty trees unless `allow_dirty=True`.
+  `plugins.notarize_run` is renamed to `notarize_tracker_run` so it no longer
+  collides with `farm_notary.anchor.notarize_run`. Provenance-chain paths are
+  stored relative to the chain file. Zenodo `--zenodo-creator` is required
+  for drafts as well as publish.
+- Publication-scope framing: the allowlist is what left the machine, not
+  a privacy protocol. `identity` is documented as a stamp field only
+  (excluded from `content_hash`). `docs/DESIGN.md` records
+  `ci_provenance`, CID binding, and the additive interop/archive/plugin
+  /chain helpers.
+- Docs rewritten against the 0.2 CLI: install path (0.2.0 is on PyPI; current
+  line is git `@dev`), `anchor` dry-run default vs Action `ots`,
+  `--verify-derived`, publish profiles, claim levels, and Action pin
+  (`dooders/FarmNotary@dev` — there is no `v0.2` tag yet).
+- `farm-notary verify` no longer fails when `derived_from` rules are present
+  but `--verify-derived` was not passed. Missing is not failure; the CLI
+  notes that rules were not executed. `--verify-derived` still runs them
+  and can fail the check.
+- GitHub Action accepts a `profile` input (`consensus`, `rl-sweep`,
+  `evolution-run`).
+- Package description no longer says "on-chain attestation".
+
 ---
 
 ## [0.2.0] — 2026-08-31

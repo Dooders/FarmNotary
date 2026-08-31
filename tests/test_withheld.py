@@ -202,13 +202,15 @@ def test_cli_manifest_prints_root_not_names(tmp_path: Path, capsys):
 
 
 def test_cli_reveal_and_verify(tmp_path: Path, capsys):
-    _run(tmp_path)
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _run(run_dir)
     assert (
         main(
             [
                 "manifest",
                 "--run-dir",
-                str(tmp_path),
+                str(run_dir),
                 "--publish",
                 "summary.csv",
                 "--git-sha",
@@ -223,7 +225,7 @@ def test_cli_reveal_and_verify(tmp_path: Path, capsys):
             [
                 "reveal-withheld",
                 "--run-dir",
-                str(tmp_path),
+                str(run_dir),
                 "--path",
                 "extra.json",
                 "--out",
@@ -240,7 +242,7 @@ def test_cli_reveal_and_verify(tmp_path: Path, capsys):
             [
                 "reveal-withheld",
                 "--run-dir",
-                str(tmp_path),
+                str(run_dir),
                 "--verify",
                 "--reveal",
                 str(dest),

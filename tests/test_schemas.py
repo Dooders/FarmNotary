@@ -3,6 +3,9 @@
 import json
 from pathlib import Path
 
+import jsonschema
+import jsonschema.exceptions
+
 from farm_notary.campaign import build_campaign, write_campaign
 from farm_notary.manifest import build_manifest, write_manifest
 from farm_notary.registry import write_registry
@@ -13,6 +16,21 @@ SCHEMAS = Path("schemas")
 
 def _load(name: str) -> dict:
     return json.loads((SCHEMAS / name).read_text(encoding="utf-8"))
+
+
+def test_manifest_schema_is_valid_json_schema():
+    schema = _load("farmnotary.manifest.v1.json")
+    jsonschema.Draft202012Validator.check_schema(schema)
+
+
+def test_campaign_schema_is_valid_json_schema():
+    schema = _load("farmnotary.campaign.v1.json")
+    jsonschema.Draft202012Validator.check_schema(schema)
+
+
+def test_registry_schema_is_valid_json_schema():
+    schema = _load("farmnotary.registry.v1.json")
+    jsonschema.Draft202012Validator.check_schema(schema)
 
 
 def test_manifest_schema_required_keys_match_code():
@@ -27,13 +45,22 @@ def test_manifest_schema_required_keys_match_code():
 def test_built_manifest_has_schema_required_keys(tmp_path: Path):
     (tmp_path / "summary.csv").write_text("ok\n", encoding="utf-8")
     (tmp_path / "extra.json").write_text("{}\n", encoding="utf-8")
-    manifest = build_manifest(tmp_path, publish_patterns=["*.csv"], git_sha="abc")
+    manifest = build_manifest(
+        tmp_path,
+        publish_patterns=["*.csv"],
+        git_sha="abc",
+        runner="test-runner",
+        command="python run.py",
+    )
     body = manifest.to_dict()
     schema = _load("farmnotary.manifest.v1.json")
     for key in schema["required"]:
         assert key in body
     assert "withheld_root" in body
     write_manifest(manifest, tmp_path)
+    # Validate the written manifest against the JSON Schema
+    written = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    jsonschema.validate(written, schema)
 
 
 def test_campaign_and_registry_schema_ids():
@@ -57,8 +84,11 @@ def test_campaign_and_registry_instances_cover_required(tmp_path: Path):
     campaign = build_campaign([run], name="sweep")
     write_campaign(campaign, tmp_path)
     body = json.loads((tmp_path / "campaign.json").read_text(encoding="utf-8"))
-    for key in _load("farmnotary.campaign.v1.json")["required"]:
+    campaign_schema = _load("farmnotary.campaign.v1.json")
+    for key in campaign_schema["required"]:
         assert key in body
+    # Validate the campaign instance against the JSON Schema
+    jsonschema.validate(body, campaign_schema)
 
     write_registry(
         [
@@ -74,5 +104,9 @@ def test_campaign_and_registry_instances_cover_required(tmp_path: Path):
         tmp_path / "registry.md",
     )
     registry = json.loads((tmp_path / "registry.json").read_text(encoding="utf-8"))
-    for key in _load("farmnotary.registry.v1.json")["required"]:
+    registry_schema = _load("farmnotary.registry.v1.json")
+    for key in registry_schema["required"]:
         assert key in registry
+    # Validate the registry instance against the JSON Schema
+    jsonschema.validate(registry, registry_schema)
+
