@@ -8,7 +8,7 @@ FarmNotary writes a `manifest.json` (config, code identity, artifact hashes), op
 
 Immutability is not correctness. Re-run from the committed seed to check the science. The anchor only makes “this is the file we published” hard to walk back.
 
-**This repo is 0.2.0.** PyPI still serves `0.1.0`. Install from git for the current line (see [Install](#install)).
+**This release is 0.2.0.** Install from PyPI (see [Install](#install)).
 
 ## Why FarmNotary
 
@@ -63,10 +63,6 @@ The denylist still applies: any path containing `ballot`, `vote`, `voter`, `indi
 Python ≥ 3.9. Core (manifest, verify, IPFS, dry-run) is stdlib-only.
 
 ```bash
-# 0.2 line (this repo) — campaigns, profiles, claim cards, paper-pack
-pip install "farm-notary[ots] @ git+https://github.com/Dooders/FarmNotary.git@dev"
-
-# last PyPI release (0.1.0) — first-release CLI only
 pip install "farm-notary[ots]"
 ```
 
@@ -273,10 +269,10 @@ Derivation rules live in the experiment profile so statistics can recompute when
 
 ## GitHub Action
 
-The action lives at the repo root (`action.yml`). There is no `v0.2` tag yet; pin `dev` or a commit SHA. Last release tag is `v0.1.0`.
+The action lives at the repo root (`action.yml`). Pin `v0.2.0` (or a commit SHA). `@dev` is the unreleased line.
 
 ```yaml
-- uses: dooders/FarmNotary@dev
+- uses: dooders/FarmNotary@v0.2.0
   with:
     phase: notarize
     run-dir: results
@@ -314,7 +310,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4        # sets GITHUB_SHA
       - run: python run.py --out results  # produce artifacts
-      - uses: dooders/FarmNotary@dev
+      - uses: dooders/FarmNotary@v0.2.0
         with:
           phase: notarize
           run-dir: results
@@ -424,6 +420,6 @@ CI runs pytest on Python 3.9–3.12.
 
 ## Status
 
-0.2. Manifests, campaigns, derivation claims, environment fingerprints, optional identity, paper pack, public index, hashing, IPFS pinning, OpenTimestamps (CLI dry-run default; Action `ots`), proof upgrade, claim-card verify, reusable GitHub Action, and experimental EAS on Base / Base Sepolia are implemented and tested.
+**0.2.0** is on PyPI. Manifests, campaigns, derivation claims, environment fingerprints, optional identity, paper pack, public index, hashing, IPFS pinning, OpenTimestamps (CLI dry-run default; Action `ots`), proof upgrade, claim-card verify, reusable GitHub Action, and experimental EAS on Base / Base Sepolia are implemented and tested.
 
-The last tagged / PyPI release is **0.1.0**. This tree is **0.2.0**. The anchoring layer is outsourced — earlier revisions carried a custom `SimulationRegistry` contract, which was removed.
+The anchoring layer is outsourced — earlier revisions carried a custom `SimulationRegistry` contract, which was removed. Breaking schema changes are reserved for 1.0.

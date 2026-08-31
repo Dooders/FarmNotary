@@ -52,7 +52,7 @@ Its UID is derived deterministically and is the same on every chain:
 One-time per chain, register the schema, then anchor runs:
 
 ```bash
-pip install "farm-notary[chain] @ git+https://github.com/Dooders/FarmNotary.git@dev"
+pip install "farm-notary[chain]"
 
 farm-notary register-schema
 farm-notary anchor --run-dir path/to/run --backend eas --cid <cid>
