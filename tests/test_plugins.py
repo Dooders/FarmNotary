@@ -167,7 +167,7 @@ class TestDVCAnchorOutputs:
         assert "models/model.pkl" in paths
 
     def test_empty_lock_without_patterns_raises(self, tmp_path):
-        (tmp_path / "dvc.lock").write_text("schema: '2.0'\nstages: {}\n", encoding="utf-8")
+        (tmp_path / "dvc.lock").write_text("schema: '2.0'\nstages:\n", encoding="utf-8")
         with pytest.raises(ValueError, match="no default"):
             dvc_anchor_outputs(tmp_path)
 

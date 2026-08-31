@@ -171,8 +171,12 @@ def _parse_dvc_lock(lock_path: Path) -> List[Dict[str, Any]]:
         data = _simple_yaml_parse(lock_path.read_text(encoding="utf-8"))
 
     stages = data.get("stages", {})
+    if not isinstance(stages, dict):
+        stages = {}
     outputs: List[Dict[str, Any]] = []
     for stage_name, stage_data in stages.items():
+        if not isinstance(stage_data, dict):
+            continue
         for out in stage_data.get("outs", []):
             entry = dict(out) if isinstance(out, dict) else {"path": str(out)}
             entry["_stage"] = stage_name

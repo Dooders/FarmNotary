@@ -221,7 +221,7 @@ def test_later_wave_helpers_are_labeled_unsigned_and_experimental():
     assert "unsigned-summary-not-for-verification" in DESIGN
     assert "notarize_tracker_run" in DESIGN
     assert "no default `*`" in DESIGN or "no default *" in DESIGN
-    assert "Hash lineage" in DESIGN
+    assert "manifest-hash lineage" in DESIGN
     assert "unsigned-summary-not-for-verification" in CHANGELOG or "unsigned" in CHANGELOG
     assert "notarize_tracker_run" in CHANGELOG
     assert "Interop formats as new claim types" in PRINCIPLES
