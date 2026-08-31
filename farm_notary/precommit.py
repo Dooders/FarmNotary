@@ -23,7 +23,6 @@ identify the code, so the precommit would not be a code-identity claim.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path

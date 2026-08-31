@@ -177,8 +177,6 @@ def _parse_dvc_lock(lock_path: Path) -> List[Dict[str, Any]]:
         data = yaml.safe_load(lock_path.read_text(encoding="utf-8"))
     except ImportError:
         # Fall back to a minimal YAML subset (no anchors needed for dvc.lock).
-        import re
-
         data = _simple_yaml_parse(lock_path.read_text(encoding="utf-8"))
 
     stages = data.get("stages", {})

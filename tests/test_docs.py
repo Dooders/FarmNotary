@@ -215,6 +215,14 @@ def test_changelog_records_sigstore_and_honest_l3():
     assert "identity) is reserved" not in CHANGELOG
 
 
+def test_packaging_hygiene_is_documented():
+    assert "`[lint]`" in README or "[lint]" in README
+    assert "ruff" in README
+    assert "mypy" in README
+    assert "py.typed" in CHANGELOG
+    assert "Typing :: Typed" in Path("pyproject.toml").read_text(encoding="utf-8")
+
+
 def test_later_wave_helpers_are_labeled_unsigned_and_experimental():
     assert "unsigned" in README.lower()
     assert "Not verifiable provenance" in README

@@ -112,7 +112,12 @@ def write_cid_binding_proof(
     swallowed (the function returns None) so a calendar outage does not
     abort the notarization: the operator can re-stamp manually.
     """
-    from farm_notary.ots import CID_BINDING_PROOF_NAME, OtsError, cid_binding_digest, stamp_digest
+    from farm_notary.ots import (
+        CID_BINDING_PROOF_NAME,
+        OtsError,
+        cid_binding_digest,
+        stamp_digest,
+    )
 
     digest = cid_binding_digest(manifest_hash, cid)
     calendars = receipt.detail.get("calendars") or None
@@ -127,7 +132,7 @@ def write_cid_binding_proof(
 
 
 def anchor_run(
-    manifest: Manifest,
+    manifest: Any,
     *,
     cid: Optional[str] = None,
     backend: Optional[AnchorBackend] = None,

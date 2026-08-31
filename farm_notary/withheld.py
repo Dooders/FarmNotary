@@ -25,9 +25,7 @@ import json
 import secrets
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping, Optional, Sequence
-
-from farm_notary.schema import PRIVATE_NAME_FRAGMENTS
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, TypedDict
 
 CLASS_DENYLIST = "denylist"
 CLASS_UNMATCHED = "unmatched"
@@ -43,6 +41,19 @@ CLASS_REASONS: Dict[str, str] = {
 SALT_BYTES = 32
 
 
+class WithheldClassSpec(TypedDict):
+    count: int
+    reason: str
+
+
+def _class_count(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("count must be a non-negative integer")
+    if value < 0:
+        raise ValueError("count must be a non-negative integer")
+    return value
+
+
 @dataclass(frozen=True)
 class WithheldFile:
     """One unpublished candidate. The path is for computation, not printing."""
@@ -56,7 +67,7 @@ class WithheldFile:
 class WithheldCommitment:
     salt: str
     root: str
-    classes: Dict[str, Dict[str, object]]
+    classes: Dict[str, WithheldClassSpec]
 
     def to_fields(self) -> Dict[str, object]:
         return {
@@ -226,7 +237,7 @@ def commit_withheld(
         content = item.path.read_bytes()
         leaves.append(leaf_digest(salt, item.rel_path, content))
         counts[item.cls] = counts.get(item.cls, 0) + 1
-    classes: Dict[str, Dict[str, object]] = {}
+    classes: Dict[str, WithheldClassSpec] = {}
     for cls, count in counts.items():
         if count:
             classes[cls] = {"count": count, "reason": CLASS_REASONS[cls]}
@@ -360,10 +371,7 @@ def class_counts_total(classes: Optional[Mapping[str, Mapping[str, object]]]) ->
                 "each withheld_classes entry must be an object with 'count' and 'reason'"
             )
         try:
-            count_val = spec.get("count")
-            if count_val is None:
-                raise ValueError("missing 'count'")
-            total += int(count_val)
+            total += _class_count(spec.get("count"))
         except (TypeError, ValueError) as exc:
             raise ValueError(
                 f"withheld_classes entry has invalid 'count': {exc}"

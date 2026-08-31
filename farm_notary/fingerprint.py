@@ -27,7 +27,7 @@ def normalize_arch(arch: str) -> str:
 def numpy_build_info() -> Optional[dict]:
     """Return numpy version + BLAS/LAPACK build metadata, or None if absent."""
     try:
-        import numpy as np
+        import numpy as np  # type: ignore[import-not-found]
     except ImportError:
         return None
 

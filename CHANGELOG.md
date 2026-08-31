@@ -51,7 +51,9 @@ The current release is **0.2.0**.
 
 ### Added
 
-- Sigstore keyless signing for reproduction receipts (`farm-notary
+- Packaging hygiene: `py.typed`, complete public `__all__`, PyPI classifiers
+  and URLs, `[lint]` extra (`ruff`, `mypy`), and a CI lint job.
+- Sigstore keyless signing for reproduction receipts (`farm-notary`
   reproduce --sign`). `verify` checks `receipt["sigstore"]` with
   `cosign verify-blob` (offline when the bundle has a Rekor inclusion
   proof). L3 means a verified signature with identity not constrained —
@@ -103,7 +105,6 @@ The current release is **0.2.0**.
 - Tests for claim levels (`infer_claim_level`, paper sentences), docs-to-CLI
   lock, paper-pack `--verify-derived`, campaign `--require-local` / artifact
   rehash, derivation rule validation, and a tighter Action contract.
-
 ---
 
 ## [0.2.0] — 2026-08-31

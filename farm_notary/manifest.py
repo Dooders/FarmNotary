@@ -11,7 +11,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator, List, Mapping, Optional, Sequence, Tuple
 
-from farm_notary.schema import MANIFEST_VERSION, PRIVATE_NAME_FRAGMENTS, REQUIRED_KEYS, TOOL_VERSION
+from farm_notary.schema import (
+    MANIFEST_VERSION,
+    PRIVATE_NAME_FRAGMENTS,
+    REQUIRED_KEYS,
+    TOOL_VERSION,
+)
 
 MANIFEST_NAME = "manifest.json"
 RECEIPT_NAME = "reproduction.json"
@@ -573,9 +578,9 @@ def build_manifest(
     artifacts: list = []
     hashes: dict = {}
     for path in iter_artifact_paths(run_dir, effective_patterns):
-        rel = path.relative_to(run_dir).as_posix()
-        artifacts.append(rel)
-        hashes[rel] = hash_file(path)
+        rel_posix = path.relative_to(run_dir).as_posix()
+        artifacts.append(rel_posix)
+        hashes[rel_posix] = hash_file(path)
 
     unmatched = len(withheld_files)
     if unmatched != len(all_candidates) - len(artifacts):
@@ -588,12 +593,10 @@ def build_manifest(
         denylist_n = 0
         unmatched_n = unmatched
         if commitment is not None:
-            denylist_n = int(
-                (commitment.classes.get("denylist") or {}).get("count") or 0
-            )
-            unmatched_n = int(
-                (commitment.classes.get("unmatched") or {}).get("count") or 0
-            )
+            denylist_spec = commitment.classes.get("denylist")
+            unmatched_spec = commitment.classes.get("unmatched")
+            denylist_n = denylist_spec["count"] if denylist_spec else 0
+            unmatched_n = unmatched_spec["count"] if unmatched_spec else 0
         warnings.warn(
             f"{unmatched} file(s) in {run_dir} were withheld from the official "
             f"record (denylist={denylist_n}, unmatched={unmatched_n}). "
@@ -643,6 +646,8 @@ def build_manifest(
             PRECOMMIT_NAME,
             PRECOMMIT_PROOF_NAME,
             load_precommit,
+        )
+        from farm_notary.precommit import (
             precommit_hash as _pc_hash,
         )
 
