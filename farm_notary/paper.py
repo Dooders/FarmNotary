@@ -1,9 +1,10 @@
 """Paper pack: one command that writes the appendix snippet.
 
 The artifact this audience puts in a PDF: CID, content hash, Bitcoin
-attestation (or pending), publish allowlist, unmatched count, precommit
-hash, artifact label, and a scoped reproducibility sentence. The reader
-ladder is not cited here (see ``PAPER_LADDER_NOTE``).
+attestation (or pending), publish allowlist, unmatched count, withheld
+root and class counts (no names), precommit hash, artifact label, and a
+scoped reproducibility sentence. The reader ladder is not cited here
+(see ``PAPER_LADDER_NOTE``).
 """
 
 from __future__ import annotations
@@ -113,6 +114,19 @@ def build_paper_pack(
         f"| Bitcoin attestation | {attestation} |",
         f"| Publish allowlist | {allowlist} |",
         f"| Unmatched files | {unmatched} |",
+    ]
+    withheld_root = getattr(record, "withheld_root", None)
+    withheld_classes = getattr(record, "withheld_classes", None) or {}
+    if withheld_root:
+        class_bits = ", ".join(
+            f"{name}={spec.get('count')}"
+            for name, spec in withheld_classes.items()
+            if isinstance(spec, dict)
+        )
+        lines.append(f"| Withheld root | `{withheld_root}` |")
+        if class_bits:
+            lines.append(f"| Withheld classes | {class_bits} |")
+    lines += [
         f"| Precommit hash | `{precommit}` |",
         f"| Artifact label | {claim} |",
         f"| Reader ladder | {PAPER_LADDER_CELL} |",

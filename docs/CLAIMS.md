@@ -104,10 +104,14 @@ A `_declared` suffix means the artefact is present, not that the claim is earned
 
 ## Official artifacts and publish profiles
 
-The allowlist is the privacy model; a named profile is how a lab should fill
-it. `consensus`, `rl-sweep`, and `evolution-run` are checked-in lists of
-official artifacts — so forgetting `REPORT.md` or admitting a private path is
-not a per-lab invention. The denylist still applies. The resolved
+The allowlist is the publication-scope model; a named profile is how a lab
+should fill it. `consensus`, `rl-sweep`, and `evolution-run` are checked-in
+lists of official artifacts — so forgetting `REPORT.md` or admitting a path
+that should not leave the machine is not a per-lab invention. The denylist
+still applies. Files left out of the official record increment
+`unmatched_count` and, when any exist, a salted Merkle commitment
+(`withheld_root`, `withheld_classes`) records published X, withheld N in
+class C, commitment C_root. Names are not printed. The resolved
 `publish_patterns` (and `publish_profile` when one was used) are recorded on
 the manifest: the policy is part of the claim.
 

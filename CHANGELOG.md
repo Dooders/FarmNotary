@@ -11,8 +11,24 @@ The last tagged / PyPI release is **0.1.0**. This tree is **0.2.0**.
 
 ## [Unreleased]
 
+### Added
+
+- Salted Merkle commitment over unpublished files (`withheld_salt`,
+  `withheld_root`, `withheld_classes`). Class counts split denylist vs
+  unmatched and sum to `unmatched_count`. Unsalted ballot hashes are not
+  stored. `farm-notary reveal-withheld` opens a named subset without
+  changing the root (issue #37).
+- JSON Schema files in `schemas/` for `farmnotary.manifest.v1`,
+  `farmnotary.campaign.v1`, and `farmnotary.registry.v1`.
+- `docs/MIGRATION.md`: 0.1 → 0.2 breaking notes and the withheld fields.
+
 ### Changed
 
+- Publication-scope framing: the allowlist is what left the machine, not
+  a privacy protocol. `identity` is documented as a stamp field only
+  (excluded from `content_hash`). `docs/DESIGN.md` records
+  `ci_provenance`, CID binding, and the additive interop/archive/plugin
+  /chain helpers.
 - Docs rewritten against the 0.2 CLI: install path (PyPI is 0.1.0; current
   line is git `@dev`), `anchor` dry-run default vs Action `ots`,
   `--verify-derived`, publish profiles, claim levels, and Action pin
