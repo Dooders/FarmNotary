@@ -17,8 +17,8 @@ patch at runtime. It checkouts AgentFarm at a reviewed SHA
 (`c98a476eaf1f9d3100383787fa34ec352e896dff`) that already has the portable
 command and `run_config.json` work.
 
-Depend on the 0.2 line (`farm-notary>=0.2,<0.3`), not `>=0.1,<0.2`. PyPI still
-serves 0.1.0; install from this repo's `dev` branch until 0.2 is tagged.
+Depend on the 0.2 line (`farm-notary>=0.2,<0.3`), not `>=0.1,<0.2`.
+Install from PyPI: `pip install "farm-notary[ots]"`.
 
 ## What the patch contains
 

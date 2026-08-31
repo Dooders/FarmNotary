@@ -125,7 +125,7 @@ Claim levels (`farm_notary.claims`) are labels, never scores: `bytes`, `derived_
 
 ## Reusable GitHub Action
 
-`dooders/FarmNotary` (action name `farm-notary-action`): precommit on workflow start, notarize + optional pin-remote on success, upload `manifest.json` + `manifest.ots`, fail the job if verify fails. Pin `@dev` or a commit until `v0.2.0` is tagged. See [ACTION.md](ACTION.md).
+`dooders/FarmNotary` (action name `farm-notary-action`): precommit on workflow start, notarize + optional pin-remote on success, upload `manifest.json` + `manifest.ots`, fail the job if verify fails. Pin `@v0.2.0` or a commit SHA. See [ACTION.md](ACTION.md).
 
 ## Privacy
 

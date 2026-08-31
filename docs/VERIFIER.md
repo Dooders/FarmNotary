@@ -15,7 +15,8 @@ pipx run farm-notary check --manifest path/to/manifest.json
 
 Both tools manage an isolated environment automatically.  `uvx` is part of
 [uv](https://docs.astral.sh/uv/); `pipx` is available via `pip install pipx`.
-Neither requires you to create or activate a venv.
+Neither requires you to create or activate a venv. Requires FarmNotary
+**0.2.0** or later (`check` is not in 0.1.0).
 
 The command reads `manifest.json` and reports anchor status. When
 `manifest.ots` sits in the same directory, proof verification requires the

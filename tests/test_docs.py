@@ -34,12 +34,12 @@ def test_readme_lists_every_cli_command():
         assert f"`{name}`" in README, f"README is missing command {name!r}"
 
 
-def test_readme_and_docs_state_current_version_and_pypi_gap():
+def test_readme_and_docs_state_current_version():
     assert TOOL_VERSION == "0.2.0"
     assert "0.2.0" in README
-    assert "0.1.0" in README
-    assert "git+https://github.com/Dooders/FarmNotary.git@dev" in README
+    assert 'pip install "farm-notary[ots]"' in README
     assert "farm-notary>=0.2,<0.3" in README
+    assert "dooders/FarmNotary@v0.2.0" in README
 
 
 def test_readme_documents_verify_derived_and_missing_is_not_failure():
@@ -196,9 +196,8 @@ def test_live_demo_notebook_stays_inside_the_claim_card():
 def test_action_docs_match_action_yml_defaults():
     action = Path("action.yml").read_text(encoding="utf-8")
     assert "default: ots" in action
-    assert "dooders/FarmNotary@dev" in README
-    assert "dooders/FarmNotary@dev" in ACTION
-    assert "v0.2" in README and "tag" in README
+    assert "dooders/FarmNotary@v0.2.0" in README
+    assert "dooders/FarmNotary@v0.2.0" in ACTION
     assert "--verify-derived" in ACTION
     assert "not passed" in ACTION or "without" in ACTION
     assert "dry-run" in README
