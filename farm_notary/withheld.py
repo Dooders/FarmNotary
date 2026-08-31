@@ -222,7 +222,7 @@ def commit_withheld(
     salt = _parse_salt(salt_hex)
     leaves: List[bytes] = []
     counts: Dict[str, int] = {CLASS_DENYLIST: 0, CLASS_UNMATCHED: 0}
-    for item in withheld:
+    for item in sorted(withheld, key=lambda x: x.rel_path):
         content = item.path.read_bytes()
         leaves.append(leaf_digest(salt, item.rel_path, content))
         counts[item.cls] = counts.get(item.cls, 0) + 1
@@ -299,7 +299,13 @@ def verify_reveal(
             problems.append("reveal leaf for a withheld file is not 32 bytes")
             continue
         if run_dir is not None:
-            file_path = Path(run_dir) / entry.path
+            run_dir_resolved = Path(run_dir).resolve()
+            file_path = (run_dir_resolved / entry.path).resolve()
+            try:
+                file_path.relative_to(run_dir_resolved)
+            except ValueError:
+                problems.append("revealed file path escapes the run directory")
+                continue
             if not file_path.is_file():
                 problems.append("revealed file is missing from the run directory")
                 continue
@@ -349,8 +355,17 @@ def class_counts_total(classes: Optional[Mapping[str, Mapping[str, object]]]) ->
         return 0
     total = 0
     for spec in classes.values():
+        if not isinstance(spec, Mapping):
+            raise ValueError(
+                "each withheld_classes entry must be an object with 'count' and 'reason'"
+            )
         try:
-            total += int(spec.get("count") or 0)
-        except (TypeError, ValueError):
-            continue
+            count_val = spec.get("count")
+            if count_val is None:
+                raise ValueError("missing 'count'")
+            total += int(count_val)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"withheld_classes entry has invalid 'count': {exc}"
+            ) from exc
     return total

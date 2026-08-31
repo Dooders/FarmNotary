@@ -471,6 +471,19 @@ class Manifest:
             raise ValueError("withheld_classes must be a non-empty object")
         from farm_notary.withheld import class_counts_total
 
+        for cls_name, spec in self.withheld_classes.items():
+            if not isinstance(spec, dict):
+                raise ValueError(
+                    f"withheld_classes[{cls_name!r}] must be an object"
+                )
+            if not isinstance(spec.get("count"), int) or spec["count"] < 0:
+                raise ValueError(
+                    f"withheld_classes[{cls_name!r}]['count'] must be a non-negative integer"
+                )
+            if not isinstance(spec.get("reason"), str):
+                raise ValueError(
+                    f"withheld_classes[{cls_name!r}]['reason'] must be a string"
+                )
         total = class_counts_total(self.withheld_classes)
         if total != int(self.unmatched_count):
             raise ValueError(

@@ -11,6 +11,7 @@ from farm_notary.withheld import (
     reveal_withheld,
     verify_reveal,
     write_reveal,
+    RevealEntry,
 )
 
 
@@ -148,6 +149,31 @@ def test_reveal_wrong_bytes_fails(tmp_path: Path):
         run_dir=tmp_path,
     )
     assert problems
+
+
+def test_reveal_path_traversal_rejected(tmp_path: Path):
+    _run(tmp_path)
+    manifest = build_manifest(
+        tmp_path, publish_patterns=["summary.csv"], git_sha="abc", withheld_salt=SALT
+    )
+    withheld = list_withheld(tmp_path, manifest.publish_patterns)
+    entries = reveal_withheld(
+        withheld, ["extra.json"], salt_hex=manifest.withheld_salt
+    )
+    # Craft an entry that tries to escape the run directory
+    traversal_entry = RevealEntry(
+        path="../../etc/passwd",
+        cls=entries[0].cls,
+        leaf=entries[0].leaf,
+        proof=entries[0].proof,
+    )
+    problems = verify_reveal(
+        [traversal_entry],
+        salt_hex=manifest.withheld_salt,
+        root_hex=manifest.withheld_root,
+        run_dir=tmp_path,
+    )
+    assert any("escapes" in p for p in problems)
 
 
 def test_cli_manifest_prints_root_not_names(tmp_path: Path, capsys):
