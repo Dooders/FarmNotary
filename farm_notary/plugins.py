@@ -99,23 +99,34 @@ class MLflowNotaryPlugin:
         run_id: str = getattr(getattr(run, "info", run), "run_id", "")
 
         # Only handle local file URIs; remote stores (S3, GCS, ftp, …) are
-        # out of scope.  Use urlparse + url2pathname for correct cross-platform
-        # handling of file:///C:/... paths on Windows.
-        if artifact_uri.startswith("file://"):
-            from urllib.parse import urlparse
-            from urllib.request import url2pathname
+        # out of scope. Parse any URI scheme (including runs:/, mlflow-artifacts:/)
+        # and warn when the scheme is not local.
+        from urllib.parse import urlparse
 
-            parsed = urlparse(artifact_uri)
-            artifact_uri = url2pathname(parsed.path)
-        elif "://" in artifact_uri:
-            scheme = artifact_uri.split("://", 1)[0]
-            warnings.warn(
-                f"MLflow artifact URI is not a local path ({scheme}://); "
-                "skipping notarization",
-                UserWarning,
-                stacklevel=2,
-            )
-            return None
+        parsed = urlparse(artifact_uri)
+        scheme = parsed.scheme
+        is_windows_drive_path = (
+            len(scheme) == 1
+            and len(artifact_uri) >= 2
+            and artifact_uri[0].isalpha()
+            and artifact_uri[1] == ":"
+        )
+        if scheme and not is_windows_drive_path:
+            if scheme == "file":
+                from urllib.request import url2pathname
+
+                file_path = parsed.path
+                if parsed.netloc and parsed.netloc != "localhost":
+                    file_path = f"//{parsed.netloc}{parsed.path}"
+                artifact_uri = url2pathname(file_path)
+            else:
+                warnings.warn(
+                    f"MLflow artifact URI is not a local path ({scheme}://); "
+                    "skipping notarization",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                return None
         artifact_path = Path(artifact_uri)
         if not artifact_path.is_dir():
             return None

@@ -123,6 +123,13 @@ def test_private_hidden_and_manifest_files_are_skipped(tmp_path: Path):
     assert manifest.artifacts == ["metrics/round_1.json", "summary.csv"]
 
 
+def test_non_notary_unsigned_json_is_included_when_allowlisted(tmp_path: Path):
+    make_run_dir(tmp_path)
+    (tmp_path / "custom.unsigned.json").write_text('{"ok": true}', encoding="utf-8")
+    manifest = build_manifest(tmp_path, publish_patterns=PUBLISH_ALL)
+    assert "custom.unsigned.json" in manifest.artifacts
+
+
 def test_symlink_to_outside_file_is_skipped_with_warning(tmp_path: Path):
     make_run_dir(tmp_path)
     outside = tmp_path.parent / "outside.csv"

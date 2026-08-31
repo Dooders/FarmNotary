@@ -33,7 +33,7 @@ NOTARY_FILE_NAMES = frozenset(
         "c2pa-claim-summary.unsigned.json",
     }
 )
-NOTARY_FILE_SUFFIXES = (".ots", ".unsigned.json")
+NOTARY_FILE_SUFFIXES = (".ots",)
 
 # Seed keys stripped when hashing a sweep's shared config.
 SEED_KEYS = ("seed", "rng_seed", "random_seed")

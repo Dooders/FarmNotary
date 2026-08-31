@@ -82,6 +82,18 @@ class TestMLflowNotaryPlugin:
         with pytest.warns(UserWarning, match="not a local path"):
             assert plugin.on_run_end(run) is None
 
+    def test_non_local_artifact_uri_without_slashes_returns_none(self, tmp_path):
+        plugin = MLflowNotaryPlugin(publish_patterns=["*.json"])
+        info = MagicMock()
+        info.artifact_uri = "runs:/123/artifacts"
+        info.run_id = "r1"
+        run = MagicMock()
+        run.info = info
+        run.data = MagicMock()
+        run.data.params = {}
+        with pytest.warns(UserWarning, match="not a local path"):
+            assert plugin.on_run_end(run) is None
+
     def test_missing_artifact_dir_returns_none(self, tmp_path):
         plugin = MLflowNotaryPlugin(publish_patterns=["*.json"])
         info = MagicMock()
