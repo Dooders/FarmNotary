@@ -1,8 +1,11 @@
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from farm_notary.anchor import anchor_run
+from farm_notary.identity import sign_record
 from farm_notary.manifest import build_manifest, write_manifest
 from farm_notary.ots import DEFAULT_CALENDARS, PROOF_NAME, serialize_proof
 from farm_notary.precommit import PRECOMMIT_NAME, build_precommit, write_precommit
@@ -437,10 +440,6 @@ def test_claim_card_unknown_identity_scheme_fails(tmp_path: Path):
 
 
 def test_claim_card_valid_identity_passes(tmp_path: Path):
-    import shutil
-    import subprocess
-    from farm_notary.identity import sign_record
-
     if shutil.which("ssh-keygen") is None:
         pytest.skip("ssh-keygen not installed")
 
