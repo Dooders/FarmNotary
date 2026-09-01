@@ -32,6 +32,24 @@ cleanup” without fixing the consume-path holes.
 would be a **pass with caveats** (experimental surfaces carved out of the
 freeze, Bitcoin-header policy recorded as option 2, soak done).
 
+Implementation issues filed from this review (milestone [1.0](https://github.com/Dooders/FarmNotary/milestone/1)):
+
+| Finding | Issue |
+|---|---|
+| C1 path escape | [#88](https://github.com/Dooders/FarmNotary/issues/88) |
+| H1 `git_dirty=False` | [#89](https://github.com/Dooders/FarmNotary/issues/89) |
+| H2 claim labels | [#90](https://github.com/Dooders/FarmNotary/issues/90) |
+| H3 CI reproduce trust | [#91](https://github.com/Dooders/FarmNotary/issues/91) |
+| H4 identity vs `evaluate_claims` | [#92](https://github.com/Dooders/FarmNotary/issues/92) |
+| H5 campaign `OK` | [#93](https://github.com/Dooders/FarmNotary/issues/93) |
+| M1 glob `*` | [#94](https://github.com/Dooders/FarmNotary/issues/94) |
+| M2 JSON Schema / wheel | [#95](https://github.com/Dooders/FarmNotary/issues/95) |
+| M4 CID binding warning | [#96](https://github.com/Dooders/FarmNotary/issues/96) |
+| M5 campaign `seed_plan` | [#97](https://github.com/Dooders/FarmNotary/issues/97) |
+| M6 Zenodo token argv | [#98](https://github.com/Dooders/FarmNotary/issues/98) |
+
+Process issues already open: #79 freeze, #80 experimental, #81 headers, #82 migration, #83 tag.
+
 ## How this review was done
 
 - Read `docs/PRINCIPLES.md`, `docs/CLAIMS.md`, `docs/DESIGN.md`,
@@ -88,7 +106,7 @@ A freeze that includes first-cut `emit-interop` / `archive` / `chain` /
 
 ### Blockers (do not freeze or tag)
 
-#### C1. Untrusted manifests can make verify hash files outside the run directory
+#### C1. Untrusted manifests can make verify hash files outside the run directory ([#88](https://github.com/Dooders/FarmNotary/issues/88))
 
 `Manifest.validate()` checks types, required keys, artifact/hash agreement,
 and the denylist. It does **not** reject `..`, absolute paths, or NUL. 
@@ -115,7 +133,7 @@ A 1.0 freeze would bake this verify contract. Fix before tag: reject
 non-relative, non-contained POSIX paths in `validate()`, and refuse
 `verify` / pin joins that escape `run_dir.resolve()`.
 
-#### H1. `git_dirty=False` bypasses the dirty-tree check
+#### H1. `git_dirty=False` bypasses the dirty-tree check ([#89](https://github.com/Dooders/FarmNotary/issues/89))
 
 `require_clean_identity` only re-detects when `git_dirty is None`.
 `resolve_git_identity` trusts a supplied `False` and never looks at the
@@ -132,7 +150,7 @@ a supplied `git_dirty=False` is.
 Always re-detect unless `allow_dirty=True`. Treat caller `git_dirty` as
 a recorded bit, not as permission.
 
-#### H2. Index claim labels cannot earn `derived` or `bitwise+derived`
+#### H2. Index claim labels cannot earn `derived` or `bitwise+derived` ([#90](https://github.com/Dooders/FarmNotary/issues/90))
 
 `CLAIM_DERIVED` and `CLAIM_BITWISE_DERIVED` are never returned. Any
 receipt plus `derived_from` yields `bitwise+derived_declared`, including
@@ -145,7 +163,7 @@ CLAIMS.md says `--verify-derived` earns `bitwise+derived`.
 `index` use this vocabulary. Dead constants plus over-claiming docs are
 not a freeze-ready public surface.
 
-#### H3. Advertised CI auto-trust for `reproduce` is not implemented
+#### H3. Advertised CI auto-trust for `reproduce` is not implemented ([#91](https://github.com/Dooders/FarmNotary/issues/91))
 
 Help and the refuse-path error say automatic trust is “same local
 checkout **or** the same GitHub Actions repo/SHA.” 
@@ -169,7 +187,7 @@ PR #84 as “the freeze” would freeze experimental CLI peers and skip C1–H3.
 
 ### High (honesty / contract)
 
-#### H4. `evaluate_claims` ignores identity failures
+#### H4. `evaluate_claims` ignores identity failures ([#92](https://github.com/Dooders/FarmNotary/issues/92))
 
 `verify_identity_record` is a public export but is not part of
 `ClaimCard.problems`. The CLI appends it after `evaluate_claims`. A
@@ -177,7 +195,7 @@ library caller who only uses `evaluate_claims` / `card.ok` can see a
 forged `identity` stamp as fine. Fold identity into the card or stop
 exporting `evaluate_claims` as the complete check.
 
-#### H5. Campaign `verify` can print `OK` with no local children
+#### H5. Campaign `verify` can print `OK` with no local children ([#93](https://github.com/Dooders/FarmNotary/issues/93))
 
 Missing children are skipped unless `--require-local`. Exit 0 still
 prints `OK` and the child **count**, which reads as a full check of a
@@ -187,7 +205,7 @@ what was skipped, or default `--require-local` for published campaigns.
 
 ### Medium
 
-#### M1. Glob `*` is not “one path component”
+#### M1. Glob `*` is not “one path component” ([#94](https://github.com/Dooders/FarmNotary/issues/94))
 
 `_matches_any_pattern` documents POSIX-style `*` (no `/`). Python
 `fnmatch.fnmatch("subdir/file.csv", "*")` is `True`. `--publish '*'`
@@ -195,7 +213,7 @@ publishes the whole tree minus denylist. Named profiles use concrete
 names / `*.ext`, so the default lab path is fine; freeze the real
 semantics or implement component-wise matching.
 
-#### M2. JSON Schema is too loose to be a freeze
+#### M2. JSON Schema is too loose to be a freeze ([#95](https://github.com/Dooders/FarmNotary/issues/95))
 
 Root `additionalProperties: true`. `environment`, `anchor`, `beacon`,
 `ci_provenance` are untyped objects. Artifact paths have no
@@ -203,7 +221,7 @@ relative-path constraint. Tests lock **required** keys, not optional
 renames. Schemas live at repo root and are **not** in the wheel
 (`package-data` is only `py.typed`).
 
-#### M3. Experimental CLI is a peer of the stable commands
+#### M3. Experimental CLI is a peer of the stable commands ([#80](https://github.com/Dooders/FarmNotary/issues/80))
 
 `register-schema` help has no experimental marker. `anchor --backend eas`
 says “deprecated” while PRINCIPLES/EAS.md say “experimental.” 
@@ -211,7 +229,7 @@ says “deprecated” while PRINCIPLES/EAS.md say “experimental.”
 still sit next to `manifest` / `verify`. #80 is the right issue; the
 CLI has not done it. Do **not** freeze those subcommands as 1.0.
 
-#### M4. CID binding proof failures are swallowed
+#### M4. CID binding proof failures are swallowed ([#96](https://github.com/Dooders/FarmNotary/issues/96))
 
 `write_cid_binding_proof` catches `OtsError` and returns `None` so a
 calendar outage does not abort notarize. There is no warning. An
@@ -219,12 +237,12 @@ operator can believe CID is bound when `manifest.cid.ots` was never
 written. Log it; do not imply binding in the receipt unless the file
 exists.
 
-#### M5. Campaign `seed_plan` cross-check is count-only
+#### M5. Campaign `seed_plan` cross-check is count-only ([#97](https://github.com/Dooders/FarmNotary/issues/97))
 
 `min_round`, `chain_hash`, `inclusion`, and `derivation` can diverge
 from the precommit plan. Count match is not plan match.
 
-#### M6. Zenodo token on argv
+#### M6. Zenodo token on argv ([#98](https://github.com/Dooders/FarmNotary/issues/98))
 
 Sigstore correctly rejects raw JWTs. `--zenodo-token TOKEN` still
 puts a secret on the process list. Prefer env-only, matching OIDC
