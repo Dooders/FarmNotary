@@ -3,9 +3,10 @@
 import json
 from pathlib import Path
 
+import farm_notary
 import jsonschema
 import jsonschema.exceptions
-
+import pytest
 from farm_notary.campaign import build_campaign, write_campaign
 from farm_notary.manifest import build_manifest, write_manifest
 from farm_notary.registry import write_registry
@@ -21,6 +22,14 @@ def _load(name: str) -> dict:
 def test_manifest_schema_is_valid_json_schema():
     schema = _load("farmnotary.manifest.v1.json")
     jsonschema.Draft202012Validator.check_schema(schema)
+
+
+def test_packaged_schemas_match_checked_in_schemas():
+    package_schemas = Path(farm_notary.__file__).resolve().parent / "schemas"
+    for schema in SCHEMAS.glob("*.json"):
+        assert json.loads((package_schemas / schema.name).read_text(encoding="utf-8")) == _load(
+            schema.name
+        )
 
 
 def test_campaign_schema_is_valid_json_schema():
@@ -40,6 +49,30 @@ def test_manifest_schema_required_keys_match_code():
     for key in ("withheld_salt", "withheld_root", "withheld_classes", "ci_provenance"):
         assert key in schema["properties"]
     assert "Stamp field" in schema["properties"]["identity"]["description"]
+    assert schema["additionalProperties"] is True
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("artifacts", ["/absolute.csv"]),
+        ("artifacts", ["../outside.csv"]),
+        ("artifacts", ["dir\\windows.csv"]),
+        ("artifact_hashes", {"../outside.csv": "a" * 64}),
+        ("anchor", {"backend": "ots"}),
+        ("identity", {"scheme": "ssh"}),
+        ("beacon", {"round": 1}),
+        ("ci_provenance", {"kind": "github_actions"}),
+    ],
+)
+def test_manifest_schema_rejects_invalid_optional_records(tmp_path: Path, field: str, value: object):
+    (tmp_path / "summary.csv").write_text("ok\n", encoding="utf-8")
+    manifest = build_manifest(tmp_path, publish_patterns=["*.csv"], git_sha="abc")
+    body = manifest.to_dict()
+    body[field] = value
+
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(body, _load("farmnotary.manifest.v1.json"))
 
 
 def test_built_manifest_has_schema_required_keys(tmp_path: Path):
@@ -109,4 +142,3 @@ def test_campaign_and_registry_instances_cover_required(tmp_path: Path):
         assert key in registry
     # Validate the registry instance against the JSON Schema
     jsonschema.validate(registry, registry_schema)
-
