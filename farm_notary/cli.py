@@ -4,7 +4,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from farm_notary.anchor import (
     anchor_run,
@@ -1228,10 +1228,12 @@ def _cmd_verify_campaign(args: argparse.Namespace) -> int:
     except (ValueError, OSError) as exc:
         print(f"error: could not load campaign: {exc}", file=sys.stderr)
         return 2
+    checked: List[int] = []
     problems = verify_campaign(
         campaign,
         campaign_dir,
         require_local=getattr(args, "require_local", False),
+        checked=checked,
     )
     problems += verify_anchor(campaign, campaign_dir)
     problems += verify_identity_record(campaign, campaign_dir)
@@ -1239,8 +1241,24 @@ def _cmd_verify_campaign(args: argparse.Namespace) -> int:
         for problem in problems:
             print("FAIL", problem)
         return 1
-    print("OK", campaign.content_hash())
-    print(f"campaign: {len(campaign.runs)} child run(s)")
+    listed = len(campaign.runs)
+    skipped = [
+        f"runs[{i}]"
+        + (
+            f" ({run['path']})"
+            if run.get("path")
+            else (f" (cid {run['cid']})" if run.get("cid") else "")
+        )
+        for i, run in enumerate(campaign.runs)
+        if i not in checked
+    ]
+    if checked:
+        print("OK", campaign.content_hash())
+    else:
+        print("INCOMPLETE", campaign.content_hash(), "(no local child runs checked)")
+    print(f"campaign: {len(checked)} of {listed} child run(s) loaded and checked")
+    if skipped:
+        print("skipped:", ", ".join(skipped))
     from farm_notary.campaign import campaign_seed_coverage_note
 
     coverage = campaign_seed_coverage_note(campaign)
