@@ -19,6 +19,7 @@ assumption.  Use ``--backend ots`` instead.
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Optional, Protocol, Sequence, Tuple
@@ -123,7 +124,12 @@ def write_cid_binding_proof(
     calendars = receipt.detail.get("calendars") or None
     try:
         proof_bytes, _ = stamp_digest(digest, calendars)
-    except OtsError:
+    except OtsError as exc:
+        print(
+            "warning: CID binding proof could not be stamped; "
+            f"{CID_BINDING_PROOF_NAME} was not written: {exc}",
+            file=sys.stderr,
+        )
         return None
     dest = Path(run_dir) / CID_BINDING_PROOF_NAME
     dest.write_bytes(proof_bytes)

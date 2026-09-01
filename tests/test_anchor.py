@@ -11,7 +11,13 @@ from farm_notary.anchor import (
     write_proof,
 )
 from farm_notary.manifest import build_manifest, load_manifest
-from farm_notary.ots import PROOF_NAME, OpenTimestampsBackend, deserialize_proof
+from farm_notary.ots import (
+    CID_BINDING_PROOF_NAME,
+    PROOF_NAME,
+    OpenTimestampsBackend,
+    OtsError,
+    deserialize_proof,
+)
 from tests.test_ots import pending_timestamp, serialize_timestamp
 
 
@@ -137,6 +143,49 @@ def test_notarize_run_with_ots_backend_writes_proof(stub_server, tmp_path: Path)
     assert proof_path.is_file()
     assert deserialize_proof(proof_path.read_bytes()).file_digest == bytes.fromhex(expected_hash)
     assert load_manifest(tmp_path).anchor["backend"] == "opentimestamps"
+
+
+def test_notarize_run_warns_when_cid_binding_stamp_fails(
+    monkeypatch, stub_server, tmp_path: Path, capsys
+):
+    make_run_dir(tmp_path)
+    monkeypatch.setenv("FARM_NOTARY_IPFS_API", stub_server.url)
+    stub_server.response_body = (
+        json.dumps({"Name": "", "Hash": "bafypinned"}) + "\n"
+    ).encode()
+
+    calls = []
+
+    def fake_stamp_digest(digest, calendars=None, timeout=10.0):
+        calls.append(digest)
+        if len(calls) == 1:
+            return b"main proof", ["http://calendar.test"]
+        raise OtsError("calendar unavailable")
+
+    monkeypatch.setattr("farm_notary.ots.stamp_digest", fake_stamp_digest)
+    backend = OpenTimestampsBackend(calendars=["http://calendar.test"])
+
+    manifest, receipt = notarize_run(
+        tmp_path,
+        publish_patterns=["*.csv"],
+        git_sha="abc",
+        git_dirty=False,
+        backend=backend,
+        pin=True,
+        allow_dirty=True,
+    )
+
+    assert manifest.cid == "bafypinned"
+    assert receipt.cid == "bafypinned"
+    assert len(calls) == 2
+    err = capsys.readouterr().err
+    assert "warning: CID binding proof could not be stamped" in err
+    assert "calendar unavailable" in err
+    assert (tmp_path / PROOF_NAME).is_file()
+    assert not (tmp_path / CID_BINDING_PROOF_NAME).exists()
+    on_disk = load_manifest(tmp_path)
+    assert "cid_binding_proof" not in receipt.detail
+    assert "cid_binding_proof" not in on_disk.anchor["detail"]
 
 
 def test_write_proof_noop_without_proof(tmp_path: Path):
