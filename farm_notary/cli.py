@@ -1474,7 +1474,7 @@ def _check_ots_anchor(
         try:
             proof_path = resolve_run_path(run_dir, proof_name)
         except ValueError:
-            print("anchor:       OTS proof file absent (install farm-notary[ots] to verify)")
+            print(f"anchor:       invalid OTS proof file path ({proof_name})")
             return
         if proof_path.is_file():
             print(missing_ots_msg)
