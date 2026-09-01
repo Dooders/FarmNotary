@@ -15,6 +15,8 @@ import uuid
 from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 
+from farm_notary.manifest import resolve_run_path
+
 DEFAULT_API_URL = "http://127.0.0.1:5001"
 DEFAULT_GATEWAY_URL = "https://ipfs.io"
 _GATEWAY_TIMEOUT = 15.0
@@ -88,7 +90,10 @@ class IpfsClient:
         run_dir = Path(run_dir)
         files = []
         for name in names:
-            path = run_dir / name
+            try:
+                path = resolve_run_path(run_dir, name)
+            except ValueError as exc:
+                raise IpfsError(f"invalid artifact path {name!r}: {exc}") from exc
             files.append((name, path.read_bytes()))
         return self.add_files(files)
 

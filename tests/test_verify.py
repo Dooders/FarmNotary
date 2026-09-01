@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from farm_notary.anchor import anchor_run
 from farm_notary.manifest import build_manifest, write_manifest
 from farm_notary.ots import DEFAULT_CALENDARS, PROOF_NAME, serialize_proof
@@ -65,6 +67,27 @@ def test_verify_flags_invalid_manifest(tmp_path: Path):
     manifest.artifacts.append("ghost.csv")
     problems = verify_run_dir(manifest, tmp_path)
     assert any("invalid manifest" in p for p in problems)
+
+
+@pytest.mark.parametrize("path", ["../secret.bin", "/etc/hosts"])
+def test_verify_rejects_artifact_path_outside_run_dir(tmp_path: Path, path: str):
+    manifest = make_manifest(tmp_path)
+    manifest.artifacts = [path]
+    manifest.artifact_hashes = {path: "0" * 64}
+
+    problems = verify_run_dir(manifest, tmp_path)
+
+    assert any("invalid manifest" in problem for problem in problems)
+    assert any("invalid artifact path" in problem for problem in problems)
+
+
+def test_verify_anchor_rejects_proof_path_outside_run_dir(tmp_path: Path):
+    manifest = make_manifest(tmp_path)
+    anchor_run(manifest)
+    manifest.anchor["backend"] = "opentimestamps"
+    manifest.anchor["detail"] = {"proof": "../secret.ots"}
+
+    assert any("invalid anchor proof path" in problem for problem in verify_anchor(manifest, tmp_path))
 
 
 def test_verify_anchor_skips_unanchored_manifest(tmp_path: Path):

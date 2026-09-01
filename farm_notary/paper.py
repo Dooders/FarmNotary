@@ -14,6 +14,7 @@ from typing import Any, Optional
 
 from farm_notary.claims import infer_claim_level, scoped_reproducibility_sentence
 from farm_notary.fingerprint import environment_scope
+from farm_notary.manifest import resolve_run_path
 
 PAPER_PACK_NAME = "appendix.md"
 
@@ -43,7 +44,10 @@ def bitcoin_attestation_label(record: Any, run_dir: Optional[Path] = None) -> st
     if backend == "opentimestamps":
         proof_name = (anchor.get("detail") or {}).get("proof", "manifest.ots")
         if run_dir is not None:
-            proof_path = Path(run_dir) / proof_name
+            try:
+                proof_path = resolve_run_path(run_dir, proof_name)
+            except ValueError:
+                return "pending"
             if proof_path.is_file():
                 try:
                     from farm_notary.ots import proof_status

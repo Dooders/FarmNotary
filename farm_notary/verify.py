@@ -15,7 +15,7 @@ from typing import Any, List, Optional
 
 from farm_notary.beacon import BeaconCheck, verify_beacon_binding
 from farm_notary.ladder import LadderResult, evaluate_ladder
-from farm_notary.manifest import RECEIPT_NAME, Manifest, hash_file
+from farm_notary.manifest import RECEIPT_NAME, Manifest, hash_file, resolve_run_path
 from farm_notary.precommit import PRECOMMIT_NAME, PRECOMMIT_PROOF_NAME, load_precommit
 from farm_notary.schema import MANIFEST_VERSION
 from farm_notary.sigstore import (
@@ -121,7 +121,11 @@ def verify_run_dir(manifest: Manifest, run_dir: Path) -> List[str]:
         problems.append(f"invalid manifest: {exc}")
     cid_hint = f" (fetch with: ipfs get {manifest.cid})" if manifest.cid else ""
     for name, expected in sorted(manifest.artifact_hashes.items()):
-        path = run_dir / name
+        try:
+            path = resolve_run_path(run_dir, name)
+        except ValueError as exc:
+            problems.append(f"invalid artifact path {name!r}: {exc}")
+            continue
         if not path.is_file():
             problems.append(f"artifact unreachable: {name}{cid_hint}")
             continue
@@ -215,9 +219,12 @@ def verify_anchor(manifest: Any, run_dir: Path) -> List[str]:
         detail = manifest.anchor.get("detail")
         if not isinstance(detail, dict):
             detail = {}
-        proof_path = Path(run_dir) / detail.get(
-            "proof", PROOF_NAME
-        )
+        proof_name = detail.get("proof", PROOF_NAME)
+        try:
+            proof_path = resolve_run_path(run_dir, proof_name)
+        except ValueError as exc:
+            problems.append(f"invalid anchor proof path {proof_name!r}: {exc}")
+            return problems
         if not proof_path.is_file():
             problems.append(f"missing anchor proof: {proof_path.name}")
         else:
@@ -228,9 +235,14 @@ def verify_anchor(manifest: Any, run_dir: Path) -> List[str]:
 
             binding_proof_name = detail.get("cid_binding_proof")
             binding_required = bool(binding_proof_name)
-            binding_path = Path(run_dir) / (
+            binding_name = (
                 binding_proof_name if isinstance(binding_proof_name, str) else CID_BINDING_PROOF_NAME
             )
+            try:
+                binding_path = resolve_run_path(run_dir, binding_name)
+            except ValueError as exc:
+                problems.append(f"invalid CID binding proof path {binding_name!r}: {exc}")
+                return problems
             if binding_path.is_file():
                 problems += verify_cid_binding_proof(
                     binding_path.read_bytes(), manifest_hash, manifest.cid
@@ -387,9 +399,12 @@ def _existed_by_status(
         return "fail"
     from farm_notary.ots import PROOF_NAME, proof_status
 
-    proof_path = Path(run_dir) / manifest.anchor.get("detail", {}).get(
-        "proof", PROOF_NAME
-    )
+    try:
+        proof_path = resolve_run_path(
+            run_dir, manifest.anchor.get("detail", {}).get("proof", PROOF_NAME)
+        )
+    except ValueError:
+        return "fail"
     if not proof_path.is_file():
         return "fail"
     try:
