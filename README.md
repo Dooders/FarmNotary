@@ -422,6 +422,7 @@ CI runs pytest on Python 3.9–3.12.
 | [docs/demo/](docs/demo/) | Live notebook: claim card, allowlist, scoped re-run |
 | [docs/slides/](docs/slides/) | Intro deck ([PDF](docs/slides/farmnotary.pdf)) and consensus walkthrough ([PDF](docs/slides/consensus.pdf)) |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
+| [docs/V1_READINESS.md](docs/V1_READINESS.md) | 1.0 readiness review (not a tag) |
 | [integration/agentfarm/README.md](integration/agentfarm/README.md) | AgentFarm provenance patch |
 
 ## Status

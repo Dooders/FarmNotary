@@ -13,6 +13,11 @@ The current release is **0.2.0**.
 
 ### Added
 
+- `docs/V1_READINESS.md`: implementation review of `dev` against the
+  1.0 milestone (issues #79–#83). Verdict: not passable for 1.0 until
+  untrusted-manifest path containment, the `git_dirty=False` API
+  bypass, index claim-label earnability, and advertised CI reproduce
+  trust are closed. Not a freeze or a tag.
 - Salted Merkle commitment over unpublished files (`withheld_salt`,
   `withheld_root`, `withheld_classes`). Class counts split denylist vs
   unmatched and sum to `unmatched_count`. Unsalted ballot hashes are not
