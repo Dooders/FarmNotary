@@ -45,14 +45,26 @@ directory separators.
 | `results/*` | `results/a.csv` **and** `results/sub/a.csv` | `results/a.csv` only |
 | `results/**` | same as `results/*` | `results/` at any depth |
 
-Named profiles (`consensus`, `rl-sweep`, `evolution-run`) are unaffected.
-If you hand-wrote a pattern that relied on `*` crossing a separator, the
-files it used to admit are now withheld — which raises `unmatched_count`
-rather than publishing anything unexpectedly. **Check `unmatched_count`
-after upgrading**; add `**` where you meant to cross directories:
+Named profiles (`consensus`, `rl-sweep`, `evolution-run`) are unaffected:
+their patterns are bare filenames plus `*.png`, and a pattern with no `/`
+still matches at any depth.
+
+A hand-written `dir/*.ext` pattern is affected. Measured with AgentFarm's
+`OFFICIAL_PUBLISH_PATTERNS`, which includes `figures/*.png`, against the
+same run directory:
+
+| Release | `figures/chart.png` | `figures/nested/deep.png` | `unmatched_count` |
+|---|---|---|---|
+| 0.2.0 | published | **published** | 2 |
+| 1.0.0 | published | withheld | 3 |
+
+The change only ever withholds more, so it cannot leak a file that used to
+be private — but the published set and therefore the `content_hash` differ
+between releases for the same directory. **Check `unmatched_count` after
+upgrading**, and add `**` where you meant to cross directories:
 
 ```bash
-farm-notary manifest --run-dir path/to/run --publish 'results/**'
+farm-notary manifest --run-dir path/to/run --publish 'figures/**/*.png'
 ```
 
 ### Behaviour: some things that used to pass now fail
