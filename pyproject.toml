@@ -50,6 +50,8 @@ dev = [
     "cryptography>=41",
     "ruff>=0.6",
     "mypy>=1.11",
+    "setuptools>=68",
+    "wheel",
 ]
 
 [project.scripts]
