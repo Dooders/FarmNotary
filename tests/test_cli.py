@@ -637,11 +637,64 @@ def test_emit_interop_writes_unsigned_files(tmp_path: Path, capsys):
 
 def test_archive_zenodo_requires_creator(tmp_path: Path, capsys):
     run_dir = make_run_dir(tmp_path)
+    token_path = tmp_path / "zenodo-token"
+    token_path.write_text("tok\n", encoding="utf-8")
     assert main(["manifest", "--run-dir", str(run_dir), "--publish", "*.csv"]) == 0
     capsys.readouterr()
-    rc = main(["archive", str(run_dir), "--zenodo", "--zenodo-token", "tok"])
+    rc = main(
+        ["archive", str(run_dir), "--zenodo", "--zenodo-token", f"@{token_path}"]
+    )
     assert rc == 2
     assert "--zenodo-creator is required" in capsys.readouterr().err
+
+
+def test_archive_zenodo_rejects_raw_token_on_argv(tmp_path: Path, capsys):
+    run_dir = make_run_dir(tmp_path)
+    assert main(["manifest", "--run-dir", str(run_dir), "--publish", "*.csv"]) == 0
+    capsys.readouterr()
+
+    rc = main(
+        [
+            "archive",
+            str(run_dir),
+            "--zenodo",
+            "--zenodo-token",
+            "tok",
+            "--zenodo-creator",
+            "Test Author",
+        ]
+    )
+
+    assert rc == 1
+    assert "--zenodo-token must be @PATH" in capsys.readouterr().err
+
+
+def test_archive_zenodo_reads_token_from_file(tmp_path: Path, capsys, monkeypatch):
+    run_dir = make_run_dir(tmp_path)
+    token_path = tmp_path / "zenodo-token"
+    token_path.write_text("tok\n", encoding="utf-8")
+    assert main(["manifest", "--run-dir", str(run_dir), "--publish", "*.csv"]) == 0
+    capsys.readouterr()
+    captured = {}
+
+    def deposit_manifest(*args, **kwargs):
+        captured["token"] = kwargs["token"]
+        return {"id": 123}
+
+    monkeypatch.setattr("farm_notary.archive.deposit_manifest", deposit_manifest)
+
+    assert main(
+        [
+            "archive",
+            str(run_dir),
+            "--zenodo",
+            "--zenodo-token",
+            f"@{token_path}",
+            "--zenodo-creator",
+            "Test Author",
+        ]
+    ) == 0
+    assert captured["token"] == "tok"
 
 
 def test_chain_cli_relative_paths_verify(tmp_path: Path, capsys):
