@@ -117,7 +117,7 @@ This is how “bitwise on x86-64 Linux, pinned env” stays honest when someone 
 
 ## Paper pack
 
-`farm-notary paper-pack` writes `appendix.md`: CID, content hash, Bitcoin attestation (or pending / experimental EAS), publish allowlist, unmatched count, withheld root and class counts (no names), precommit hash, artifact label (`bytes` / `bitwise` / …), environment, and a scoped reproducibility sentence. FarmNotary 1.0 policy is that `Reader ladder` is `—`: do not cite `Ln` from the appendix (FarmNotary does not verify Bitcoin headers; `ots verify` does; a campaign has no single-run ladder). Campaigns also list child seeds and CIDs. Pass `--verify-derived` to confirm statistics before the sentence claims they recompute.
+`farm-notary paper-pack` writes `appendix.md`: CID, content hash, Bitcoin attestation (or pending / experimental EAS), publish allowlist, unmatched count, withheld root and class counts (no names), precommit hash, artifact label (`bytes` / `bitwise` / …), environment, and a scoped reproducibility sentence. FarmNotary 1.0 policy is that `Reader ladder` is `—`: do not cite `Ln` from the appendix (FarmNotary does not verify Bitcoin headers; Bitcoin header verification remains external via `ots verify`; a campaign has no single-run ladder). Campaigns also list child seeds and CIDs. Pass `--verify-derived` to confirm statistics before the sentence claims they recompute.
 
 ## Public index
 
