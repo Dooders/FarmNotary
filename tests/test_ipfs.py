@@ -54,6 +54,27 @@ def test_empty_upload_rejected():
         IpfsClient(api_url="http://127.0.0.1:1").add_files([])
 
 
+@pytest.mark.parametrize("path", ["../secret.bin", "/etc/hosts"])
+def test_add_run_dir_rejects_paths_outside_run_dir(stub_server, tmp_path: Path, path: str):
+    (tmp_path.parent / "secret.bin").write_text("secret", encoding="utf-8")
+
+    with pytest.raises(IpfsError, match="invalid artifact path"):
+        IpfsClient(api_url=stub_server.url).add_run_dir(tmp_path, [path])
+
+    assert stub_server.requests == []
+
+
+def test_add_run_dir_rejects_symlink_outside_run_dir(stub_server, tmp_path: Path):
+    secret = tmp_path.parent / "secret.bin"
+    secret.write_text("secret", encoding="utf-8")
+    (tmp_path / "secret.bin").symlink_to(secret)
+
+    with pytest.raises(IpfsError, match="invalid artifact path"):
+        IpfsClient(api_url=stub_server.url).add_run_dir(tmp_path, ["secret.bin"])
+
+    assert stub_server.requests == []
+
+
 def test_api_url_from_environment(monkeypatch, stub_server, tmp_path: Path):
     (tmp_path / "summary.csv").write_text("x\n", encoding="utf-8")
     monkeypatch.setenv("FARM_NOTARY_IPFS_API", stub_server.url)

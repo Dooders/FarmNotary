@@ -65,6 +65,24 @@ def test_require_clean_identity_detects_when_unset(tmp_path: Path, monkeypatch):
     require_clean_identity(None, allow_dirty=True)
 
 
+def test_require_clean_identity_refuses_dirty_repo_with_git_dirty_false(tmp_path: Path, monkeypatch):
+    repo = tmp_path / "repo"
+    init_repo(repo, dirty=True)
+    monkeypatch.chdir(repo)
+    with pytest.raises(DirtyTreeError, match="does not identify the code"):
+        require_clean_identity(False)
+    require_clean_identity(False, allow_dirty=True)
+
+
+def test_require_clean_identity_raises_on_recorded_dirty_flag_with_clean_repo(tmp_path: Path, monkeypatch):
+    repo = tmp_path / "repo"
+    init_repo(repo, dirty=False)
+    monkeypatch.chdir(repo)
+    with pytest.raises(DirtyTreeError, match="does not identify the code"):
+        require_clean_identity(True)
+    require_clean_identity(True, allow_dirty=True)
+
+
 def test_anchor_run_refuses_dirty_manifest(tmp_path: Path):
     (tmp_path / "summary.csv").write_text("paradigm,total\nparty,0.2\n", encoding="utf-8")
     manifest = build_manifest(

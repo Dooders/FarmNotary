@@ -21,6 +21,7 @@ from farm_notary.manifest import (
     detect_git_status,
     load_manifest,
     require_clean_identity,
+    resolve_run_path,
     write_manifest,
 )
 from farm_notary.sigstore import (
@@ -1470,19 +1471,27 @@ def _check_ots_anchor(
         anchor = manifest.anchor or {}
         detail = anchor.get("detail", {}) or {}
         proof_name = detail.get("proof", "manifest.ots") if isinstance(detail, dict) else "manifest.ots"
-        proof_path = run_dir / proof_name
-        if proof_path.is_file():
-            print(missing_ots_msg)
-        else:
+        try:
+            proof_path = resolve_run_path(run_dir, proof_name)
+        except ValueError:
+            print(f"anchor:       invalid OTS proof file path ({proof_name!r})")
+            return
+        if not proof_path.is_file():
             print("anchor:       OTS proof file absent (install farm-notary[ots] to verify)")
+            return
+        print(missing_ots_msg)
         return
 
     anchor = manifest.anchor or {}
     detail = anchor.get("detail", {}) or {}
     proof_name = detail.get("proof", PROOF_NAME) if isinstance(detail, dict) else PROOF_NAME
-    proof_path = run_dir / proof_name
+    try:
+        proof_path = resolve_run_path(run_dir, proof_name)
+    except ValueError:
+        print(f"anchor:       invalid proof file path ({proof_name!r})")
+        return
     if not proof_path.is_file():
-        print(f"anchor:       proof file missing ({proof_name})")
+        print(f"anchor:       proof file missing ({proof_name!r})")
         return
 
     proof_bytes = proof_path.read_bytes()
