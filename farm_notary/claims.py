@@ -22,7 +22,12 @@ CLAIM_BITWISE_DECLARED = "bitwise_declared"
 CLAIM_BITWISE_DERIVED_DECLARED = "bitwise+derived_declared"
 
 
-def infer_claim_level(record: Any, run_dir: Optional[Path] = None) -> str:
+def infer_claim_level(
+    record: Any,
+    run_dir: Optional[Path] = None,
+    *,
+    derived_ok: Optional[bool] = None,
+) -> str:
     """Infer a claim level from a manifest or campaign plus optional receipts.
 
     Labels ending in ``_declared`` mean the corresponding artefact (receipt or
@@ -59,10 +64,18 @@ def infer_claim_level(record: Any, run_dir: Optional[Path] = None) -> str:
                 has_receipt = False
                 receipt_valid = False
     if has_receipt and has_derived:
-        return CLAIM_BITWISE_DERIVED_DECLARED
+        if receipt_valid and derived_ok is True:
+            return CLAIM_BITWISE_DERIVED
+        if receipt_valid:
+            return CLAIM_BITWISE_DERIVED_DECLARED
+        if derived_ok is True:
+            return CLAIM_DERIVED
+        return CLAIM_BITWISE_DECLARED
     if has_receipt:
         return CLAIM_BITWISE if receipt_valid else CLAIM_BITWISE_DECLARED
     if has_derived:
+        if derived_ok is True:
+            return CLAIM_DERIVED
         return CLAIM_DERIVED_DECLARED
     return CLAIM_BYTES
 

@@ -10,6 +10,7 @@ from farm_notary.claims import (
     CLAIM_BITWISE_DERIVED,
     CLAIM_BITWISE_DERIVED_DECLARED,
     CLAIM_BYTES,
+    CLAIM_DERIVED,
     CLAIM_DERIVED_DECLARED,
     infer_claim_level,
     scoped_reproducibility_sentence,
@@ -63,6 +64,7 @@ def test_derived_rules_without_receipt_are_declared_not_earned(tmp_path: Path):
     run, manifest = _run(tmp_path, derived=True)
     assert manifest.derived_from
     assert infer_claim_level(manifest, run) == CLAIM_DERIVED_DECLARED
+    assert infer_claim_level(manifest, run, derived_ok=True) == CLAIM_DERIVED
 
 
 def test_derived_from_config_only_still_declares(tmp_path: Path):
@@ -94,8 +96,10 @@ def test_receipt_plus_derived_rules(tmp_path: Path):
     run, manifest = _run(tmp_path, derived=True)
     _write_receipt(run, manifest, ok=True, bound=True)
     assert infer_claim_level(manifest, run) == CLAIM_BITWISE_DERIVED_DECLARED
+    assert infer_claim_level(manifest, run, derived_ok=True) == CLAIM_BITWISE_DERIVED
     _write_receipt(run, manifest, ok=False, bound=True)
-    assert infer_claim_level(manifest, run) == CLAIM_BITWISE_DERIVED_DECLARED
+    assert infer_claim_level(manifest, run) == CLAIM_BITWISE_DECLARED
+    assert infer_claim_level(manifest, run, derived_ok=True) == CLAIM_DERIVED
 
 
 def test_unreadable_receipt_is_ignored(tmp_path: Path):

@@ -102,7 +102,7 @@ def build_paper_pack(
     allowlist = ", ".join(f"`{p}`" for p in patterns) if patterns else "—"
     unmatched = getattr(record, "unmatched_count", 0)
     precommit = getattr(record, "precommit_hash", None) or "—"
-    claim = infer_claim_level(record, run_dir)
+    claim = infer_claim_level(record, run_dir, derived_ok=derived_ok)
     env = environment_scope(getattr(record, "environment", None) or {})
     sentence = scoped_reproducibility_sentence(
         record, derived_ok=derived_ok, experiment=name if name != "experiment" else experiment
