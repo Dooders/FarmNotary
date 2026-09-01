@@ -52,7 +52,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_man = sub.add_parser("manifest", help=f"Write {MANIFEST_NAME} for a run directory")
+    p_man = sub.add_parser("manifest", help=f"Stable: write {MANIFEST_NAME} for a run directory")
     p_man.add_argument("--run-dir", required=True)
     p_man.add_argument("--git-sha", help="Code identity; auto-detected from cwd if omitted")
     p_man.add_argument("--runner", help="Name of the runner that produced the artifacts")
@@ -158,13 +158,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_beacon_args(p_pre)
 
-    p_anc = sub.add_parser("anchor", help="Pin (optional) and anchor an existing manifest")
+    p_anc = sub.add_parser("anchor", help="Stable: pin (optional) and anchor an existing manifest")
     p_anc.add_argument("--run-dir", required=True)
     p_anc.add_argument(
         "--backend",
         choices=("dry-run", "ots", "eas"),
         default="dry-run",
-        help="dry-run prints the payload; ots anchors via OpenTimestamps (recommended); eas is deprecated (requires a funded key and costs gas; use ots instead)",
+        help="dry-run prints the payload; ots anchors via OpenTimestamps (recommended); eas is experimental (requires a funded key, costs gas, and trusts an attester address)",
     )
     p_anc.add_argument(
         "--pin",
@@ -210,7 +210,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_ver = sub.add_parser(
         "verify",
         help=(
-            "Print a CLAIMS.md claim card for a run "
+            "Stable: print a CLAIMS.md claim card for a run "
             "(exit 0 = attempted checks passed; ladder strength is separate)"
         ),
     )
@@ -289,7 +289,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser(
         "register-schema",
-        help="Register the FarmNotary schema with the EAS SchemaRegistry (one-time per chain)",
+        help="Experimental: register the FarmNotary schema with the EAS SchemaRegistry (one-time per chain)",
     )
 
     p_camp = sub.add_parser(
@@ -451,7 +451,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_interop = sub.add_parser(
         "emit-interop",
         help=(
-            "Emit unsigned interop JSON summaries (SLSA/in-toto vocabulary, "
+            "Experimental: emit unsigned interop JSON summaries (SLSA/in-toto vocabulary, "
             "RO-Crate, C2PA-style). Not verifiable provenance. Does not "
             "overwrite the FarmNotary manifest."
         ),
@@ -474,7 +474,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_arc = sub.add_parser(
         "archive",
         help=(
-            "Optional durable-storage helpers (Zenodo draft/DOI, Software "
+            "Experimental: optional durable-storage helpers (Zenodo draft/DOI, Software "
             "Heritage lookup). IDs are not claim-card rows and are not "
             "written to the manifest."
         ),
@@ -530,7 +530,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_chain = sub.add_parser(
         "chain",
         help=(
-            "Build or verify a multi-stage hash lineage of manifests "
+            "Experimental: build or verify a multi-stage hash lineage of manifests "
             "(not input/output data flow)."
         ),
     )

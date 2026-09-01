@@ -154,15 +154,16 @@ labeled.**
 
 OTS needs no keys and no gas. FarmNotary checks that the proof commits
 to the content hash; full Bitcoin header verification is left to
-`ots verify`. EAS needs a funded key, gas, and a verifier who already
-knows the attester address. That extra assumption is acceptable only
-when the goal is attributable, queryable attestation. It is not a
-general upgrade from OTS.
+`ots verify`. EAS is keyed, needs a funded key, costs gas, and requires
+a verifier who already knows the attester address. That extra assumption
+is acceptable only when the goal is attributable, queryable attestation.
+It is experimental, not a general upgrade from OTS.
 
 **Rules out:** making `eas` the CLI or Action default; a FarmNotary-issued
 identity or protocol token; presenting an EAS UID as equivalent to a
 Bitcoin attestation; dropping the "experimental" label while the
-attester-address assumption remains.
+attester-address assumption remains; treating EAS, `emit-interop`,
+`archive`, plugins, or `chain` as part of the stable workflow.
 
 ## 8. Do not operate infrastructure that is a solved public good
 

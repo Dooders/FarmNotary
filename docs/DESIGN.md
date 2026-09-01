@@ -55,8 +55,10 @@ Artifact discovery is recursive; paths are POSIX-style relative to the run direc
 ## 1.0 API freeze
 
 The schema id `farmnotary.manifest.v1` (this section), the public
-`farm_notary.__all__` symbols, and the documented CLI subcommands are the
-1.0 surface. No cleanup was queued before the tag; the 0.2 line already
+`farm_notary.__all__` symbols excluding experimental helpers, and the
+documented stable CLI subcommands are the 1.0 surface. EAS,
+`emit-interop`, `archive`, plugins, and `chain` are explicitly excluded.
+No cleanup was queued before the tag; the 0.2 line already
 omits optional content-hashed fields (`derived_from`, `publish_profile`,
 `precommit_hash`, `beacon`, `ci_provenance`, `withheld_salt`,
 `withheld_root`, `withheld_classes`) when empty, so older bodies keep a

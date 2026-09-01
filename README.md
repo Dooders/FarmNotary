@@ -120,6 +120,8 @@ farm-notary verify --run-dir runs/i-0 --live-beacon
 
 ## Commands
 
+### Stable 1.0 workflow
+
 | Command | What it does |
 |---|---|
 | `manifest` | Write `manifest.json` (requires `--profile` and/or `--publish`) |
@@ -137,10 +139,16 @@ farm-notary verify --run-dir runs/i-0 --live-beacon
 | `index` | Append a run or campaign to a static registry (no scores) |
 | `reveal-withheld` | Open a named subset of withheld files against `withheld_root` |
 | `derive-seeds` | After the plan is stamped, fetch `min_round` and write `seeds.json` |
-| `register-schema` | One-time EAS schema registration |
-| `emit-interop` | Unsigned JSON summaries (SLSA/in-toto vocabulary, RO-Crate, C2PA-style). Not verifiable provenance |
+
+### Experimental (not part of the 1.0 stability promise)
+
+| Command or API | What it does |
+|---|---|
+| `anchor --backend eas`; `register-schema` | EAS is keyed, costs gas, and requires trusting a known attester address |
+| `emit-interop` | Unsigned JSON summaries (SLSA/in-toto vocabulary, RO-Crate, C2PA-style). Not verifiable provenance or claim-ladder steps |
 | `archive` | Optional Zenodo deposit / Software Heritage lookup. IDs are not claim-card rows |
 | `chain` | Manifest-hash lineage (`provenance-chain.json`). Not input/output data flow |
+| Tracker plugins | Explicit-allowlist MLflow/DVC hooks; not required workflow components |
 
 ## What you may claim
 
@@ -426,8 +434,8 @@ CI runs pytest on Python 3.9–3.12.
 
 ## Status
 
-**0.2.0** is on PyPI. Manifests, campaigns, derivation claims, environment fingerprints, optional identity, paper pack, public index, hashing, IPFS pinning, OpenTimestamps (CLI dry-run default; Action `ots`), proof upgrade, claim-card verify, reusable GitHub Action, and experimental EAS on Base / Base Sepolia are implemented and tested.
+**0.2.0** is on PyPI. The stable 1.0 workflow is the command set above through `derive-seeds`, including manifest creation, verification, and OTS anchoring (CLI dry-run default; Action `ots`). EAS on Base / Base Sepolia is experimental.
 
-Later-wave helpers from #40 (`emit-interop`, `archive`, tracker plugins, `chain`) are experimental first-cuts. They are not claim-ladder steps: SLSA/C2PA files are unsigned summaries, plugins require an explicit allowlist, and a provenance chain is hash lineage only.
+Later-wave helpers from #40 (`emit-interop`, `archive`, tracker plugins, `chain`) are experimental first-cuts, outside the 1.0 stability promise. They are not claim-ladder steps: SLSA/C2PA files are unsigned summaries, plugins require an explicit allowlist, and a provenance chain is hash lineage only.
 
 The anchoring layer is outsourced — earlier revisions carried a custom `SimulationRegistry` contract, which was removed. Breaking schema changes are reserved for 1.0.

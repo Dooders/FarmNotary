@@ -4,10 +4,10 @@ import argparse
 from pathlib import Path
 
 from farm_notary.cli import _build_parser
+from farm_notary.ladder import L0_MEANING, LADDER_LEVELS, LADDER_MEANINGS
 from farm_notary.profiles import PROFILE_NAMES
 from farm_notary.schema import REQUIRED_KEYS, TOOL_VERSION
 from farm_notary.scope import ALLOWED_SENTENCE
-from farm_notary.ladder import L0_MEANING, LADDER_LEVELS, LADDER_MEANINGS
 from farm_notary.verify import _CLAIM_NAMES
 
 README = Path("README.md").read_text(encoding="utf-8")
@@ -233,6 +233,22 @@ def test_later_wave_helpers_are_labeled_unsigned_and_experimental():
     assert "unsigned-summary-not-for-verification" in CHANGELOG or "unsigned" in CHANGELOG
     assert "notarize_tracker_run" in CHANGELOG
     assert "Interop formats as new claim types" in PRINCIPLES
+
+
+def test_1_0_stability_promise_excludes_experimental_surfaces():
+    parser_help = _build_parser().format_help()
+    for command in ("emit-interop", "archive", "chain", "register-schema"):
+        assert "Experimental:" in parser_help.split(command, 1)[1]
+    assert "Stable:" in parser_help.split("manifest", 1)[1]
+    assert "Stable:" in parser_help.split("verify", 1)[1]
+    assert "Stable:" in parser_help.split("anchor", 1)[1]
+    for blob in (README, CHANGELOG, DESIGN):
+        assert "1.0" in blob
+        assert "experimental" in blob.lower()
+    assert "not part of the 1.0 stability promise" in README
+    assert "attester address" in PRINCIPLES
+    assert "costs gas" in PRINCIPLES
+    assert "unsigned summaries" in README
 
 
 def test_docs_frame_withheld_as_publication_scope():
