@@ -159,21 +159,36 @@ def resolve_run_path(run_dir: Path, name: str) -> Path:
 def _matches_any_pattern(rel_posix: str, patterns: Sequence[str]) -> bool:
     """True if rel_posix matches at least one glob pattern.
 
-    Pattern semantics mirror :func:`fnmatch.fnmatch`: ``*`` matches any
-    sequence of characters **within** a path component; use ``**`` only if
-    you need to cross directory boundaries (handled via a double-check on
-    the filename alone for simple ``*.ext`` patterns so that
-    ``--publish '*.png'`` matches ``subdir/chart.png``).
+    POSIX-style ``*`` matches any sequence of characters **within** a path
+    component; use ``**`` only if you need to cross directory boundaries
+    (handled via a double-check on the filename alone for simple patterns
+    like ``*.png`` so that ``--publish '*.png'`` matches
+    ``subdir/chart.png``).
     """
+    path_parts = tuple(rel_posix.split("/"))
     filename = Path(rel_posix).name
     for pat in patterns:
-        if fnmatch.fnmatch(rel_posix, pat):
+        if _matches_path_pattern(path_parts, tuple(pat.split("/"))):
             return True
         # Allow simple extension/name globs (e.g. "*.png") to match files
         # in subdirectories without requiring "**/*.png".
-        if fnmatch.fnmatch(filename, pat):
+        if "/" not in pat and pat != "*" and fnmatch.fnmatchcase(filename, pat):
             return True
     return False
+
+
+def _matches_path_pattern(path_parts: Tuple[str, ...], pattern_parts: Tuple[str, ...]) -> bool:
+    if not pattern_parts:
+        return not path_parts
+    head = pattern_parts[0]
+    rest = pattern_parts[1:]
+    if head == "**":
+        if not rest:
+            return True
+        return any(_matches_path_pattern(path_parts[i:], rest) for i in range(len(path_parts) + 1))
+    if not path_parts:
+        return False
+    return fnmatch.fnmatchcase(path_parts[0], head) and _matches_path_pattern(path_parts[1:], rest)
 
 
 def iter_candidate_files(run_dir: Path) -> Iterator[Path]:
