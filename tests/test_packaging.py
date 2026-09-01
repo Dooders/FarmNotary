@@ -1,7 +1,10 @@
 """Package metadata, public API, and typed-package marker stay aligned."""
 
 import importlib.metadata
+import subprocess
+import sys
 import types
+import zipfile
 from pathlib import Path
 
 import farm_notary
@@ -41,7 +44,7 @@ def test_all_is_sorted_and_unique():
 
 def test_pyproject_declares_typed_package_and_lint_extra():
     text = Path("pyproject.toml").read_text(encoding="utf-8")
-    assert 'farm_notary = ["py.typed"]' in text
+    assert '"schemas/*.json"' in text
     assert '"Typing :: Typed"' in text
     assert "Homepage" in text
     assert "ruff" in text
@@ -51,3 +54,33 @@ def test_pyproject_declares_typed_package_and_lint_extra():
     dist = importlib.metadata.distribution("farm-notary")
     names = {extra for extra in (dist.metadata.get_all("Provides-Extra") or [])}
     assert {"ots", "chain", "sigstore", "dev", "lint"} <= names
+
+
+def test_wheel_record_includes_schemas(tmp_path: Path):
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "wheel",
+            "--no-build-isolation",
+            "--no-deps",
+            "--wheel-dir",
+            str(tmp_path),
+            ".",
+        ],
+        check=True,
+    )
+    wheel = next(tmp_path.glob("farm_notary-*.whl"))
+    with zipfile.ZipFile(wheel) as archive:
+        names = set(archive.namelist())
+        record_name = next(name for name in names if name.endswith(".dist-info/RECORD"))
+        record = archive.read(record_name).decode("utf-8").splitlines()
+
+    for name in (
+        "farmnotary.manifest.v1.json",
+        "farmnotary.campaign.v1.json",
+        "farmnotary.registry.v1.json",
+    ):
+        assert f"farm_notary/schemas/{name}" in names
+        assert any(line.startswith(f"farm_notary/schemas/{name},") for line in record)

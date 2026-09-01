@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Dooders/FarmNotary/schemas/farmnotary.registry.v1.json",
+  "title": "farmnotary.registry.v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema", "entries"],
+  "properties": {
+    "schema": { "const": "farmnotary.registry.v1" },
+    "generated_utc": { "type": "string" },
+    "entries": { "type": "array", "items": { "type": "object", "additionalProperties": false, "properties": { "experiment": { "type": ["string", "null"] }, "seed": {}, "cid": { "type": ["string", "null"] }, "claim_level": { "type": ["string", "null"] }, "date": { "type": ["string", "null"] }, "content_hash": { "type": "string" } } } }
+  }
+}
