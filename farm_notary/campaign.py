@@ -290,7 +290,7 @@ def verify_campaign(
             def _canonical(v: object) -> str:
                 return json.dumps(v, sort_keys=True, separators=(",", ":"))
 
-            for field in ("chain_hash", "min_round", "derivation", "inclusion", "count"):
+            for field in sorted(set(campaign.seed_plan) | set(canonical_plan)):
                 campaign_value = campaign.seed_plan.get(field)
                 committed_value = canonical_plan.get(field)
                 if _canonical(campaign_value) != _canonical(committed_value):
