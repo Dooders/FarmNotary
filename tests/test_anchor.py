@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from farm_notary.anchor import (
     DryRunBackend,
     anchor_run,
@@ -18,6 +17,7 @@ from farm_notary.ots import (
     OtsError,
     deserialize_proof,
 )
+
 from tests.test_ots import pending_timestamp, serialize_timestamp
 
 
