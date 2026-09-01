@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Dooders/FarmNotary/schemas/farmnotary.campaign.v1.json",
+  "title": "farmnotary.campaign.v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema", "created_utc", "runs"],
+  "properties": {
+    "schema": { "const": "farmnotary.campaign.v1" },
+    "farm_notary_version": { "type": "string" },
+    "created_utc": { "type": "string" },
+    "name": { "type": "string" },
+    "git_sha": { "type": ["string", "null"] },
+    "git_dirty": { "type": ["boolean", "null"] },
+    "command": { "type": "string" },
+    "environment": { "type": "object" },
+    "config": { "type": "object" },
+    "config_hash": { "type": "string" },
+    "runs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["content_hash"],
+        "additionalProperties": true,
+        "properties": {
+          "content_hash": { "type": "string" },
+          "seed": {},
+          "cid": { "type": "string" },
+          "claim_level": { "type": "string" },
+          "path": { "type": "string" },
+          "config_hash": { "type": "string" },
+          "seed_index": { "type": "integer" }
+        }
+      }
+    },
+    "publish_patterns": { "type": "array", "items": { "type": "string" } },
+    "unmatched_count": { "type": "integer", "minimum": 0 },
+    "precommit_hash": { "type": "string" },
+    "seed_plan": { "type": "object" },
+    "cid": { "type": "string" },
+    "cid_reachable": { "type": "boolean" },
+    "cid_reachable_checked_utc": { "type": "string" },
+    "pin_service": { "type": "string" },
+    "anchor": { "type": "object" },
+    "identity": {
+      "type": "object",
+      "description": "Stamp field. Excluded from content_hash."
+    }
+  }
+}

@@ -206,7 +206,9 @@ def upgrade_proof(proof: bytes, timeout: float = 10.0) -> Tuple[bytes, ProofStat
     from calendars that could not be reached or don't have the commitment yet.
     """
     from opentimestamps.calendar import CommitmentNotFoundError, RemoteCalendar
-    from opentimestamps.core.notary import PendingAttestation
+    from opentimestamps.core.notary import (
+        PendingAttestation,
+    )
 
     detached = deserialize_proof(proof)
     errors: List[str] = []

@@ -15,7 +15,8 @@ per-run manifest cannot express lineage.  This module provides:
 
 Design
 ------
-The chain is a JSON array where each element is::
+The on-disk file is an object (``farmnotary.provenance-chain.v1``) whose
+``links`` array contains::
 
     {
         "stage":          <int or str>,
@@ -28,15 +29,24 @@ The chain is a JSON array where each element is::
 ``link_hash`` commits to the entire history up to this point, so a verifier
 can walk from the root to the tip and re-derive every hash without trusting
 any intermediate storage.  There is no trusted server in this design.
+
+The chain is **manifest-hash lineage only**. It does not check that stage
+N's artifacts were inputs to stage N+1.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Union
+
+CHAIN_SCHEMA = "farmnotary.provenance-chain.v1"
+CHAIN_NOTE = (
+    "Hash lineage of manifests only; not input/output data flow between stages."
+)
 
 
 # ---------------------------------------------------------------------------
@@ -110,9 +120,8 @@ def chain_manifests(
     stage_labels:
         Optional labels for each stage.  Defaults to ``0, 1, 2, …``.
     manifest_paths:
-        Optional path strings for each manifest file (for
-        human-readable cross-referencing in the chain JSON).  May be
-        absolute or relative paths.
+        Optional path strings for each manifest file. Prefer paths
+        relative to the directory that will hold ``provenance-chain.json``.
 
     Returns
     -------
@@ -257,6 +266,12 @@ def verify_chain(
 CHAIN_FILE_NAME = "provenance-chain.json"
 
 
+def _rel_manifest_path(manifest_file: Path, dest_dir: Path) -> str:
+    """Return a POSIX path for *manifest_file* relative to *dest_dir*."""
+    rel = os.path.relpath(Path(manifest_file).resolve(), Path(dest_dir).resolve())
+    return Path(rel).as_posix()
+
+
 def write_chain(chain: Sequence[ChainLink], dest_dir: Path) -> Path:
     """Write *chain* as ``provenance-chain.json`` inside *dest_dir*.
 
@@ -274,7 +289,11 @@ def write_chain(chain: Sequence[ChainLink], dest_dir: Path) -> Path:
         Path to the written file.
     """
     dest = Path(dest_dir) / CHAIN_FILE_NAME
-    data = [link.to_dict() for link in chain]
+    data = {
+        "schema": CHAIN_SCHEMA,
+        "note": CHAIN_NOTE,
+        "links": [link.to_dict() for link in chain],
+    }
     dest.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     return dest
 
@@ -292,7 +311,29 @@ def load_chain(path: Path) -> List[ChainLink]:
     list of ChainLink
     """
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
-    return [ChainLink.from_dict(item) for item in raw]
+    if isinstance(raw, dict):
+        schema = raw.get("schema")
+        if schema is not None and schema != CHAIN_SCHEMA:
+            raise ValueError(
+                f"unsupported provenance-chain schema {schema!r}; "
+                f"expected {CHAIN_SCHEMA!r}"
+            )
+        items = raw.get("links") or []
+        if not isinstance(items, list):
+            raise ValueError(
+                "provenance-chain.json 'links' must be a list"
+            )
+    elif isinstance(raw, list):
+        items = raw
+    else:
+        raise ValueError("provenance-chain.json must be an object or a list")
+    for i, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise ValueError(
+                f"provenance-chain.json link {i} must be an object, "
+                f"got {type(item).__name__}"
+            )
+    return [ChainLink.from_dict(item) for item in items]
 
 
 # ---------------------------------------------------------------------------
@@ -329,14 +370,14 @@ def chain_run_dirs(
     from farm_notary.manifest import load_manifest
 
     paths = [Path(d) for d in run_dirs]
+    dest_dir = Path(output_dir) if output_dir is not None else paths[-1]
     manifests = [load_manifest(p / "manifest.json") for p in paths]
-    rel_paths = [str(p / "manifest.json") for p in paths]
+    rel_paths = [_rel_manifest_path(p / "manifest.json", dest_dir) for p in paths]
 
     chain = chain_manifests(
         manifests,
         stage_labels=stage_labels,
         manifest_paths=rel_paths,
     )
-    dest_dir = output_dir or paths[-1]
     write_chain(chain, dest_dir)
     return chain

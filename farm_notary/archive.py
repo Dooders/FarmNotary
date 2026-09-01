@@ -28,7 +28,6 @@ import json
 import os
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 if TYPE_CHECKING:
@@ -261,15 +260,11 @@ def deposit_manifest(
             "Supply metadata={'creators': [{'name': 'Author, Name'}]}."
         )
 
-    deposition = zenodo_create_deposit(
-        token=tok, sandbox=sandbox, metadata=default_meta, timeout=timeout
-    )
-    dep_id = str(deposition["id"])
-
     resolved_rd = rd.resolve()
     upload_paths: List[str] = list(files) if files is not None else ["manifest.json"]
     if files is not None and "manifest.json" not in upload_paths:
         upload_paths.insert(0, "manifest.json")
+    resolved_uploads: List[str] = []
     for rel in upload_paths:
         rel_path = Path(rel)
         if rel_path.is_absolute():
@@ -283,7 +278,14 @@ def deposit_manifest(
             raise ValueError(
                 f"Refusing to upload {rel!r}: path escapes the run directory"
             )
-        zenodo_upload_file(dep_id, str(candidate), token=tok, sandbox=sandbox, timeout=timeout)
+        resolved_uploads.append(str(candidate))
+
+    deposition = zenodo_create_deposit(
+        token=tok, sandbox=sandbox, metadata=default_meta, timeout=timeout
+    )
+    dep_id = str(deposition["id"])
+    for upload_path in resolved_uploads:
+        zenodo_upload_file(dep_id, upload_path, token=tok, sandbox=sandbox, timeout=timeout)
 
     if publish:
         return zenodo_publish(dep_id, token=tok, sandbox=sandbox, timeout=timeout)
