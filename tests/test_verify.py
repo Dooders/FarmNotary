@@ -413,3 +413,47 @@ def test_verify_anchor_missing_required_cid_binding_proof_is_an_error(tmp_path: 
 
     problems = verify_anchor(manifest, tmp_path)
     assert problems == [f"missing CID binding proof: {CID_BINDING_PROOF_NAME}"]
+
+
+def test_claim_card_mismatched_identity_fails(tmp_path: Path):
+    manifest = make_manifest(tmp_path)
+    manifest.identity = {
+        "scheme": "ssh",
+        "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI...",
+        "signature": "dummy_signature",
+        "signed": "ff" * 32,
+    }
+    card = evaluate_claims(manifest, tmp_path)
+    assert not card.ok
+    assert any("identity signed" in p for p in card.problems)
+
+
+def test_claim_card_unknown_identity_scheme_fails(tmp_path: Path):
+    manifest = make_manifest(tmp_path)
+    manifest.identity = {"scheme": "bogus"}
+    card = evaluate_claims(manifest, tmp_path)
+    assert not card.ok
+    assert any("unknown identity scheme" in p for p in card.problems)
+
+
+def test_claim_card_valid_identity_passes(tmp_path: Path):
+    import shutil
+    import subprocess
+    from farm_notary.identity import sign_record
+
+    if shutil.which("ssh-keygen") is None:
+        pytest.skip("ssh-keygen not installed")
+
+    key = tmp_path / "id_ed25519"
+    subprocess.run(
+        ["ssh-keygen", "-t", "ed25519", "-f", str(key), "-N", "", "-C", "lab@example"],
+        check=True,
+        capture_output=True,
+    )
+    manifest = make_manifest(tmp_path)
+    sign_record(manifest, scheme="ssh", key_path=key, principal="lab@example")
+    card = evaluate_claims(manifest, tmp_path)
+    assert card.ok
+    assert not card.problems
+
+
