@@ -1474,12 +1474,12 @@ def _check_ots_anchor(
         try:
             proof_path = resolve_run_path(run_dir, proof_name)
         except ValueError:
-            print(f"anchor:       invalid OTS proof file path ({proof_name})")
+            print(f"anchor:       invalid OTS proof file path ({proof_name!r})")
             return
-        if proof_path.is_file():
-            print(missing_ots_msg)
-        else:
+        if not proof_path.is_file():
             print("anchor:       OTS proof file absent (install farm-notary[ots] to verify)")
+            return
+        print(missing_ots_msg)
         return
 
     anchor = manifest.anchor or {}
@@ -1488,10 +1488,10 @@ def _check_ots_anchor(
     try:
         proof_path = resolve_run_path(run_dir, proof_name)
     except ValueError:
-        print(f"anchor:       invalid proof file path ({proof_name})")
+        print(f"anchor:       invalid proof file path ({proof_name!r})")
         return
     if not proof_path.is_file():
-        print(f"anchor:       proof file missing ({proof_name})")
+        print(f"anchor:       proof file missing ({proof_name!r})")
         return
 
     proof_bytes = proof_path.read_bytes()
