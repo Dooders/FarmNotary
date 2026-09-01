@@ -99,7 +99,7 @@ def test_receipt_plus_derived_rules(tmp_path: Path):
     assert infer_claim_level(manifest, run, derived_ok=True) == CLAIM_BITWISE_DERIVED
     _write_receipt(run, manifest, ok=False, bound=True)
     assert infer_claim_level(manifest, run) == CLAIM_BITWISE_DECLARED
-    assert infer_claim_level(manifest, run, derived_ok=True) == CLAIM_DERIVED
+    assert infer_claim_level(manifest, run, derived_ok=True) == CLAIM_BITWISE_DECLARED
 
 
 def test_unreadable_receipt_is_ignored(tmp_path: Path):

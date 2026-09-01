@@ -68,8 +68,6 @@ def infer_claim_level(
             return CLAIM_BITWISE_DERIVED
         if receipt_valid:
             return CLAIM_BITWISE_DERIVED_DECLARED
-        if derived_ok is True:
-            return CLAIM_DERIVED
         return CLAIM_BITWISE_DECLARED
     if has_receipt:
         return CLAIM_BITWISE if receipt_valid else CLAIM_BITWISE_DECLARED
