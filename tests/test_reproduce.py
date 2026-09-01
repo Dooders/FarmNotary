@@ -302,8 +302,8 @@ def test_cli_reproduce_trusts_same_local_checkout(tmp_path: Path, capsys):
     assert "matched: 2 artifact(s) bitwise-identical" in captured.out
 
 
-def test_cli_reproduce_trusts_same_ci_context(tmp_path: Path, capsys, monkeypatch):
-    """When ci_provenance repo/sha match the live GITHUB_* env, reproduce trusts it."""
+def test_cli_reproduce_same_ci_context_stays_untrusted(tmp_path: Path, capsys, monkeypatch):
+    """Self-asserted CI provenance cannot waive explicit command acceptance."""
     from farm_notary.cli import main
 
     run_dir, manifest, _ = make_notarized_run(tmp_path)
@@ -318,10 +318,9 @@ def test_cli_reproduce_trusts_same_ci_context(tmp_path: Path, capsys, monkeypatc
     monkeypatch.setenv("GITHUB_REPOSITORY", "Dooders/FarmNotary")
     monkeypatch.setenv("GITHUB_SHA", manifest.git_sha)
 
-    assert main(["reproduce", "--run-dir", str(run_dir)]) == 0
+    assert main(["reproduce", "--run-dir", str(run_dir)]) == 2
     captured = capsys.readouterr()
-    assert "trusted context matched the current GitHub Actions repo/SHA" in captured.err
-    assert "matched: 2 artifact(s) bitwise-identical" in captured.out
+    assert "--i-accept-untrusted-command" in captured.err
 
 
 def test_cli_reproduce_ci_context_mismatch_stays_untrusted(tmp_path: Path, capsys, monkeypatch):

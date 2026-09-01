@@ -1046,12 +1046,7 @@ def _cmd_reproduce(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    if trust_note == "ci":
-        print(
-            "warning: trusted context matched the current GitHub Actions repo/SHA.",
-            file=sys.stderr,
-        )
-    elif trust_note == "local":
+    if trust_note == "local":
         print(
             "warning: trusted context matched the local checkout git_sha.",
             file=sys.stderr,
@@ -1137,49 +1132,7 @@ def _trusted_reproduce_source(
             continue
         if manifest.git_sha and local_sha and manifest.git_sha == local_sha:
             return "local"
-    if _running_in_same_ci_context(manifest):
-        return "ci"
     return None
-
-
-def _running_in_same_ci_context(manifest) -> bool:
-    """True when this process is the same GitHub Actions repo/SHA as the manifest.
-
-    Trust requires ``GITHUB_ACTIONS=true`` plus a ``GITHUB_REPOSITORY`` /
-    ``GITHUB_SHA`` pair that matches the manifest's recorded
-    ``ci_provenance`` (or, absent that, its ``git_sha``) exactly. This never
-    trusts a manifest downloaded from elsewhere and run in a different CI
-    job or repo.
-    """
-    import os
-
-    if os.environ.get("GITHUB_ACTIONS") != "true":
-        return False
-    current_repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
-    current_sha = os.environ.get("GITHUB_SHA", "").strip()
-    if not current_repo or not current_sha:
-        return False
-    prov = manifest.ci_provenance
-    if isinstance(prov, dict):
-        # ci_provenance is present: it must fully agree (repo *and* sha), or
-        # this manifest is not trusted. Do not fall back to a bare git_sha
-        # match on a partially-filled record — that would let an attacker
-        # spoof an empty/blank repository or sha field to dodge the repo
-        # check.
-        prov_repo = str(prov.get("repository", "")).strip()
-        prov_sha = str(prov.get("sha", "")).strip()
-        return (
-            bool(prov_repo)
-            and bool(prov_sha)
-            and prov_repo == current_repo
-            and prov_sha == current_sha
-        )
-    # No recorded ci_provenance (e.g. manifest built outside CI, or the
-    # detail was intentionally omitted): fall back to matching git_sha
-    # against the current run's SHA. Still requires a live GITHUB_ACTIONS
-    # context, so it cannot be satisfied by a downloaded manifest run
-    # locally.
-    return bool(manifest.git_sha) and manifest.git_sha == current_sha
 
 
 def _cmd_upgrade(args: argparse.Namespace) -> int:
@@ -1252,10 +1205,10 @@ def _cmd_verify_campaign(args: argparse.Namespace) -> int:
         for i, run in enumerate(campaign.runs)
         if i not in checked
     ]
-    if checked:
+    if len(checked) == listed:
         print("OK", campaign.content_hash())
     else:
-        print("INCOMPLETE", campaign.content_hash(), "(no local child runs checked)")
+        print("INCOMPLETE", campaign.content_hash(), "(one or more child runs not checked)")
     print(f"campaign: {len(checked)} of {listed} child run(s) loaded and checked")
     if skipped:
         print("skipped:", ", ".join(skipped))
