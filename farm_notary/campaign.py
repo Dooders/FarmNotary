@@ -287,10 +287,13 @@ def verify_campaign(
             [campaign_dir / p for p in run_dirs], campaign.precommit_hash
         )
         if canonical_plan is not None:
+            def _canonical(v: object) -> str:
+                return json.dumps(v, sort_keys=True, separators=(",", ":"))
+
             for field in ("chain_hash", "min_round", "derivation", "inclusion", "count"):
                 campaign_value = campaign.seed_plan.get(field)
                 committed_value = canonical_plan.get(field)
-                if campaign_value != committed_value:
+                if _canonical(campaign_value) != _canonical(committed_value):
                     problems.append(
                         f"campaign seed_plan.{field} {campaign_value!r} does not match "
                         f"precommit seed_plan.{field} {committed_value!r}"
