@@ -8,7 +8,6 @@ import subprocess
 import warnings
 from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
-from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterator, List, Mapping, Optional, Sequence, Tuple
 
@@ -178,19 +177,42 @@ def _matches_any_pattern(rel_posix: str, patterns: Sequence[str]) -> bool:
     return False
 
 
-@lru_cache(maxsize=512)
 def _matches_path_pattern(path_parts: Tuple[str, ...], pattern_parts: Tuple[str, ...]) -> bool:
-    if not pattern_parts:
-        return not path_parts
-    head = pattern_parts[0]
-    rest = pattern_parts[1:]
-    if head == "**":
-        if not rest:
-            return True
-        return any(_matches_path_pattern(path_parts[i:], rest) for i in range(len(path_parts) + 1))
-    if not path_parts:
-        return False
-    return fnmatch.fnmatchcase(path_parts[0], head) and _matches_path_pattern(path_parts[1:], rest)
+    memo: dict[Tuple[int, int], bool] = {}
+
+    def match(path_index: int, pattern_index: int) -> bool:
+        key = (path_index, pattern_index)
+        if key in memo:
+            return memo[key]
+
+        if pattern_index == len(pattern_parts):
+            result = path_index == len(path_parts)
+        else:
+            head = pattern_parts[pattern_index]
+            if head == "**":
+                while (
+                    pattern_index + 1 < len(pattern_parts)
+                    and pattern_parts[pattern_index + 1] == "**"
+                ):
+                    pattern_index += 1
+                if pattern_index + 1 == len(pattern_parts):
+                    result = True
+                else:
+                    result = any(
+                        match(i, pattern_index + 1)
+                        for i in range(path_index, len(path_parts) + 1)
+                    )
+            elif path_index == len(path_parts):
+                result = False
+            else:
+                result = fnmatch.fnmatchcase(path_parts[path_index], head) and match(
+                    path_index + 1, pattern_index + 1
+                )
+
+        memo[key] = result
+        return result
+
+    return match(0, 0)
 
 
 def iter_candidate_files(run_dir: Path) -> Iterator[Path]:

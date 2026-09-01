@@ -86,7 +86,7 @@ def test_publish_globstar_can_consume_zero_components(tmp_path: Path):
     (tmp_path / "a").mkdir()
     (tmp_path / "a" / "b.csv").write_text("nested\n", encoding="utf-8")
 
-    manifest = build_manifest(tmp_path, publish_patterns=["a/**/b.csv"])
+    manifest = build_manifest(tmp_path, publish_patterns=["a/**/**/b.csv"])
 
     assert manifest.artifacts == ["a/b.csv"]
     assert manifest.unmatched_count == 0
