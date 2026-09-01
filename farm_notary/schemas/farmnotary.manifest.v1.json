@@ -31,7 +31,7 @@
     "withheld_classes": { "type": "object", "additionalProperties": { "type": "object", "required": ["count", "reason"], "properties": { "count": { "type": "integer", "minimum": 0 }, "reason": { "type": "string" } } } },
     "derived_from": { "type": "array" },
     "precommit_hash": { "type": "string" },
-    "beacon": { "type": "object", "required": ["chain_hash", "round", "randomness", "seed_index", "seed_count", "derived_seed"], "properties": { "chain_hash": { "type": "string" }, "round": { "type": "integer", "minimum": 1 }, "randomness": { "type": "string", "pattern": "^[0-9a-fA-F]+$" }, "seed_index": { "type": "integer", "minimum": 0 }, "seed_count": { "type": "integer", "minimum": 1 }, "derived_seed": { "type": "integer", "minimum": 0 } }, "additionalProperties": true },
+    "beacon": { "type": "object", "required": ["chain_hash", "round", "randomness", "seed_index", "seed_count", "derived_seed"], "properties": { "chain_hash": { "type": "string" }, "round": { "type": "integer", "minimum": 1 }, "randomness": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }, "seed_index": { "type": "integer", "minimum": 0 }, "seed_count": { "type": "integer", "minimum": 1 }, "derived_seed": { "type": "integer", "minimum": 0 } }, "additionalProperties": true },
     "ci_provenance": { "type": "object", "required": ["kind", "sha"], "properties": { "kind": { "const": "github_actions" }, "sha": { "type": "string", "minLength": 1 }, "repository": { "type": "string" }, "ref": { "type": "string" }, "workflow": { "type": "string" }, "run_id": { "type": "string" }, "run_url": { "type": "string" } }, "additionalProperties": true },
     "official_record": { "type": "object" },
     "cid": { "type": "string" },

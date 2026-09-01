@@ -58,7 +58,17 @@ def test_pyproject_declares_typed_package_and_lint_extra():
 
 def test_wheel_record_includes_schemas(tmp_path: Path):
     subprocess.run(
-        [sys.executable, "-m", "pip", "wheel", "--no-deps", "--wheel-dir", str(tmp_path), "."],
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "wheel",
+            "--no-build-isolation",
+            "--no-deps",
+            "--wheel-dir",
+            str(tmp_path),
+            ".",
+        ],
         check=True,
     )
     wheel = next(tmp_path.glob("farm_notary-*.whl"))
