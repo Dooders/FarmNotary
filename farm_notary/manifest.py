@@ -8,7 +8,7 @@ import subprocess
 import warnings
 from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Iterator, List, Mapping, Optional, Sequence, Tuple
 
 from farm_notary.schema import (
@@ -131,6 +131,29 @@ def is_private_path(rel_path: str) -> bool:
     """True if any part of the relative path names private data."""
     lowered = rel_path.lower()
     return any(frag in lowered for frag in PRIVATE_NAME_FRAGMENTS)
+
+
+def validate_run_path(name: str) -> None:
+    """Reject paths that cannot name a contained POSIX run-directory file."""
+    if "\0" in name:
+        raise ValueError("path must not contain NUL")
+    path = PurePosixPath(name)
+    if path.is_absolute() or ".." in path.parts:
+        raise ValueError("path must be relative and must not contain '..'")
+
+
+def resolve_run_path(run_dir: Path, name: str) -> Path:
+    """Resolve *name* only when it remains within *run_dir*."""
+    if not isinstance(name, str):
+        raise ValueError("path must be a string")
+    validate_run_path(name)
+    root = Path(run_dir).resolve()
+    path = (root / Path(*PurePosixPath(name).parts)).resolve()
+    try:
+        path.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("path resolves outside the run directory") from exc
+    return path
 
 
 def _matches_any_pattern(rel_posix: str, patterns: Sequence[str]) -> bool:
@@ -421,6 +444,11 @@ class Manifest:
             not isinstance(path, str) for path in self.artifacts
         ):
             raise ValueError("manifest field 'artifacts' must be a list of strings")
+        for path in self.artifacts:
+            try:
+                validate_run_path(path)
+            except ValueError as exc:
+                raise ValueError(f"manifest artifact path {path!r} is invalid: {exc}") from exc
         if not isinstance(self.artifact_hashes, dict) or any(
             not isinstance(path, str) or not isinstance(digest, str)
             for path, digest in self.artifact_hashes.items()
@@ -436,6 +464,26 @@ class Manifest:
                 proof = detail.get("proof")
                 if proof is not None and not isinstance(proof, str):
                     raise ValueError("manifest field 'anchor.detail.proof' must be a string when present")
+                if proof is not None:
+                    try:
+                        validate_run_path(proof)
+                    except ValueError as exc:
+                        raise ValueError(
+                            f"manifest field 'anchor.detail.proof' is invalid: {exc}"
+                        ) from exc
+                binding_proof = detail.get("cid_binding_proof")
+                if binding_proof is not None and not isinstance(binding_proof, str):
+                    raise ValueError(
+                        "manifest field 'anchor.detail.cid_binding_proof' must be a string when present"
+                    )
+                if binding_proof is not None:
+                    try:
+                        validate_run_path(binding_proof)
+                    except ValueError as exc:
+                        raise ValueError(
+                            "manifest field 'anchor.detail.cid_binding_proof' "
+                            f"is invalid: {exc}"
+                        ) from exc
         if self.identity is not None and not isinstance(self.identity, dict):
             raise ValueError("manifest field 'identity' must be an object when present")
         self._validate_withheld()

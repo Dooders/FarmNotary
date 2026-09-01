@@ -202,6 +202,24 @@ def test_validate_rejects_private_artifacts():
         manifest.validate()
 
 
+@pytest.mark.parametrize("path", ["../secret.bin", "/etc/hosts", "artifact\0.bin"])
+def test_validate_rejects_escaping_artifact_paths(tmp_path: Path, path: str):
+    manifest = build_manifest(tmp_path, publish_patterns=["*.csv"])
+    manifest.artifacts = [path]
+    manifest.artifact_hashes = {path: "0" * 64}
+
+    with pytest.raises(ValueError, match="artifact path"):
+        manifest.validate()
+
+
+def test_validate_rejects_escaping_anchor_proof_path(tmp_path: Path):
+    manifest = build_manifest(tmp_path, publish_patterns=["*.csv"])
+    manifest.anchor = {"detail": {"proof": "../secret.ots"}}
+
+    with pytest.raises(ValueError, match="anchor.detail.proof.*invalid"):
+        manifest.validate()
+
+
 def test_environment_captured_by_default(tmp_path: Path):
     make_run_dir(tmp_path)
     manifest = build_manifest(tmp_path, publish_patterns=["*.csv"], git_sha="abc")

@@ -476,6 +476,27 @@ def test_check_ots_anchor_no_proof_file(tmp_path: Path, capsys):
     assert "anchor:" in out
 
 
+def test_check_ots_anchor_escapes_untrusted_proof_name(tmp_path: Path, capsys):
+    """check escapes newline/control characters in manifest proof names."""
+    run_dir = make_run_dir(tmp_path)
+    assert main(["manifest", "--run-dir", str(run_dir), "--publish", "*.csv"]) == 0
+    manifest = load_manifest(run_dir)
+    content_hash = manifest.content_hash()
+    malicious_name = "bad\nproof"
+    data = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    data["anchor"] = {
+        "backend": "opentimestamps",
+        "manifest_hash": content_hash,
+        "detail": {"proof": malicious_name},
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(data), encoding="utf-8")
+
+    rc = main(["check", "--manifest", str(run_dir / "manifest.json")])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert f"proof file missing ({malicious_name!r})" in out
+
+
 def test_check_ots_proof_present_without_ots_dependency(tmp_path: Path, capsys, monkeypatch):
     """check exits 0 when proof exists but farm-notary[ots] is unavailable."""
     run_dir = make_run_dir(tmp_path)
