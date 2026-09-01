@@ -251,6 +251,6 @@ def test_1_0_api_freeze_is_documented():
     for blob in (DESIGN, migration):
         assert "farmnotary.manifest.v1" in blob
         assert "__all__" in blob
-        assert "2.0" in blob
+        assert "wait for 2.0" in blob
     assert "1.0 API freeze" in DESIGN
     assert "1.0 freeze" in migration
