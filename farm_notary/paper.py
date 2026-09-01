@@ -18,10 +18,11 @@ from farm_notary.manifest import resolve_run_path
 
 PAPER_PACK_NAME = "appendix.md"
 
-# Appendix tables do not cite Ln: FarmNotary does not verify Bitcoin headers.
+# FarmNotary 1.0 policy: appendix tables do not cite Ln.
 PAPER_LADDER_CELL = "—"
 PAPER_LADDER_NOTE = (
-    "Reader ladder levels are printed by `farm-notary verify`. This appendix "
+    "FarmNotary 1.0 policy: Reader ladder levels are printed by "
+    "`farm-notary verify`. This appendix leaves `Reader ladder` as `—` and "
     "does not cite `Ln` because FarmNotary does not verify Bitcoin block "
     "headers (`ots verify`). A campaign has no single-run ladder."
 )
