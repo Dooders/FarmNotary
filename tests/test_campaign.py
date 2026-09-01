@@ -1,6 +1,7 @@
 import shutil
 from pathlib import Path
 
+import pytest
 from farm_notary.campaign import (
     build_campaign,
     config_hash_excluding_seed,
@@ -10,7 +11,13 @@ from farm_notary.campaign import (
     write_campaign,
 )
 from farm_notary.cli import main
-from farm_notary.manifest import build_manifest, write_manifest
+from farm_notary.manifest import build_manifest, load_manifest, write_manifest
+from farm_notary.precommit import (
+    PRECOMMIT_NAME,
+    build_precommit,
+    precommit_hash,
+    write_precommit,
+)
 from farm_notary.schema import CAMPAIGN_VERSION
 
 
@@ -85,6 +92,38 @@ def test_verify_campaign_config_hash_mismatch(tmp_path):
     campaign.config_hash = campaign.runs[0]["config_hash"]
     problems = verify_campaign(campaign, tmp_path)
     assert any("config_hash" in p for p in problems)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("min_round", 999), ("chain_hash", "different-chain")],
+)
+def test_verify_campaign_detects_seed_plan_field_mismatch(tmp_path, field, value):
+    child = _child(tmp_path, "run", 0)
+    plan = {
+        "chain_hash": "test-chain",
+        "min_round": 51,
+        "derivation": "sha256-v1",
+        "inclusion": "all_in_campaign",
+        "count": 1,
+    }
+    precommit = build_precommit(
+        config={"trials": 100, "voters": 300},
+        git_sha="abc",
+        git_dirty=False,
+        seed_plan=plan,
+        allow_dirty=True,
+    )
+    write_precommit(precommit, child / PRECOMMIT_NAME)
+    manifest = load_manifest(child)
+    manifest.precommit_hash = precommit_hash(precommit)
+    write_manifest(manifest, child)
+    campaign = build_campaign([child], campaign_dir=tmp_path)
+    campaign.seed_plan[field] = value
+
+    problems = verify_campaign(campaign, tmp_path)
+
+    assert any(f"seed_plan.{field}" in problem for problem in problems)
 
 
 def test_content_hash_excludes_stamp_fields(tmp_path):

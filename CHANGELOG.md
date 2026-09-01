@@ -288,8 +288,9 @@ manifest, or uploaded to IPFS only when it matches at least one declared
 *publish pattern* (`--profile`, `--publish`, `notary.profile`, or
 `notary.publish`).
 
-Patterns follow `fnmatch` semantics.  A plain `*.ext` pattern matches files in
-any subdirectory (not just the run-dir root).
+Patterns are matched component-wise: `*` does not cross `/`; use `**` to cross
+directories.  A plain `*.ext` pattern matches files in any subdirectory (not
+just the run-dir root).
 
 The substring denylist (`ballot`, `vote`, `voter`, `individual_choice`,
 `private`) is retained as a belt-and-braces second pass over whatever the

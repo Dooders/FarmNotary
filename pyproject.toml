@@ -50,6 +50,8 @@ dev = [
     "cryptography>=41",
     "ruff>=0.6",
     "mypy>=1.11",
+    "setuptools>=68",
+    "wheel",
 ]
 
 [project.scripts]
@@ -59,7 +61,7 @@ farm-notary = "farm_notary.cli:main"
 include = ["farm_notary*"]
 
 [tool.setuptools.package-data]
-farm_notary = ["py.typed"]
+farm_notary = ["py.typed", "schemas/*.json"]
 
 [tool.ruff]
 target-version = "py39"

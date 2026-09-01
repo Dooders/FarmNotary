@@ -493,8 +493,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_arc.add_argument(
         "--zenodo-token",
-        metavar="TOKEN",
-        help="Zenodo personal access token (default: ZENODO_TOKEN env var)",
+        metavar="@PATH",
+        help=(
+            "Zenodo personal access token file (default: ZENODO_TOKEN env var; "
+            "never pass a raw token on argv)"
+        ),
     )
     p_arc.add_argument(
         "--zenodo-publish",
@@ -1594,6 +1597,21 @@ def _cmd_archive(args: argparse.Namespace) -> int:
         from farm_notary.archive import ZenodoError, deposit_manifest
 
         try:
+            zenodo_token = getattr(args, "zenodo_token", None)
+            if zenodo_token:
+                if not zenodo_token.startswith("@"):
+                    raise ValueError(
+                        "--zenodo-token must be @PATH; set ZENODO_TOKEN instead "
+                        "of passing a raw token on the command line"
+                    )
+                try:
+                    zenodo_token = Path(zenodo_token[1:]).read_text(
+                        encoding="utf-8"
+                    ).strip()
+                except OSError as exc:
+                    raise ValueError(
+                        f"could not read Zenodo token file {zenodo_token[1:]}: {exc}"
+                    ) from exc
             zenodo_creator = getattr(args, "zenodo_creator", None)
             zenodo_publish = getattr(args, "zenodo_publish", False)
             if not zenodo_creator:
@@ -1610,7 +1628,7 @@ def _cmd_archive(args: argparse.Namespace) -> int:
             result = deposit_manifest(
                 manifest,
                 str(run_dir),
-                token=getattr(args, "zenodo_token", None) or None,
+                token=zenodo_token or None,
                 sandbox=getattr(args, "zenodo_sandbox", False),
                 publish=zenodo_publish,
                 files=zenodo_files,
