@@ -59,8 +59,25 @@ def test_manifest_schema_required_keys_match_code():
         ("artifacts", ["../outside.csv"]),
         ("artifacts", ["dir\\windows.csv"]),
         ("artifact_hashes", {"../outside.csv": "a" * 64}),
-        ("anchor", {"backend": "ots"}),
-        ("identity", {"scheme": "ssh"}),
+        (
+            "anchor",
+            {
+                "backend": "ots",
+                "manifest_hash": "a" * 64,
+                "cid": None,
+                "dry_run": False,
+                "detail": "not an object",
+            },
+        ),
+        (
+            "identity",
+            {
+                "scheme": "pgp",
+                "public_key": "key",
+                "signature": "signature",
+                "signed": "a" * 64,
+            },
+        ),
         ("beacon", {"round": 1}),
         ("ci_provenance", {"kind": "github_actions"}),
     ],
