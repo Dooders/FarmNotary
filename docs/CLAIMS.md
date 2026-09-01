@@ -87,11 +87,12 @@ see which path was used.
 
 `farm-notary index` and `paper-pack` label what artifacts were checked
 (`bytes`, `bitwise`, …). These are never ranks and are **not** the L0–L3
-reader ladder. `paper-pack` prints `Artifact label` for that vocabulary and
-leaves `Reader ladder` as `—`: this appendix does not cite `Ln`. Do not
-cite `FarmNotary Ln` from a PDF until Bitcoin header verification is
-in-tool. Run `farm-notary verify` for the stacked card. A campaign
-appendix has no single-run ladder.
+reader ladder. FarmNotary 1.0 policy is that `paper-pack` prints
+`Artifact label` for that vocabulary and leaves `Reader ladder` as `—`:
+this appendix does not cite `Ln`. Do not cite `FarmNotary Ln` from a PDF;
+FarmNotary does not verify Bitcoin headers in-tool (`ots verify` does). Run
+`farm-notary verify` for the stacked card. A campaign appendix has no
+single-run ladder.
 
 | Level | Meaning |
 |---|---|

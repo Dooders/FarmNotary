@@ -237,7 +237,7 @@ farm-notary paper-pack --campaign sweep/ --out sweep/appendix.md
 farm-notary index --registry docs/registry.md --campaign sweep/
 ```
 
-`paper-pack` writes the appendix snippet: CID, content hash, Bitcoin attestation (or pending), allowlist, unmatched count, precommit hash, artifact label, reader-ladder placeholder (`—`), environment, scoped sentence. It does not cite `Ln`. Campaigns also list child seeds and CIDs.
+`paper-pack` writes the appendix snippet: CID, content hash, Bitcoin attestation (or pending), allowlist, unmatched count, precommit hash, artifact label, reader-ladder placeholder (`—`), environment, scoped sentence. FarmNotary 1.0 policy is that the appendix does not cite `Ln`; Bitcoin header verification remains external (`ots verify`). Campaigns also list child seeds and CIDs.
 
 `index` maintains a static directory (Markdown + `registry.json` sidecar): experiment, seed, CID, claim level, date. Not a scoreboard. Running `index` rewrites the Markdown table; how-to text in that file is not preserved. See [docs/registry.md](docs/registry.md).
 

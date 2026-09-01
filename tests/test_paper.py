@@ -52,6 +52,9 @@ def test_paper_pack_contains_required_fields(tmp_path):
     assert "| Artifact label |" in text
     assert f"| Reader ladder | {PAPER_LADDER_CELL} |" in text
     assert PAPER_LADDER_NOTE in text
+    assert "FarmNotary 1.0 policy" in text
+    assert "does not cite `Ln`" in text
+    assert "does not verify Bitcoin block headers" in text
     assert "| Claim level |" not in text
     assert "| Ladder |" not in text
     assert manifest.precommit_hash in text
