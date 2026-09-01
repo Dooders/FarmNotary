@@ -22,12 +22,20 @@ CLAIM_BITWISE_DECLARED = "bitwise_declared"
 CLAIM_BITWISE_DERIVED_DECLARED = "bitwise+derived_declared"
 
 
-def infer_claim_level(record: Any, run_dir: Optional[Path] = None) -> str:
+def infer_claim_level(
+    record: Any,
+    run_dir: Optional[Path] = None,
+    *,
+    derived_ok: Optional[bool] = None,
+) -> str:
     """Infer a claim level from a manifest or campaign plus optional receipts.
 
     Labels ending in ``_declared`` mean the corresponding artefact (receipt or
     derivation rules) is present but has **not** been validated against this
     record's content hash.  Only fully-validated results use the plain labels.
+    An invalid receipt is reported as ``bitwise_declared`` even when derivation
+    rules are present, so a failed bitwise check does not share the label for a
+    valid receipt whose derivation rules were merely not run.
     """
     has_derived = bool(getattr(record, "derived_from", None))
     if not has_derived:
@@ -59,10 +67,14 @@ def infer_claim_level(record: Any, run_dir: Optional[Path] = None) -> str:
                 has_receipt = False
                 receipt_valid = False
     if has_receipt and has_derived:
-        return CLAIM_BITWISE_DERIVED_DECLARED
+        if receipt_valid:
+            return CLAIM_BITWISE_DERIVED if derived_ok is True else CLAIM_BITWISE_DERIVED_DECLARED
+        return CLAIM_BITWISE_DECLARED
     if has_receipt:
         return CLAIM_BITWISE if receipt_valid else CLAIM_BITWISE_DECLARED
     if has_derived:
+        if derived_ok is True:
+            return CLAIM_DERIVED
         return CLAIM_DERIVED_DECLARED
     return CLAIM_BYTES
 

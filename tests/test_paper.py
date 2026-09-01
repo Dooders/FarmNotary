@@ -144,6 +144,7 @@ def test_cli_paper_pack_verify_derived_confirms_or_notes(tmp_path, capsys):
     body = (run / "appendix.md").read_text(encoding="utf-8")
     assert "--verify-derived" in body
     assert "recompute exactly" not in body
+    assert "| Artifact label | derived_declared |" in body
     capsys.readouterr()
 
     assert (
@@ -161,6 +162,7 @@ def test_cli_paper_pack_verify_derived_confirms_or_notes(tmp_path, capsys):
     )
     confirmed = (run / "appendix.md").read_text(encoding="utf-8")
     assert "recompute exactly" in confirmed
+    assert "| Artifact label | derived |" in confirmed
 
 
 def test_cli_paper_pack_records_failed_derivation(tmp_path):
