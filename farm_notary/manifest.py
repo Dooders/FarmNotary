@@ -8,6 +8,7 @@ import subprocess
 import warnings
 from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterator, List, Mapping, Optional, Sequence, Tuple
 
@@ -177,6 +178,7 @@ def _matches_any_pattern(rel_posix: str, patterns: Sequence[str]) -> bool:
     return False
 
 
+@lru_cache(maxsize=4096)
 def _matches_path_pattern(path_parts: Tuple[str, ...], pattern_parts: Tuple[str, ...]) -> bool:
     if not pattern_parts:
         return not path_parts
