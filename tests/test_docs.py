@@ -94,6 +94,9 @@ def test_claim_card_rows_match_the_tool():
     assert "Artifact label" in CLAIMS
     assert "Reader ladder" in CLAIMS
     assert "does not cite `Ln`" in CLAIMS
+    assert "FarmNotary 1.0 policy" in CLAIMS
+    assert "Bitcoin header verification remains external" in README
+    assert "FarmNotary 1.0 policy" in DESIGN
     assert "does not cite `Ln`" in README or "does not cite `Ln`" in DESIGN
 
 
