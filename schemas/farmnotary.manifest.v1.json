@@ -4,6 +4,12 @@
   "title": "farmnotary.manifest.v1",
   "type": "object",
   "additionalProperties": true,
+  "$defs": {
+    "relativePosixPath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*//)[^/\\\\]+(?:/[^/\\\\]+)*$"
+    }
+  },
   "required": [
     "schema",
     "created_utc",
@@ -22,14 +28,15 @@
     "git_dirty": { "type": ["boolean", "null"] },
     "runner": { "type": "string" },
     "command": { "type": "string" },
-    "environment": { "type": "object" },
+    "environment": { "type": "object", "additionalProperties": true },
     "config": { "type": "object" },
     "artifacts": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": { "$ref": "#/$defs/relativePosixPath" }
     },
     "artifact_hashes": {
       "type": "object",
+      "propertyNames": { "$ref": "#/$defs/relativePosixPath" },
       "additionalProperties": { "type": "string" }
     },
     "publish_patterns": {
@@ -53,16 +60,65 @@
     },
     "derived_from": { "type": "array" },
     "precommit_hash": { "type": "string" },
-    "beacon": { "type": "object" },
-    "ci_provenance": { "type": "object" },
+    "beacon": {
+      "type": "object",
+      "required": ["chain_hash", "round", "randomness", "seed_index", "seed_count", "derived_seed"],
+      "properties": {
+        "chain_hash": { "type": "string" },
+        "round": { "type": "integer", "minimum": 1 },
+        "randomness": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+        "seed_index": { "type": "integer", "minimum": 0 },
+        "seed_count": { "type": "integer", "minimum": 1 },
+        "derived_seed": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "ci_provenance": {
+      "type": "object",
+      "required": ["kind", "sha"],
+      "properties": {
+        "kind": { "const": "github_actions" },
+        "sha": { "type": "string", "minLength": 1 },
+        "repository": { "type": "string" },
+        "ref": { "type": "string" },
+        "workflow": { "type": "string" },
+        "run_id": { "type": "string" },
+        "run_url": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
     "official_record": { "type": "object" },
     "cid": { "type": "string" },
     "cid_reachable": { "type": "boolean" },
     "cid_reachable_checked_utc": { "type": "string" },
     "pin_service": { "type": "string" },
-    "anchor": { "type": "object" },
+    "anchor": {
+      "type": "object",
+      "required": ["backend", "manifest_hash", "cid", "dry_run", "detail"],
+      "properties": {
+        "backend": { "type": "string" },
+        "manifest_hash": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+        "cid": { "type": ["string", "null"] },
+        "dry_run": { "type": "boolean" },
+        "attestation_uid": { "type": ["string", "null"] },
+        "chain_id": { "type": ["integer", "null"] },
+        "tx_hash": { "type": ["string", "null"] },
+        "detail": { "type": "object", "additionalProperties": true }
+      },
+      "additionalProperties": true
+    },
     "identity": {
       "type": "object",
+      "required": ["scheme", "public_key", "signature", "signed"],
+      "properties": {
+        "scheme": { "enum": ["ssh", "minisign"] },
+        "public_key": { "type": "string", "minLength": 1 },
+        "signature": { "type": "string", "minLength": 1 },
+        "signed": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+        "principal": { "type": "string" },
+        "namespace": { "type": "string" }
+      },
+      "additionalProperties": true,
       "description": "Stamp field. Excluded from content_hash. Optional SSH/minisign signature of the content hash."
     }
   }

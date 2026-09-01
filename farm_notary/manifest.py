@@ -159,21 +159,65 @@ def resolve_run_path(run_dir: Path, name: str) -> Path:
 def _matches_any_pattern(rel_posix: str, patterns: Sequence[str]) -> bool:
     """True if rel_posix matches at least one glob pattern.
 
-    Pattern semantics mirror :func:`fnmatch.fnmatch`: ``*`` matches any
-    sequence of characters **within** a path component; use ``**`` only if
-    you need to cross directory boundaries (handled via a double-check on
-    the filename alone for simple ``*.ext`` patterns so that
-    ``--publish '*.png'`` matches ``subdir/chart.png``).
+    POSIX-style ``*`` matches any sequence of characters **within** a path
+    component; use ``**`` only if you need to cross directory boundaries
+    (handled via a double-check on the filename alone for simple patterns
+    like ``*.png`` so that ``--publish '*.png'`` matches
+    ``subdir/chart.png``).
     """
+    path_parts = tuple(rel_posix.split("/"))
     filename = Path(rel_posix).name
     for pat in patterns:
-        if fnmatch.fnmatch(rel_posix, pat):
+        pattern_parts = _collapse_globstars(tuple(pat.split("/")))
+        if _matches_path_pattern(path_parts, pattern_parts):
             return True
         # Allow simple extension/name globs (e.g. "*.png") to match files
         # in subdirectories without requiring "**/*.png".
-        if fnmatch.fnmatch(filename, pat):
+        if "/" not in pat and pat != "*" and fnmatch.fnmatchcase(filename, pat):
             return True
     return False
+
+
+def _collapse_globstars(pattern_parts: Tuple[str, ...]) -> Tuple[str, ...]:
+    collapsed: list[str] = []
+    for part in pattern_parts:
+        if part == "**" and collapsed and collapsed[-1] == "**":
+            continue
+        collapsed.append(part)
+    return tuple(collapsed)
+
+
+def _matches_path_pattern(path_parts: Tuple[str, ...], pattern_parts: Tuple[str, ...]) -> bool:
+    memo: dict[Tuple[int, int], bool] = {}
+
+    def match(path_index: int, pattern_index: int) -> bool:
+        key = (path_index, pattern_index)
+        if key in memo:
+            return memo[key]
+
+        if pattern_index == len(pattern_parts):
+            result = path_index == len(path_parts)
+        else:
+            head = pattern_parts[pattern_index]
+            if head == "**":
+                if pattern_index + 1 == len(pattern_parts):
+                    result = True
+                else:
+                    result = any(
+                        match(i, pattern_index + 1)
+                        for i in range(path_index, len(path_parts) + 1)
+                    )
+            elif path_index == len(path_parts):
+                result = False
+            else:
+                result = fnmatch.fnmatchcase(path_parts[path_index], head) and match(
+                    path_index + 1, pattern_index + 1
+                )
+
+        memo[key] = result
+        return result
+
+    return match(0, 0)
 
 
 def iter_candidate_files(run_dir: Path) -> Iterator[Path]:

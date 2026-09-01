@@ -353,7 +353,7 @@ Every manifest records `farm_notary_version` (currently `0.2.0`) and `schema` (`
 
 Required on every v1 body: `schema`, `created_utc`, `git_sha`, `config`, `artifacts`, `artifact_hashes`, `publish_patterns`, `unmatched_count`.
 
-`identity` is a **stamp field** (with `cid` and `anchor`): written after `content_hash` and excluded from it. JSON Schema files are in [`schemas/`](schemas/) (source/GitHub repo only; not included in the PyPI wheel). Migration notes: [docs/MIGRATION.md](docs/MIGRATION.md).
+`identity` is a **stamp field** (with `cid` and `anchor`): written after `content_hash` and excluded from it. JSON Schema files are in [`schemas/`](schemas/) and are included in the PyPI wheel under `farm_notary/schemas/`. Migration notes: [docs/MIGRATION.md](docs/MIGRATION.md).
 
 Breaking changes (new required fields, renamed keys, removed fields) are reserved for `1.0` and will land in the changelog with a migration guide.
 
