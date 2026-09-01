@@ -36,6 +36,45 @@ from farm_notary.verify import (
     verify_identity_record,
 )
 
+# The 1.0 promise covers STABLE_COMMANDS: their documented flags, the manifest
+# schema they read and write, and their claim-card output stay compatible for
+# the life of 1.x. EXPERIMENTAL_COMMANDS are first cuts that may change or be
+# removed in a minor release, and none of them is a claim-ladder step.
+STABLE_COMMANDS = (
+    "anchor",
+    "campaign",
+    "check",
+    "derive-seeds",
+    "index",
+    "manifest",
+    "paper-pack",
+    "precommit",
+    "reproduce",
+    "reveal-withheld",
+    "sign",
+    "upgrade",
+    "verify",
+)
+
+EXPERIMENTAL_COMMANDS = (
+    "archive",
+    "chain",
+    "emit-interop",
+    "register-schema",
+)
+
+_STABILITY_EPILOG = (
+    "stability (FarmNotary 1.0):\n"
+    f"  stable        {', '.join(STABLE_COMMANDS)}\n"
+    f"  experimental  {', '.join(EXPERIMENTAL_COMMANDS)}\n"
+    "\n"
+    "Stable commands keep their documented flags and claim-card output across\n"
+    "1.x. Experimental commands are first cuts: they may change or be removed\n"
+    "in a minor release, and none of them is a claim-ladder step. `anchor\n"
+    "--backend eas` is experimental for the same reason (funded key, gas, and\n"
+    "trust in an attester address).\n"
+)
+
 
 def _load_json_arg(path: Optional[str]) -> Optional[dict]:
     if not path:
@@ -50,6 +89,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="farm-notary",
         description="Notarize AgentFarm runs: manifest, optional IPFS pin, public anchor.",
+        epilog=_STABILITY_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -290,7 +331,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser(
         "register-schema",
-        help="Register the FarmNotary schema with the EAS SchemaRegistry (one-time per chain)",
+        help=(
+            "(experimental) Register the FarmNotary schema with the EAS "
+            "SchemaRegistry (one-time per chain)"
+        ),
     )
 
     p_camp = sub.add_parser(
@@ -452,9 +496,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p_interop = sub.add_parser(
         "emit-interop",
         help=(
-            "Emit unsigned interop JSON summaries (SLSA/in-toto vocabulary, "
-            "RO-Crate, C2PA-style). Not verifiable provenance. Does not "
-            "overwrite the FarmNotary manifest."
+            "(experimental) Emit unsigned interop JSON summaries (SLSA/in-toto "
+            "vocabulary, RO-Crate, C2PA-style). Not verifiable provenance. Does "
+            "not overwrite the FarmNotary manifest."
         ),
     )
     p_interop.add_argument("run_dir", help="Run directory containing manifest.json")
@@ -475,8 +519,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_arc = sub.add_parser(
         "archive",
         help=(
-            "Optional durable-storage helpers (Zenodo draft/DOI, Software "
-            "Heritage lookup). IDs are not claim-card rows and are not "
+            "(experimental) Optional durable-storage helpers (Zenodo draft/DOI, "
+            "Software Heritage lookup). IDs are not claim-card rows and are not "
             "written to the manifest."
         ),
     )
@@ -534,8 +578,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_chain = sub.add_parser(
         "chain",
         help=(
-            "Build or verify a multi-stage hash lineage of manifests "
-            "(not input/output data flow)."
+            "(experimental) Build or verify a multi-stage hash lineage of "
+            "manifests (not input/output data flow)."
         ),
     )
     p_chain.add_argument(

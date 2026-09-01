@@ -34,13 +34,26 @@ DEFAULT_CALENDARS = (
     "https://ots.btc.catallaxy.com",
 )
 
+# Calendars named by a PendingAttestation inside a proof. The public pools in
+# DEFAULT_CALENDARS are submission endpoints that forward to these upstream
+# servers, so a proof produced by the default path carries these URIs and never
+# the pool URL it was submitted to. Recognising a URI here is not authentication
+# (see ProofStatus.public_pending_calendars); it only separates the public
+# network from a calendar the operator supplied with --calendar.
+PUBLIC_CALENDAR_URIS = DEFAULT_CALENDARS + (
+    "https://alice.btc.calendar.opentimestamps.org",
+    "https://bob.btc.calendar.opentimestamps.org",
+    "https://finney.calendar.eternitywall.com",
+    "https://btc.calendar.catallaxy.com",
+)
+
 
 def _canonical_calendar_url(url: str) -> str:
     return url.rstrip("/")
 
 
 def _public_calendar_urls() -> set[str]:
-    return {_canonical_calendar_url(url) for url in DEFAULT_CALENDARS}
+    return {_canonical_calendar_url(url) for url in PUBLIC_CALENDAR_URIS}
 
 
 class OtsError(RuntimeError):

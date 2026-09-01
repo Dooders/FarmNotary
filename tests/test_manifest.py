@@ -290,6 +290,7 @@ def test_command_and_environment_are_anchored(tmp_path: Path):
     assert manifest.content_hash() != before
 
 
+@pytest.mark.real_git_state
 def test_git_status_detection(tmp_path: Path):
     import subprocess
 

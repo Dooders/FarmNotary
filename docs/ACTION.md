@@ -8,10 +8,10 @@ verify fails**.
 This repository hosts the action at the root (`action.yml`). Consume it as:
 
 ```yaml
-uses: dooders/FarmNotary@v0.2.0
+uses: dooders/FarmNotary@v1.0.0
 ```
 
-Pin `v0.2.0` (or a commit SHA). `@dev` tracks unreleased work on the
+Pin `v1.0.0` (or a commit SHA). `@dev` tracks unreleased work on the
 development branch.
 
 The composite action's `name` field is `farm-notary-action`.
@@ -31,7 +31,7 @@ jobs:
           python-version: "3.12"
 
       - name: Pre-specify the run
-        uses: dooders/FarmNotary@v0.2.0
+        uses: dooders/FarmNotary@v1.0.0
         with:
           phase: precommit
           run-dir: results
@@ -43,7 +43,7 @@ jobs:
         run: python run_experiment.py --seed 0 --out results
 
       - name: Notarize, pin, verify
-        uses: dooders/FarmNotary@v0.2.0
+        uses: dooders/FarmNotary@v1.0.0
         with:
           phase: notarize
           run-dir: results
@@ -68,7 +68,7 @@ recorded commands are yours.
 ## Already-finished run
 
 ```yaml
-- uses: dooders/FarmNotary@v0.2.0
+- uses: dooders/FarmNotary@v1.0.0
   with:
     phase: all
     run-dir: results
@@ -154,7 +154,7 @@ permissions:
   contents: read
 
 # Pin the released tag. @dev is a mutable ref.
-# e.g.  uses: dooders/FarmNotary@v0.2.0
+# e.g.  uses: dooders/FarmNotary@v1.0.0
 
 jobs:
   notarize:
@@ -173,7 +173,7 @@ jobs:
 
       # Optional: pre-specify the run before it executes
       - name: Pre-specify (precommit)
-        uses: dooders/FarmNotary@v0.2.0
+        uses: dooders/FarmNotary@v1.0.0
         with:
           phase: precommit
           run-dir: results
@@ -187,7 +187,7 @@ jobs:
 
       # Notarize, anchor via OpenTimestamps, run verify, upload manifest
       - name: Notarize + verify
-        uses: dooders/FarmNotary@v0.2.0
+        uses: dooders/FarmNotary@v1.0.0
         with:
           phase: notarize
           run-dir: results

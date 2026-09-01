@@ -5,11 +5,128 @@ All notable changes to FarmNotary will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 FarmNotary uses [Semantic Versioning](https://semver.org/).
 
-The current release is **0.2.0**.
+The current release is **1.0.0**.
 
 ---
 
 ## [Unreleased]
+
+---
+
+## [1.0.0] — 2026-09-01
+
+The stability release. `farmnotary.manifest.v1`, the public
+`farm_notary.__all__`, and the commands listed as stable in `farm-notary
+--help` are frozen for the life of 1.x: new required fields, renamed keys, and
+removed fields wait for 2.0. Migration notes: [docs/MIGRATION.md](docs/MIGRATION.md).
+
+No new claim types. Everything below either closes a gap between what the tool
+printed and what it had actually checked, or draws the line around what 1.0
+promises.
+
+### Stability promise
+
+- `farm-notary --help` now names the **stable** and **experimental** command
+  sets, and each experimental command repeats the label in its own help
+  (`archive`, `chain`, `emit-interop`, `register-schema`). Stable commands keep
+  their documented flags and claim-card output across 1.x. Experimental
+  commands may change or be removed in a minor release and are not
+  claim-ladder steps; `anchor --backend eas` is experimental for the same
+  reason (funded key, gas, trust in an attester address). `STABLE_COMMANDS` and
+  `EXPERIMENTAL_COMMANDS` are the checked source of truth, so a new subcommand
+  cannot enter without landing on one side of the line (issue #80).
+- `paper-pack` keeps `Reader ladder` as `—` and states the rule in the
+  generated appendix: do not cite `Ln` from a paper pack. L0 stays "the proof
+  commits to this content hash and carries a Bitcoin-height attestation"; it
+  does not mean FarmNotary verified Bitcoin headers, which remains external via
+  `ots verify` (issue #81).
+- The 1.0 freeze is recorded in `docs/DESIGN.md` and `docs/MIGRATION.md`
+  (issue #79).
+
+### Security
+
+- **Paths that escape the run directory are rejected** (issue #88).
+  `resolve_run_path()` refuses absolute paths, `..` traversal, and symlinks
+  that resolve outside the run directory. It now guards artifact discovery, the
+  IPFS upload set (`IpfsClient.add_run_dir`), proof lookup in `verify`, and
+  `reveal-withheld`. Untrusted proof names are escaped before being printed in
+  CLI status output. A hostile `manifest.json` could previously name
+  `../../etc/passwd` as an artifact and have it read and pinned.
+- **A dirty tree is re-detected even when the caller says otherwise**
+  (issue #89). `require_clean_identity(False)` inspects the working tree
+  instead of trusting the passed flag, so `git_dirty=False` is a recorded bit
+  rather than a permission bypass. Only `allow_dirty=True` skips the check.
+- **`reproduce` requires full CI provenance before auto-trusting a command**
+  (issue #91). The GitHub Actions trust path was documented but never
+  implemented — every CI manifest fell through to requiring
+  `--i-accept-untrusted-command`. It now matches on repository *and* SHA
+  together when `ci_provenance` is present, and refuses to auto-trust a partial
+  match.
+- **Zenodo tokens are refused on argv** (issue #98). `archive --zenodo-token`
+  takes `@PATH` or the `ZENODO_TOKEN` environment variable; a raw token on the
+  command line is rejected rather than left in the process table and shell
+  history.
+
+### Fixed
+
+- **`infer_claim_level` can now award `derived` and `bitwise+derived`**
+  (issue #90). Both labels were unreachable: any record with derivation rules
+  returned a `_declared` label regardless of validation. Passing `derived_ok`
+  promotes the label only when the rules actually ran and passed. An invalid
+  receipt now reports `bitwise_declared` instead of borrowing the
+  `bitwise+derived_declared` label, so a failed bitwise check is not filed
+  alongside a valid receipt whose rules were merely not run.
+- **Identity verification is part of `evaluate_claims`** (issue #92). A
+  manifest carrying a bad `identity` signature produced a clean claim card,
+  because the check existed but was only wired into a separate code path.
+- **`verify --campaign` no longer prints `OK` when it checked nothing**
+  (issue #93). When no child directories are present, verification reports how
+  many children were actually checked rather than reporting success for an
+  empty set.
+- **A failed CID binding stamp is no longer silent** (issue #96). When
+  `manifest.cid.ots` cannot be written, the reason is printed to stderr instead
+  of the proof quietly not existing.
+- **Campaign `seed_plan` is cross-checked field by field** (issue #97).
+  Verification compared only `count`, so a campaign could change `min_round` or
+  the beacon chain relative to the anchored precommit and still verify.
+- **Public OpenTimestamps calendars are recognised in real proofs.** The
+  known-public set held the four submission *pools*, but a proof records the
+  upstream calendars the pools forward to (`alice`/`bob`
+  `.btc.calendar.opentimestamps.org`, `finney.calendar.eternitywall.com`,
+  `btc.calendar.catallaxy.com`). Every proof produced by FarmNotary's own
+  default anchor path was therefore labelled `pending at user-supplied
+  calendars … untrusted until Bitcoin`. The card now reads `pending on public
+  OpenTimestamps calendars … not yet Bitcoin-attested`. Recognising a URI is
+  still not authentication: a `PendingAttestation` is unsigned, and only a
+  Bitcoin attestation is trusted. Found by running the live anchor path rather
+  than a fixture.
+
+### Changed
+
+- **`*` no longer crosses `/` in publish patterns** (`breaking-change`, issue
+  #94). Patterns are matched component-wise, as the documentation always
+  claimed; use `**` to cross directories. A bare `*.ext` still matches in any
+  subdirectory, so named profiles are unaffected. A hand-written pattern such
+  as `results/*` that relied on `fnmatch` crossing separators now admits fewer
+  files, which shows up as a higher `unmatched_count` rather than a silent
+  publish. Check `unmatched_count` after upgrading.
+- **The v1 JSON Schemas are tightened and shipped in the wheel** (issue #95).
+  `farmnotary.manifest.v1`, `.campaign.v1`, and `.registry.v1` constrain hash
+  and field formats and reject unknown top-level keys where the schema is
+  closed; the beacon block is constrained too. The schemas ship under
+  `farm_notary/schemas/` so a reviewer validating from an installed wheel does
+  not need a repository checkout.
+- `setuptools` and `wheel` are in the `dev` extra so the hermetic wheel-build
+  test runs on Python 3.12.
+
+### Testing
+
+- **The suite no longer inherits the developer's git state.** Because
+  `require_clean_identity` inspects the ambient working directory by design, 25
+  tests failed for anyone with uncommitted edits and passed in CI only because
+  CI checks out clean. Git status is now stubbed per test, and the tests that
+  exercise real detection carry the `real_git_state` marker and build their own
+  repositories. The dirty-tree guard itself is unchanged.
 
 ---
 
@@ -288,9 +405,9 @@ manifest, or uploaded to IPFS only when it matches at least one declared
 *publish pattern* (`--profile`, `--publish`, `notary.profile`, or
 `notary.publish`).
 
-Patterns are matched component-wise: `*` does not cross `/`; use `**` to cross
-directories.  A plain `*.ext` pattern matches files in any subdirectory (not
-just the run-dir root).
+Patterns follow `fnmatch` semantics.  A plain `*.ext` pattern matches files in
+any subdirectory (not just the run-dir root).  (1.0.0 narrows `*` so it no
+longer crosses `/`; see the 1.0.0 breaking notes.)
 
 The substring denylist (`ballot`, `vote`, `voter`, `individual_choice`,
 `private`) is retained as a belt-and-braces second pass over whatever the
@@ -405,6 +522,7 @@ First release. Published to PyPI as `farm-notary==0.1.0`.
   bitwise** in a pinned environment with no exclusions. See
   [docs/CLAIMS.md](docs/CLAIMS.md).
 
-[Unreleased]: https://github.com/Dooders/FarmNotary/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Dooders/FarmNotary/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/Dooders/FarmNotary/releases/tag/v1.0.0
 [0.2.0]: https://github.com/Dooders/FarmNotary/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Dooders/FarmNotary/releases/tag/v0.1.0
