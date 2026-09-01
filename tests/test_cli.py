@@ -697,6 +697,34 @@ def test_archive_zenodo_reads_token_from_file(tmp_path: Path, capsys, monkeypatc
     assert captured["token"] == "tok"
 
 
+def test_archive_zenodo_allows_env_token_when_flag_omitted(tmp_path: Path, capsys, monkeypatch):
+    run_dir = make_run_dir(tmp_path)
+    assert main(["manifest", "--run-dir", str(run_dir), "--publish", "*.csv"]) == 0
+    capsys.readouterr()
+
+    captured = {}
+
+    def deposit_manifest(*args, **kwargs):
+        captured["token"] = kwargs["token"]
+        return {"id": 123}
+
+    monkeypatch.setenv("ZENODO_TOKEN", "envtok")
+    monkeypatch.setattr("farm_notary.archive.deposit_manifest", deposit_manifest)
+
+    assert (
+        main(
+            [
+                "archive",
+                str(run_dir),
+                "--zenodo",
+                "--zenodo-creator",
+                "Test Author",
+            ]
+        )
+        == 0
+    )
+    assert captured["token"] is None
+
 def test_chain_cli_relative_paths_verify(tmp_path: Path, capsys):
     a = tmp_path / "a"
     b = tmp_path / "b"
