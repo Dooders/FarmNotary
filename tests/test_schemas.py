@@ -78,7 +78,26 @@ def test_manifest_schema_required_keys_match_code():
                 "signed": "a" * 64,
             },
         ),
-        ("beacon", {"round": 1}),
+        (
+            "identity",
+            {
+                "scheme": "ssh",
+                "public_key": "key",
+                "signature": "signature",
+                "signed": "g" * 64,
+            },
+        ),
+        (
+            "beacon",
+            {
+                "chain_hash": "a" * 64,
+                "round": 1,
+                "randomness": "z" * 64,
+                "seed_index": 0,
+                "seed_count": 1,
+                "derived_seed": 0,
+            },
+        ),
         ("ci_provenance", {"kind": "github_actions"}),
     ],
 )
