@@ -151,6 +151,21 @@ def test_verify_campaign_require_local_when_child_gone(tmp_path):
     assert main(["verify", "--campaign", str(tmp_path), "--require-local"]) == 1
 
 
+def test_cli_campaign_verify_reports_unchecked_children(tmp_path, capsys):
+    children = [_child(tmp_path, f"s{i}", i) for i in (0, 1)]
+    campaign = build_campaign(children, name="sweep", campaign_dir=tmp_path)
+    for run in campaign.runs:
+        run.pop("path")
+    write_campaign(campaign, tmp_path)
+
+    assert main(["verify", "--campaign", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "INCOMPLETE" in out
+    assert "\nOK " not in out
+    assert "campaign: 0 of 2 child run(s) loaded and checked" in out
+    assert "skipped: runs[0] (cid bafys0), runs[1] (cid bafys1)" in out
+
+
 def test_verify_campaign_catches_artifact_tamper_without_rewrite(tmp_path):
     children = [_child(tmp_path, f"s{i}", i) for i in (0, 1)]
     campaign = build_campaign(children, name="sweep", campaign_dir=tmp_path)
