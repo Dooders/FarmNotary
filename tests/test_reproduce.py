@@ -300,3 +300,46 @@ def test_cli_reproduce_trusts_same_local_checkout(tmp_path: Path, capsys):
     captured = capsys.readouterr()
     assert "trusted context matched the local checkout git_sha" in captured.err
     assert "matched: 2 artifact(s) bitwise-identical" in captured.out
+
+
+def test_cli_reproduce_trusts_same_ci_context(tmp_path: Path, capsys, monkeypatch):
+    """When ci_provenance repo/sha match the live GITHUB_* env, reproduce trusts it."""
+    from farm_notary.cli import main
+
+    run_dir, manifest, _ = make_notarized_run(tmp_path)
+    manifest.ci_provenance = {
+        "kind": "github_actions",
+        "sha": manifest.git_sha,
+        "repository": "Dooders/FarmNotary",
+    }
+    write_manifest(manifest, run_dir)
+
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "Dooders/FarmNotary")
+    monkeypatch.setenv("GITHUB_SHA", manifest.git_sha)
+
+    assert main(["reproduce", "--run-dir", str(run_dir)]) == 0
+    captured = capsys.readouterr()
+    assert "trusted context matched the current GitHub Actions repo/SHA" in captured.err
+    assert "matched: 2 artifact(s) bitwise-identical" in captured.out
+
+
+def test_cli_reproduce_ci_context_mismatch_stays_untrusted(tmp_path: Path, capsys, monkeypatch):
+    """A different repo/SHA (e.g. a downloaded manifest) must not be auto-trusted."""
+    from farm_notary.cli import main
+
+    run_dir, manifest, _ = make_notarized_run(tmp_path)
+    manifest.ci_provenance = {
+        "kind": "github_actions",
+        "sha": manifest.git_sha,
+        "repository": "someone-else/other-repo",
+    }
+    write_manifest(manifest, run_dir)
+
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "Dooders/FarmNotary")
+    monkeypatch.setenv("GITHUB_SHA", manifest.git_sha)
+
+    assert main(["reproduce", "--run-dir", str(run_dir)]) == 2
+    captured = capsys.readouterr()
+    assert "--i-accept-untrusted-command" in captured.err

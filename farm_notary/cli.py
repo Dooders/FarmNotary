@@ -1138,7 +1138,40 @@ def _trusted_reproduce_source(
             continue
         if manifest.git_sha and local_sha and manifest.git_sha == local_sha:
             return "local"
+    if _running_in_same_ci_context(manifest):
+        return "ci"
     return None
+
+
+def _running_in_same_ci_context(manifest) -> bool:
+    """True when this process is the same GitHub Actions repo/SHA as the manifest.
+
+    Trust requires ``GITHUB_ACTIONS=true`` plus a ``GITHUB_REPOSITORY`` /
+    ``GITHUB_SHA`` pair that matches the manifest's recorded
+    ``ci_provenance`` (or, absent that, its ``git_sha``) exactly. This never
+    trusts a manifest downloaded from elsewhere and run in a different CI
+    job or repo.
+    """
+    import os
+
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        return False
+    current_repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
+    current_sha = os.environ.get("GITHUB_SHA", "").strip()
+    if not current_repo or not current_sha:
+        return False
+    prov = manifest.ci_provenance
+    if isinstance(prov, dict):
+        prov_repo = str(prov.get("repository", "")).strip()
+        prov_sha = str(prov.get("sha", "")).strip()
+        if prov_repo and prov_sha:
+            return prov_repo == current_repo and prov_sha == current_sha
+    # No recorded ci_provenance (e.g. manifest built outside CI, or the
+    # detail was intentionally omitted): fall back to matching git_sha
+    # against the current run's SHA. Still requires a live GITHUB_ACTIONS
+    # context, so it cannot be satisfied by a downloaded manifest run
+    # locally.
+    return bool(manifest.git_sha) and manifest.git_sha == current_sha
 
 
 def _cmd_upgrade(args: argparse.Namespace) -> int:
