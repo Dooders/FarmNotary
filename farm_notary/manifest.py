@@ -246,13 +246,13 @@ def require_clean_identity(
 
     ``git_dirty is True`` means the SHA does not identify the code. Recording
     that flag is not enough — anchoring it would still let someone walk the
-    science back. ``git_dirty is None`` is not a pass: detect the working
-    tree so a caller who supplied only a SHA cannot skip the check.
-    ``allow_dirty`` is the explicit exception.
+    science back. Caller ``git_dirty=False`` is a recorded bit, not a permission
+    bypass: always inspect the working tree unless ``allow_dirty=True``.
     """
-    if git_dirty is None:
-        _, git_dirty = detect_git_status(cwd=cwd)
-    if git_dirty and not allow_dirty:
+    if allow_dirty:
+        return
+    _, detected_dirty = detect_git_status(cwd=cwd)
+    if git_dirty or detected_dirty:
         raise DirtyTreeError(DIRTY_TREE_MESSAGE)
 
 
