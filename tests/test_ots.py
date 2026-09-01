@@ -136,6 +136,26 @@ def test_proof_status_splits_public_and_user_supplied_pending_calendars():
     assert status.unknown_pending_calendars == ["https://example.com"]
 
 
+def test_upstream_calendars_of_the_public_pools_count_as_public():
+    """A proof from the default submission path names upstream calendars.
+
+    Submitting to the DEFAULT_CALENDARS pools yields PendingAttestations that
+    name the servers the pools forward to, never the pool URL. Treating those
+    as user-supplied labelled every proof FarmNotary produced by default as
+    "untrusted until Bitcoin".
+    """
+    digest = b"\xaa" * 32
+    for uri in (
+        "https://alice.btc.calendar.opentimestamps.org",
+        "https://bob.btc.calendar.opentimestamps.org",
+        "https://finney.calendar.eternitywall.com",
+        "https://btc.calendar.catallaxy.com",
+    ):
+        status = proof_status(serialize_proof(pending_timestamp(digest, uri)))
+        assert status.public_pending_calendars == [uri]
+        assert status.unknown_pending_calendars == []
+
+
 def test_upgrade_proof_completes_pending_attestation(stub_server):
     digest = b"\xaa" * 32
     proof = serialize_proof(pending_timestamp(digest, stub_server.url))

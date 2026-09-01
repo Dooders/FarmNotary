@@ -40,7 +40,7 @@ See `farm_notary/schema.py` and `farm_notary/manifest.py`.
 
 **Required:** `schema` (`farmnotary.manifest.v1`), `created_utc`, `git_sha`, `config`, `artifacts`, `artifact_hashes`, `publish_patterns`, `unmatched_count`.
 
-**Usually present:** `farm_notary_version` (`0.2.0`), `git_dirty`, `runner`, `command`, `environment`, `official_record`.
+**Usually present:** `farm_notary_version` (`1.0.0`), `git_dirty`, `runner`, `command`, `environment`, `official_record`.
 
 **Optional (content-hashed; omitted when empty so older bodies keep a stable hash):** `derived_from`, `publish_profile`, `precommit_hash`, `beacon`, `ci_provenance`, `withheld_salt`, `withheld_root`, `withheld_classes`.
 
@@ -127,7 +127,7 @@ Claim levels (`farm_notary.claims`) are labels, never scores: `bytes`, `derived_
 
 ## Reusable GitHub Action
 
-`dooders/FarmNotary` (action name `farm-notary-action`): precommit on workflow start, notarize + optional pin-remote on success, upload `manifest.json` + `manifest.ots`, fail the job if verify fails. Pin `@v0.2.0` or a commit SHA. See [ACTION.md](ACTION.md).
+`dooders/FarmNotary` (action name `farm-notary-action`): precommit on workflow start, notarize + optional pin-remote on success, upload `manifest.json` + `manifest.ots`, fail the job if verify fails. Pin `@v1.0.0` or a commit SHA. See [ACTION.md](ACTION.md).
 
 ## Publication scope
 

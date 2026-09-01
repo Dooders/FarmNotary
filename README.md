@@ -8,7 +8,7 @@ FarmNotary writes a `manifest.json` (config, code identity, artifact hashes), op
 
 Immutability is not correctness. Re-run from the committed seed to check the science. The anchor only makes “this is the file we published” hard to walk back.
 
-**This release is 0.2.0.** Install from PyPI (see [Install](#install)).
+**This release is 1.0.0.** Install from PyPI (see [Install](#install)).
 
 ## Why FarmNotary
 
@@ -271,10 +271,10 @@ Derivation rules live in the experiment profile so statistics can recompute when
 
 ## GitHub Action
 
-The action lives at the repo root (`action.yml`). Pin `v0.2.0` (or a commit SHA). `@dev` is the unreleased line.
+The action lives at the repo root (`action.yml`). Pin `v1.0.0` (or a commit SHA). `@dev` is the unreleased line.
 
 ```yaml
-- uses: dooders/FarmNotary@v0.2.0
+- uses: dooders/FarmNotary@v1.0.0
   with:
     phase: notarize
     run-dir: results
@@ -312,7 +312,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4        # sets GITHUB_SHA
       - run: python run.py --out results  # produce artifacts
-      - uses: dooders/FarmNotary@v0.2.0
+      - uses: dooders/FarmNotary@v1.0.0
         with:
           phase: notarize
           run-dir: results
@@ -326,7 +326,7 @@ The `identity` field (minisign / SSH optional signature) labels local signatures
 
 ## Python API
 
-AgentFarm should depend on a 0.2 pin (`farm-notary>=0.2,<0.3`) via an extra such as `farm[notary]`:
+AgentFarm should depend on a 1.0 pin (`farm-notary>=1.0,<2.0`) via an extra such as `farm[notary]`:
 
 ```python
 from farm_notary import notarize_run
@@ -347,15 +347,15 @@ manifest, receipt = notarize_run(
 
 ## Schema stability
 
-Every manifest records `farm_notary_version` (currently `0.2.0`) and `schema` (`farmnotary.manifest.v1`).
+Every manifest records `farm_notary_version` (currently `1.0.0`) and `schema` (`farmnotary.manifest.v1`).
 
-**Promise:** within the `0.x` line, schema changes are **minor-version bumps**. `verify` stays backward-compatible with older manifests: new fields are ignored when reading an older body. A newer schema emits a warning and still attempts verification. Optional content-hashed fields (`derived_from`, `ci_provenance`, `publish_profile`, `withheld_root`, …) are omitted when empty so a v1 body keeps a stable content hash.
+**Promise:** `farmnotary.manifest.v1`, the public `farm_notary.__all__`, and the commands listed as stable by `farm-notary --help` are frozen for the life of `1.x`. `verify` stays backward-compatible with older manifests: new fields are ignored when reading an older body. A newer schema emits a warning and still attempts verification. Optional content-hashed fields (`derived_from`, `ci_provenance`, `publish_profile`, `withheld_root`, …) are omitted when empty so a v1 body keeps a stable content hash.
 
 Required on every v1 body: `schema`, `created_utc`, `git_sha`, `config`, `artifacts`, `artifact_hashes`, `publish_patterns`, `unmatched_count`.
 
 `identity` is a **stamp field** (with `cid` and `anchor`): written after `content_hash` and excluded from it. JSON Schema files are in [`schemas/`](schemas/) and are included in the PyPI wheel under `farm_notary/schemas/`. Migration notes: [docs/MIGRATION.md](docs/MIGRATION.md).
 
-Breaking changes (new required fields, renamed keys, removed fields) are reserved for `1.0` and will land in the changelog with a migration guide.
+Breaking changes (new required fields, renamed keys, removed fields) are reserved for `2.0` and will land in the changelog with a migration guide. The experimental commands (`archive`, `chain`, `emit-interop`, `register-schema`) and `--backend eas` are outside this promise.
 
 ## Verifying someone else's claim
 
@@ -426,8 +426,10 @@ CI runs pytest on Python 3.9–3.12.
 
 ## Status
 
-**0.2.0** is on PyPI. Manifests, campaigns, derivation claims, environment fingerprints, optional identity, paper pack, public index, hashing, IPFS pinning, OpenTimestamps (CLI dry-run default; Action `ots`), proof upgrade, claim-card verify, reusable GitHub Action, and experimental EAS on Base / Base Sepolia are implemented and tested.
+**1.0.0** is on PyPI. Manifests, campaigns, derivation claims, environment fingerprints, optional identity, paper pack, public index, hashing, IPFS pinning, OpenTimestamps (CLI dry-run default; Action `ots`), proof upgrade, claim-card verify, reusable GitHub Action, and experimental EAS on Base / Base Sepolia are implemented and tested.
+
+1.0 is a stability promise, not a new claim type: `farmnotary.manifest.v1`, the public API, and the stable command set are frozen for `1.x`.
 
 Later-wave helpers from #40 (`emit-interop`, `archive`, tracker plugins, `chain`) are experimental first-cuts. They are not claim-ladder steps: SLSA/C2PA files are unsigned summaries, plugins require an explicit allowlist, and a provenance chain is hash lineage only.
 
-The anchoring layer is outsourced — earlier revisions carried a custom `SimulationRegistry` contract, which was removed. Breaking schema changes are reserved for 1.0.
+The anchoring layer is outsourced — earlier revisions carried a custom `SimulationRegistry` contract, which was removed. Breaking schema changes are reserved for 2.0.

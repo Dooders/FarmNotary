@@ -4,6 +4,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
+_CLEAN_TREE_SHA = "0" * 40
+
 _GITHUB_ENV_VARS = [
     "GITHUB_ACTIONS",
     "GITHUB_SHA",
@@ -21,6 +23,30 @@ def _clear_github_env(monkeypatch):
     the ci_provenance check when the test suite itself runs inside CI."""
     for var in _GITHUB_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_git_state(request, monkeypatch):
+    """Report a clean tree so tests do not inherit the checkout's git state.
+
+    ``require_clean_identity`` inspects the ambient working directory on
+    purpose, so an uncommitted edit in this checkout would otherwise fail every
+    test that anchors a manifest. Patching ``_git`` covers ``detect_git_status``
+    and ``resolve_git_identity`` together, since both resolve it at call time.
+    Tests that exercise real detection carry the ``real_git_state`` marker and
+    build their own repositories.
+    """
+    if request.node.get_closest_marker("real_git_state"):
+        return
+
+    def fake_git(args, cwd=None):
+        if args[:1] == ["rev-parse"]:
+            return _CLEAN_TREE_SHA + "\n"
+        if args[:1] == ["status"]:
+            return ""
+        return None
+
+    monkeypatch.setattr("farm_notary.manifest._git", fake_git)
 
 
 class StubServer:

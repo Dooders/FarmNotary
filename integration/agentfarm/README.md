@@ -17,8 +17,19 @@ patch at runtime. It checkouts AgentFarm at a reviewed SHA
 (`c98a476eaf1f9d3100383787fa34ec352e896dff`) that already has the portable
 command and `run_config.json` work.
 
-Depend on the 0.2 line (`farm-notary>=0.2,<0.3`), not `>=0.1,<0.2`.
+Depend on the 1.0 line (`farm-notary>=1.0,<2.0`), not `>=0.1,<0.2`.
 Install from PyPI: `pip install "farm-notary[ots]"`.
+
+AgentFarm currently pins `farm-notary @ git+…@v0.1.0`; moving it to the
+released line is [AgentFarm#1007](https://github.com/Dooders/AgentFarm/pull/1007).
+The adapter needs no changes: `notarize()`, `verify()`, and the dry-run
+backend were run against the 1.0.0 wheel and the published set, verify
+result, and schema were all as expected. One behaviour change matters —
+`OFFICIAL_PUBLISH_PATTERNS` contains `figures/*.png`, and since 1.0 narrows
+`*` so it no longer crosses `/`, a figure written to `figures/nested/` is
+withheld where 0.2 published it. That withholds more rather than less, but
+it changes the published set and therefore the `content_hash`. Use
+`figures/**/*.png` if nested figures belong in the official record.
 
 ## What the patch contains
 
@@ -34,7 +45,7 @@ Install from PyPI: `pip install "farm-notary[ots]"`.
   from `trials.csv` and byte-compares them (using pandas
   `float_precision="round_trip"`, since the default parser is off by one ulp).
 - **FarmNotary adapter** (`farm/provenance/`): `notarize()`, `verify()`, and
-  `reproduce()` against the FarmNotary 0.2 API (`publish_profile="consensus"`,
+  `reproduce()` against the frozen FarmNotary 1.0 API (`publish_profile="consensus"`,
   dry-run until a backend is passed). `notarize()` picks up the command and
   config from `run_config.json` automatically. farm-notary stays an optional
   dependency.

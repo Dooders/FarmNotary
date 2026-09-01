@@ -16,6 +16,8 @@ from farm_notary.manifest import (
 )
 from farm_notary.precommit import PRECOMMIT_NAME, build_precommit
 
+pytestmark = pytest.mark.real_git_state
+
 
 def init_repo(path: Path, *, dirty: bool = False) -> str:
     path.mkdir(parents=True, exist_ok=True)

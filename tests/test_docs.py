@@ -3,7 +3,7 @@
 import argparse
 from pathlib import Path
 
-from farm_notary.cli import _build_parser
+from farm_notary.cli import EXPERIMENTAL_COMMANDS, STABLE_COMMANDS, _build_parser
 from farm_notary.profiles import PROFILE_NAMES
 from farm_notary.schema import REQUIRED_KEYS, TOOL_VERSION
 from farm_notary.scope import ALLOWED_SENTENCE
@@ -29,17 +29,49 @@ def _cli_commands() -> list[str]:
     raise AssertionError("farm-notary parser has no subcommands")
 
 
+def _subcommand_help() -> dict[str, str]:
+    parser = _build_parser()
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return {name: action.choices[name].format_help() for name in action.choices}
+    raise AssertionError("farm-notary parser has no subcommands")
+
+
 def test_readme_lists_every_cli_command():
     for name in _cli_commands():
         assert f"`{name}`" in README, f"README is missing command {name!r}"
 
 
+def test_every_command_is_declared_stable_or_experimental():
+    """1.0 is a stability promise; a new command may not dodge the partition."""
+    declared = set(STABLE_COMMANDS) | set(EXPERIMENTAL_COMMANDS)
+    assert not (set(STABLE_COMMANDS) & set(EXPERIMENTAL_COMMANDS))
+    assert set(_cli_commands()) == declared
+
+
+def test_experimental_commands_say_so_in_their_own_help():
+    helps = _subcommand_help()
+    for name in EXPERIMENTAL_COMMANDS:
+        assert "(experimental)" in helps[name], name
+    for name in STABLE_COMMANDS:
+        assert "(experimental)" not in helps[name], name
+
+
+def test_top_level_help_states_the_stability_promise():
+    text = _build_parser().format_help()
+    assert "stability (FarmNotary 1.0):" in text
+    for name in EXPERIMENTAL_COMMANDS:
+        assert name in text
+    assert "claim-ladder step" in text
+    assert "backend eas" in text
+
+
 def test_readme_and_docs_state_current_version():
-    assert TOOL_VERSION == "0.2.0"
-    assert "0.2.0" in README
+    assert TOOL_VERSION == "1.0.0"
+    assert "1.0.0" in README
     assert 'pip install "farm-notary[ots]"' in README
-    assert "farm-notary>=0.2,<0.3" in README
-    assert "dooders/FarmNotary@v0.2.0" in README
+    assert "farm-notary>=1.0,<2.0" in README
+    assert "dooders/FarmNotary@v1.0.0" in README
 
 
 def test_readme_documents_verify_derived_and_missing_is_not_failure():
@@ -200,8 +232,8 @@ def test_live_demo_notebook_stays_inside_the_claim_card():
 def test_action_docs_match_action_yml_defaults():
     action = Path("action.yml").read_text(encoding="utf-8")
     assert "default: ots" in action
-    assert "dooders/FarmNotary@v0.2.0" in README
-    assert "dooders/FarmNotary@v0.2.0" in ACTION
+    assert "dooders/FarmNotary@v1.0.0" in README
+    assert "dooders/FarmNotary@v1.0.0" in ACTION
     assert "--verify-derived" in ACTION
     assert "not passed" in ACTION or "without" in ACTION
     assert "dry-run" in README

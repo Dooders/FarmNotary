@@ -257,6 +257,7 @@ def test_cli_reproduce_requires_acceptance_for_untrusted_command(tmp_path: Path,
     assert not (run_dir / RECEIPT_NAME).exists()
 
 
+@pytest.mark.real_git_state
 def test_cli_reproduce_trusts_same_local_checkout(tmp_path: Path, capsys):
     from farm_notary.cli import main
     import subprocess

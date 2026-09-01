@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "farm-notary"
-version = "0.2.0"
+version = "1.0.0"
 description = "Notary for AgentFarm runs: manifest hash, optional IPFS pin, OpenTimestamps anchor"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -18,7 +18,7 @@ keywords = [
     "agentfarm",
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
@@ -62,6 +62,11 @@ include = ["farm_notary*"]
 
 [tool.setuptools.package-data]
 farm_notary = ["py.typed", "schemas/*.json"]
+
+[tool.pytest.ini_options]
+markers = [
+    "real_git_state: inspect the real working tree instead of the clean-tree stub",
+]
 
 [tool.ruff]
 target-version = "py39"
