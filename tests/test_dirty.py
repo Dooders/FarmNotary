@@ -74,7 +74,7 @@ def test_require_clean_identity_refuses_dirty_repo_with_git_dirty_false(tmp_path
     require_clean_identity(False, allow_dirty=True)
 
 
-def test_require_clean_identity_refuses_recorded_dirty_bit(tmp_path: Path, monkeypatch):
+def test_require_clean_identity_raises_when_git_dirty_flag_is_true(tmp_path: Path, monkeypatch):
     repo = tmp_path / "repo"
     init_repo(repo, dirty=False)
     monkeypatch.chdir(repo)
