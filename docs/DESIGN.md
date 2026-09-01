@@ -139,7 +139,7 @@ Relative paths containing `ballot`, `vote`, `voter`, `individual_choice`, or `pr
 
 Candidate files that are not published increment `unmatched_count` and, when any exist, receive a salted Merkle commitment: `withheld_salt`, `withheld_root`, `withheld_classes` (`denylist` vs `unmatched`, each with a reason string). Leaf = `SHA-256(salt || 0x00 || path_utf8 || 0x00 || content)`. Unsalted hashes of withheld files are not stored. Names are not printed. `farm-notary reveal-withheld --path REL` can open a subset later without changing the root.
 
-Simple `*.ext` patterns match files in subdirectories (filename fallback), not only the run-dir root.
+Publish patterns are matched component-wise: `*` does not cross `/`; use `**` to cross directories. Simple `*.ext` patterns match files in subdirectories (filename fallback), not only the run-dir root.
 
 ## CI provenance
 

@@ -3,7 +3,6 @@ import warnings
 from pathlib import Path
 
 import pytest
-
 from farm_notary import __version__
 from farm_notary.manifest import (
     Manifest,
@@ -49,6 +48,48 @@ def test_allowlist_gates_files(tmp_path: Path):
     assert manifest.artifacts == ["summary.csv"]
     assert "metrics/round_1.json" not in manifest.artifact_hashes
     assert manifest.unmatched_count == 1
+
+
+def test_publish_star_stays_within_path_component(tmp_path: Path):
+    (tmp_path / "root.csv").write_text("root\n", encoding="utf-8")
+    (tmp_path / "subdir").mkdir()
+    (tmp_path / "subdir" / "file.csv").write_text("nested\n", encoding="utf-8")
+
+    manifest = build_manifest(tmp_path, publish_patterns=["*"])
+
+    assert manifest.artifacts == ["root.csv"]
+    assert "subdir/file.csv" not in manifest.artifact_hashes
+    assert manifest.unmatched_count == 1
+
+
+def test_publish_extension_fallback_matches_nested_filename(tmp_path: Path):
+    (tmp_path / "subdir").mkdir()
+    (tmp_path / "subdir" / "file.csv").write_text("nested\n", encoding="utf-8")
+
+    manifest = build_manifest(tmp_path, publish_patterns=["*.csv"])
+
+    assert manifest.artifacts == ["subdir/file.csv"]
+    assert manifest.unmatched_count == 0
+
+
+def test_publish_exact_nested_path_matches_subdir_file(tmp_path: Path):
+    (tmp_path / "subdir").mkdir()
+    (tmp_path / "subdir" / "file.csv").write_text("nested\n", encoding="utf-8")
+
+    manifest = build_manifest(tmp_path, publish_patterns=["subdir/file.csv"])
+
+    assert manifest.artifacts == ["subdir/file.csv"]
+    assert manifest.unmatched_count == 0
+
+
+def test_publish_globstar_can_consume_zero_components(tmp_path: Path):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "a" / "b.csv").write_text("nested\n", encoding="utf-8")
+
+    manifest = build_manifest(tmp_path, publish_patterns=["a/**/**/b.csv"])
+
+    assert manifest.artifacts == ["a/b.csv"]
+    assert manifest.unmatched_count == 0
 
 
 def test_agent_selections_excluded_by_default(tmp_path: Path):
