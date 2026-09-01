@@ -244,3 +244,13 @@ def test_docs_frame_withheld_as_publication_scope():
     assert Path("docs/MIGRATION.md").is_file()
     assert "withheld_salt" in Path("docs/MIGRATION.md").read_text(encoding="utf-8")
     assert Path("schemas/farmnotary.manifest.v1.json").is_file()
+
+
+def test_1_0_api_freeze_is_documented():
+    migration = Path("docs/MIGRATION.md").read_text(encoding="utf-8")
+    for blob in (DESIGN, migration):
+        assert "farmnotary.manifest.v1" in blob
+        assert "__all__" in blob
+        assert "wait for 2.0" in blob
+    assert "1.0 API freeze" in DESIGN
+    assert "1.0 freeze" in migration

@@ -52,6 +52,17 @@ Artifact discovery is recursive; paths are POSIX-style relative to the run direc
 
 `content_hash` is SHA-256 of the canonical JSON body (sorted keys, no whitespace) after stripping stamp fields. You can pin, stamp, and sign without circular hashing.
 
+## 1.0 API freeze
+
+The schema id `farmnotary.manifest.v1` (this section), the public
+`farm_notary.__all__` symbols, and the documented CLI subcommands are the
+1.0 surface. No cleanup was queued before the tag; the 0.2 line already
+omits optional content-hashed fields (`derived_from`, `publish_profile`,
+`precommit_hash`, `beacon`, `ci_provenance`, `withheld_salt`,
+`withheld_root`, `withheld_classes`) when empty, so older bodies keep a
+stable content hash. After 1.0, new required fields, renames, and
+removals wait for 2.0 — see [MIGRATION.md](MIGRATION.md).
+
 ## Campaign / sweep manifests
 
 A parent record (`campaign.json`, schema `farmnotary.campaign.v1`) lists child run CIDs, seeds, and a seed-excluded config hash. When children share a precommit `seed_plan`, the parent copies it and child entries may record `seed_index`. A reviewer of a paper figure (100 trials, seed 0…N) verifies the parent instead of one folder.
