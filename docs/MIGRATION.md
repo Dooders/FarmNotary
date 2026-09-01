@@ -7,21 +7,6 @@ renames, removals) are reserved for 1.0.
 
 JSON Schema files live in [`schemas/`](../schemas/).
 
-## 1.0 freeze
-
-As of the 1.0 tag, `farmnotary.manifest.v1`, the public `farm_notary.__all__`
-symbols, and the documented CLI subcommands are the frozen 1.0 surface. No
-pre-tag cleanup was needed: optional content-hashed fields (`derived_from`,
-`publish_profile`, `precommit_hash`, `beacon`, `ci_provenance`,
-`withheld_salt`, `withheld_root`, `withheld_classes`) are already omitted
-from `to_dict()` when empty/`None`, so older manifest bodies keep a stable
-`content_hash`. The schema id is not renamed by this change.
-
-After 1.0, new required manifest fields, renames, and removals to
-`farmnotary.manifest.v1`, `farm_notary.__all__`, or the CLI wait for 2.0.
-New optional, content-hashed fields may still ship in 1.x as long as they
-are omitted when empty.
-
 ## 0.1.0 → 0.2.0
 
 These already shipped on the 0.2 line. They are breaking relative to 0.1.0.

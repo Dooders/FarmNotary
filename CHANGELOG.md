@@ -13,10 +13,6 @@ The current release is **0.2.0**.
 
 ### Added
 
-- Documented the 1.0 API freeze: `farmnotary.manifest.v1`, public
-  `farm_notary.__all__`, and the documented CLI are the 1.0 surface. No
-  pre-tag cleanup was required. See `docs/DESIGN.md` ("1.0 API freeze")
-  and `docs/MIGRATION.md` ("1.0 freeze") (issue #79).
 - Salted Merkle commitment over unpublished files (`withheld_salt`,
   `withheld_root`, `withheld_classes`). Class counts split denylist vs
   unmatched and sum to `unmatched_count`. Unsalted ballot hashes are not
