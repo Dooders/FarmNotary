@@ -287,13 +287,14 @@ def verify_campaign(
             [campaign_dir / p for p in run_dirs], campaign.precommit_hash
         )
         if canonical_plan is not None:
-            campaign_count = (campaign.seed_plan or {}).get("count")
-            committed_count = canonical_plan.get("count")
-            if str(campaign_count) != str(committed_count):
-                problems.append(
-                    f"campaign seed_plan.count {campaign_count!r} does not match "
-                    f"precommit seed_plan.count {committed_count!r}"
-                )
+            for field in ("chain_hash", "min_round", "derivation", "inclusion", "count"):
+                campaign_value = campaign.seed_plan.get(field)
+                committed_value = canonical_plan.get(field)
+                if campaign_value != committed_value:
+                    problems.append(
+                        f"campaign seed_plan.{field} {campaign_value!r} does not match "
+                        f"precommit seed_plan.{field} {committed_value!r}"
+                    )
 
     for i, run in enumerate(campaign.runs):
         child_hash = run.get("config_hash")
