@@ -178,7 +178,7 @@ def _matches_any_pattern(rel_posix: str, patterns: Sequence[str]) -> bool:
     return False
 
 
-@lru_cache(maxsize=4096)
+@lru_cache(maxsize=512)
 def _matches_path_pattern(path_parts: Tuple[str, ...], pattern_parts: Tuple[str, ...]) -> bool:
     if not pattern_parts:
         return not path_parts

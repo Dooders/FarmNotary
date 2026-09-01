@@ -82,6 +82,16 @@ def test_publish_exact_nested_path_matches_subdir_file(tmp_path: Path):
     assert manifest.unmatched_count == 0
 
 
+def test_publish_globstar_can_consume_zero_components(tmp_path: Path):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "a" / "b.csv").write_text("nested\n", encoding="utf-8")
+
+    manifest = build_manifest(tmp_path, publish_patterns=["a/**/b.csv"])
+
+    assert manifest.artifacts == ["a/b.csv"]
+    assert manifest.unmatched_count == 0
+
+
 def test_agent_selections_excluded_by_default(tmp_path: Path):
     """agent_selections.csv (no denylist match) is excluded when not in allowlist."""
     make_run_dir(tmp_path)
