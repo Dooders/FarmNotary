@@ -506,6 +506,7 @@ def evaluate_claims(
     anchor_problems = verify_anchor(manifest, run_dir)
     precommit_problems = verify_precommit(manifest, run_dir)
     ci_provenance_problems = verify_ci_provenance(manifest)
+    identity_problems = verify_identity_record(manifest, run_dir)
     pc = dict(precommit) if precommit is not None else None
     if pc is None:
         pc_path = run_dir / PRECOMMIT_NAME
@@ -598,7 +599,8 @@ def evaluate_claims(
         + receipt_problems
         + precommit_problems
         + beacon_check.problems
-        + ci_provenance_problems,
+        + ci_provenance_problems
+        + identity_problems,
         notes=notes,
         ladder=ladder,
     )

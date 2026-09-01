@@ -262,6 +262,7 @@ def verify_campaign(
     campaign_dir: Path,
     *,
     require_local: bool = False,
+    checked: Optional[List[int]] = None,
 ) -> List[str]:
     """Check child hashes, shared config hash, and optional local run dirs."""
     problems: List[str] = []
@@ -313,6 +314,8 @@ def verify_campaign(
         except (ValueError, OSError) as exc:
             problems.append(f"runs[{i}] could not load child manifest: {exc}")
             continue
+        if checked is not None:
+            checked.append(i)
         actual = manifest.content_hash()
         expected = run.get("content_hash")
         if actual != expected:
