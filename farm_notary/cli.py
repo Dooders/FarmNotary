@@ -335,6 +335,10 @@ def _build_parser() -> argparse.ArgumentParser:
             "(experimental) Register the FarmNotary schema with the EAS "
             "SchemaRegistry (one-time per chain)"
         ),
+        description=(
+            "(experimental) Register the FarmNotary schema with the EAS "
+            "SchemaRegistry (one-time per chain)"
+        ),
     )
 
     p_camp = sub.add_parser(
@@ -500,6 +504,11 @@ def _build_parser() -> argparse.ArgumentParser:
             "vocabulary, RO-Crate, C2PA-style). Not verifiable provenance. Does "
             "not overwrite the FarmNotary manifest."
         ),
+        description=(
+            "(experimental) Emit unsigned interop JSON summaries (SLSA/in-toto "
+            "vocabulary, RO-Crate, C2PA-style). Not verifiable provenance. Does "
+            "not overwrite the FarmNotary manifest."
+        ),
     )
     p_interop.add_argument("run_dir", help="Run directory containing manifest.json")
     p_interop.add_argument(
@@ -519,6 +528,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p_arc = sub.add_parser(
         "archive",
         help=(
+            "(experimental) Optional durable-storage helpers (Zenodo draft/DOI, "
+            "Software Heritage lookup). IDs are not claim-card rows and are not "
+            "written to the manifest."
+        ),
+        description=(
             "(experimental) Optional durable-storage helpers (Zenodo draft/DOI, "
             "Software Heritage lookup). IDs are not claim-card rows and are not "
             "written to the manifest."
@@ -578,6 +592,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p_chain = sub.add_parser(
         "chain",
         help=(
+            "(experimental) Build or verify a multi-stage hash lineage of "
+            "manifests (not input/output data flow)."
+        ),
+        description=(
             "(experimental) Build or verify a multi-stage hash lineage of "
             "manifests (not input/output data flow)."
         ),
