@@ -343,3 +343,20 @@ def test_cli_reproduce_ci_context_mismatch_stays_untrusted(tmp_path: Path, capsy
     assert main(["reproduce", "--run-dir", str(run_dir)]) == 2
     captured = capsys.readouterr()
     assert "--i-accept-untrusted-command" in captured.err
+
+
+def test_cli_reproduce_incomplete_ci_provenance_stays_untrusted(tmp_path: Path, capsys, monkeypatch):
+    """A partially-filled ci_provenance must not fall back to a bare git_sha match."""
+    from farm_notary.cli import main
+
+    run_dir, manifest, _ = make_notarized_run(tmp_path)
+    manifest.ci_provenance = {"kind": "github_actions", "sha": "", "repository": "attacker/repo"}
+    write_manifest(manifest, run_dir)
+
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "Dooders/FarmNotary")
+    monkeypatch.setenv("GITHUB_SHA", manifest.git_sha)
+
+    assert main(["reproduce", "--run-dir", str(run_dir)]) == 2
+    captured = capsys.readouterr()
+    assert "--i-accept-untrusted-command" in captured.err

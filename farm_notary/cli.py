@@ -1162,10 +1162,19 @@ def _running_in_same_ci_context(manifest) -> bool:
         return False
     prov = manifest.ci_provenance
     if isinstance(prov, dict):
+        # ci_provenance is present: it must fully agree (repo *and* sha), or
+        # this manifest is not trusted. Do not fall back to a bare git_sha
+        # match on a partially-filled record — that would let an attacker
+        # spoof an empty/blank repository or sha field to dodge the repo
+        # check.
         prov_repo = str(prov.get("repository", "")).strip()
         prov_sha = str(prov.get("sha", "")).strip()
-        if prov_repo and prov_sha:
-            return prov_repo == current_repo and prov_sha == current_sha
+        return (
+            bool(prov_repo)
+            and bool(prov_sha)
+            and prov_repo == current_repo
+            and prov_sha == current_sha
+        )
     # No recorded ci_provenance (e.g. manifest built outside CI, or the
     # detail was intentionally omitted): fall back to matching git_sha
     # against the current run's SHA. Still requires a live GITHUB_ACTIONS

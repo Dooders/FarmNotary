@@ -13,6 +13,11 @@ The current release is **0.2.0**.
 
 ### Added
 
+- `reproduce` now actually implements the "same GitHub Actions repo/SHA"
+  auto-trust it already advertised: when running with `GITHUB_ACTIONS=true`,
+  it trusts a manifest whose `ci_provenance` (or, absent that, `git_sha`)
+  matches the live `GITHUB_REPOSITORY`/`GITHUB_SHA`, without requiring
+  `--i-accept-untrusted-command` (issue #91).
 - Salted Merkle commitment over unpublished files (`withheld_salt`,
   `withheld_root`, `withheld_classes`). Class counts split denylist vs
   unmatched and sum to `unmatched_count`. Unsalted ballot hashes are not
