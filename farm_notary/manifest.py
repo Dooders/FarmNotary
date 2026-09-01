@@ -168,13 +168,23 @@ def _matches_any_pattern(rel_posix: str, patterns: Sequence[str]) -> bool:
     path_parts = tuple(rel_posix.split("/"))
     filename = Path(rel_posix).name
     for pat in patterns:
-        if _matches_path_pattern(path_parts, tuple(pat.split("/"))):
+        pattern_parts = _collapse_globstars(tuple(pat.split("/")))
+        if _matches_path_pattern(path_parts, pattern_parts):
             return True
         # Allow simple extension/name globs (e.g. "*.png") to match files
         # in subdirectories without requiring "**/*.png".
         if "/" not in pat and pat != "*" and fnmatch.fnmatchcase(filename, pat):
             return True
     return False
+
+
+def _collapse_globstars(pattern_parts: Tuple[str, ...]) -> Tuple[str, ...]:
+    collapsed: list[str] = []
+    for part in pattern_parts:
+        if part == "**" and collapsed and collapsed[-1] == "**":
+            continue
+        collapsed.append(part)
+    return tuple(collapsed)
 
 
 def _matches_path_pattern(path_parts: Tuple[str, ...], pattern_parts: Tuple[str, ...]) -> bool:
@@ -190,11 +200,6 @@ def _matches_path_pattern(path_parts: Tuple[str, ...], pattern_parts: Tuple[str,
         else:
             head = pattern_parts[pattern_index]
             if head == "**":
-                while (
-                    pattern_index + 1 < len(pattern_parts)
-                    and pattern_parts[pattern_index + 1] == "**"
-                ):
-                    pattern_index += 1
                 if pattern_index + 1 == len(pattern_parts):
                     result = True
                 else:
