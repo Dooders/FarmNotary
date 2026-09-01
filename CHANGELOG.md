@@ -11,13 +11,16 @@ The current release is **0.2.0**.
 
 ## [Unreleased]
 
+---
+
+## [0.2.0] — 2026-08-31
+
+Published to PyPI as `farm-notary==0.2.0`. Action pin: `dooders/FarmNotary@v0.2.0`.
+
 ### Added
 
-- `reproduce` now actually implements the "same GitHub Actions repo/SHA"
-  auto-trust it already advertised: when running with `GITHUB_ACTIONS=true`,
-  it trusts a manifest whose `ci_provenance` (or, absent that, `git_sha`)
-  matches the live `GITHUB_REPOSITORY`/`GITHUB_SHA`, without requiring
-  `--i-accept-untrusted-command` (issue #91).
+#### Withheld commitment, schemas, and packaging
+
 - Salted Merkle commitment over unpublished files (`withheld_salt`,
   `withheld_root`, `withheld_classes`). Class counts split denylist vs
   unmatched and sum to `unmatched_count`. Unsalted ballot hashes are not
@@ -28,93 +31,6 @@ The current release is **0.2.0**.
 - `docs/MIGRATION.md`: 0.1 → 0.2 breaking notes and the withheld fields.
 - Packaging hygiene: `py.typed`, complete public `__all__`, PyPI classifiers
   and URLs, `[lint]` extra (`ruff`, `mypy`), and a CI lint job.
-- Sigstore keyless signing for reproduction receipts (`farm-notary`
-  reproduce --sign`). `verify` checks `receipt["sigstore"]` with
-  `cosign verify-blob` (offline when the bundle has a Rekor inclusion
-  proof). L3 means a verified signature with identity not constrained —
-  not "independently reproduced." Tokens go through `SIGSTORE_ID_TOKEN`
-  / `COSIGN_IDENTITY_TOKEN` or `--identity-token @PATH`. Documented
-  cosign pin: `v2.5.3`. Optional Action input `sign-receipt`.
-- Live demo notebook (`docs/demo/`): a tiny consensus-style experiment
-  notarized with the dry-run backend so researchers can see the claim
-  card, the allowlist, a scoped re-run, and a packaging mismatch labeled
-  not a science failure. `tests/test_demo.py` execs the notebook cells.
-- Beacon-derived seeds (issue #30): `precommit --seed-count` records a
-  `seed_plan`; `derive-seeds` requires a `precommit.ots` that commits to
-  the plan, then binds seeds to exactly `min_round`. The run manifest
-  stores a `beacon` block so `verify` can recompute the seed. L2 also
-  requires a bound plan, `created_utc` not after the round, and a
-  fixture or `--live-beacon` HTTP compare (TLS to drand REST; signatures
-  are not checked). Missing members of the committed set are listed.
-  Tests use `FixedBeacon`; CI does not call live drand. L2 is not
-  scientific correctness.
-- `farm-notary verify` prints a stacked reader ladder (`none` / L0–L3)
-  above the claim-card rows: highest earned level and the gap that
-  blocks the next. L0 requires a Bitcoin-height attestation (pending
-  OTS does not count) and does not mean Bitcoin headers were checked.
-  L1 requires L0 plus a recorded `command`, `git_sha`, and environment
-  fingerprint; it does not mean the command was run. L2 requires a
-  beacon-derived seed after the plan is anchored. L3 is a
-  Sigstore-signed receipt (identity not constrained). `paper-pack`
-  prints an artifact label and leaves reader ladder as `—` (do not cite
-  `Ln` from an appendix).
-- `docs/PRINCIPLES.md`: constraint document for refusing features
-  (existence is not correctness, reader-side checks over publisher
-  decoration, cherry-picking out of scope, self-assertion as input,
-  publish is one-way, omission is recorded policy, trust-assumption
-  budget, outsource solved infrastructure).
-- README: a "Why FarmNotary" section — official record vs laptop folder,
-  hash tool vs research notary, and why the domain work is allowlists,
-  privacy, and honest claims (anchoring is outsourced).
-- Intro slide deck for researchers and labs (`docs/slides/`): four-act
-  talk (Why / Record / Evidence / Start), claim card, scoped consensus
-  showcase, solo/lab paths. Locked to CLAIMS.md by
-  `test_intro_deck_stays_inside_the_claim_card`. A 16:9 PDF
-  (`docs/slides/farmnotary.pdf`) is generated from the HTML deck via
-  `docs/slides/export_pdf.py` (headless Chrome).
-- Consensus walkthrough deck (`docs/slides/consensus.html` and
-  `docs/slides/consensus.pdf`): a 15-slide worked example of the tiny
-  demo experiment — official vs private files, dry-run claim card,
-  tamper, scoped 7/7 re-run, and a packaging bug labeled not a science
-  failure. Locked by `test_consensus_walkthrough_deck_stays_inside_the_claim_card`.
-- Tests for claim levels (`infer_claim_level`, paper sentences), docs-to-CLI
-  lock, paper-pack `--verify-derived`, campaign `--require-local` / artifact
-  rehash, derivation rule validation, and a tighter Action contract.
-
-### Changed
-
-- Later-wave interop/archive/plugins/chain (#40) are honest first-cuts, not
-  claim-ladder steps. SLSA/C2PA files are named `*.unsigned.json` and marked
-  `unsigned-summary-not-for-verification`. Plugins require an explicit
-  allowlist (no default `*`) and refuse dirty trees unless `allow_dirty=True`.
-  `plugins.notarize_run` is renamed to `notarize_tracker_run` so it no longer
-  collides with `farm_notary.anchor.notarize_run`. Provenance-chain paths are
-  stored relative to the chain file. Zenodo `--zenodo-creator` is required
-  for drafts as well as publish.
-- Publication-scope framing: the allowlist is what left the machine, not
-  a privacy protocol. `identity` is documented as a stamp field only
-  (excluded from `content_hash`). `docs/DESIGN.md` records
-  `ci_provenance`, CID binding, and the additive interop/archive/plugin
-  /chain helpers.
-- Docs rewritten against the 0.2 CLI: install path (0.2.0 is on PyPI; current
-  line is git `@dev`), `anchor` dry-run default vs Action `ots`,
-  `--verify-derived`, publish profiles, claim levels, and Action pin
-  (`dooders/FarmNotary@dev` — there is no `v0.2` tag yet).
-- `farm-notary verify` no longer fails when `derived_from` rules are present
-  but `--verify-derived` was not passed. Missing is not failure; the CLI
-  notes that rules were not executed. `--verify-derived` still runs them
-  and can fail the check.
-- GitHub Action accepts a `profile` input (`consensus`, `rl-sweep`,
-  `evolution-run`).
-- Package description no longer says "on-chain attestation".
-
----
-
-## [0.2.0] — 2026-08-31
-
-Published to PyPI as `farm-notary==0.2.0`. Action pin: `dooders/FarmNotary@v0.2.0`.
-
-### Added
 
 #### Determinism diagnostics on mismatch
 
@@ -276,17 +192,22 @@ used, so the policy is part of the claim.
 These do not change `farmnotary.manifest.v1` or the claim ladder. They
 are first-cut helpers, not a 1.0 stability promise.
 
-- `farm-notary emit-interop` dual-writes SLSA/in-toto (`slsa-provenance.json`,
-  unsigned), RO-Crate, and a C2PA-style JSON claim summary (not a binary
-  JUMBF).
+- `farm-notary emit-interop` writes unsigned JSON summaries
+  (`slsa-provenance.unsigned.json`, RO-Crate, `c2pa-claim-summary.unsigned.json`)
+  marked `unsigned-summary-not-for-verification`. There is no DSSE envelope
+  and no C2PA JUMBF.
 - `farm-notary archive` deposits to Zenodo (optional DOI) and/or looks up
   a Software Heritage ID for the recorded git SHA. The DOI is not written
   back onto the manifest; SWH is lookup, not a save request.
+  `--zenodo-creator` is required for drafts as well as publish.
 - `farm_notary.plugins`: MLflow `on_run_end` hook and DVC `dvc.lock`
-  output cover. Callers must pass an explicit allowlist; hashing the
-  whole tree is not the documented path.
+  output cover. Callers must pass an explicit allowlist (no default `*`)
+  and refuse dirty trees unless `allow_dirty=True`. `plugins.notarize_run`
+  is `notarize_tracker_run` so it does not collide with
+  `farm_notary.anchor.notarize_run`.
 - `farm-notary chain` writes `provenance-chain.json` linking stage
-  manifests. Linear only; no trusted server.
+  manifests (paths relative to the chain file). Linear only; no trusted
+  server.
 
 ### Changed
 
@@ -322,7 +243,9 @@ receipts now record the `--ignore` globs so the scoped claim can list them.
 - Docs rewritten against the 0.2 CLI: install from PyPI
   (`pip install "farm-notary[ots]"`), `anchor` dry-run default vs Action
   `ots`, `--verify-derived`, publish profiles, claim levels, and Action
-  pin (`dooders/FarmNotary@v0.2.0`).
+  pin (`dooders/FarmNotary@v0.2.0`). Publication-scope framing: the
+  allowlist is what left the machine, not a privacy protocol. `identity`
+  is a stamp field (excluded from `content_hash`).
 - `farm-notary verify` no longer fails when `derived_from` rules are present
   but `--verify-derived` was not passed. Missing is not failure; the CLI
   notes that rules were not executed. `--verify-derived` still runs them
